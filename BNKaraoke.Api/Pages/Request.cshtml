@@ -1,0 +1,17 @@
+﻿@page
+@model BNKaraoke.Api.Pages.RequestModel
+@{
+    ViewData["Title"] = "Request a Song";
+}
+
+<div class="min-h-screen bg-gradient-to-b from-blue-900 to-blue-100">
+    <header class="bg-blue-900 text-white p-4 flex items-center">
+        <img src="~/images/mic.png" class="w-8 h-8 animate-bounce mr-2" alt="Mic" />
+        <h1 class="text-3xl font-poppins font-bold">Request a Party Hit!</h1>
+    </header>
+    <div id="react-request-root"></div>
+</div>
+
+@section Scripts {
+    <script src="~/js/react-app.bundle.js"></script>
+}

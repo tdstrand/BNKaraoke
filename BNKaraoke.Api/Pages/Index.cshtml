@@ -1,0 +1,37 @@
+﻿@page
+@model BNKaraoke.Api.Pages.IndexModel
+
+@{
+    ViewData["Title"] = "Home Page";
+}
+
+<h1>Welcome to BNKaraoke</h1>
+
+<p>This is the default landing page.</p>
+
+<!-- Display user-specific options -->
+@if (User.Identity.IsAuthenticated)
+{
+    <p>Welcome, @User.Identity.Name!</p>
+
+    @if (User.IsInRole("Admin"))
+    {
+        <a href="/Admin" class="btn btn-primary">Admin Panel</a>
+    }
+
+    @if (User.IsInRole("User Manager"))
+    {
+        <a href="/Admin/ManageUsers" class="btn btn-primary">Manage Users</a>
+    }
+
+    @if (User.IsInRole("Singer"))
+    {
+        <a href="/Singer" class="btn btn-primary">Singer Panel</a>
+    }
+
+    <!-- Add more role-based options here -->
+}
+else
+{
+    <p>Please <a href="/Account/Login">login</a> to see more options.</p>
+}

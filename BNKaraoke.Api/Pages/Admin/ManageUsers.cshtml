@@ -1,0 +1,57 @@
+﻿@page
+@model BNKaraoke.Api.Pages.Admin.ManageUsersModel
+
+@{
+    ViewData["Title"] = "User Management";
+}
+
+<h1>User Management</h1>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>User Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Edit</th>
+            <th>Reset Password</th>
+            <th>Delete</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in Model.Users)
+        {
+            <tr>
+                <td>@user.UserName</td>
+                <td>@user.Email</td>
+                <td>
+                    <form method="post" asp-page-handler="AssignRole">
+                        <select name="role" class="form-select">
+                            @foreach (var role in Model.Roles)
+                            {
+                                <option value="@role.Name" selected="@(user.Role == role.Name ? "selected" : null)">@role.Name</option>
+                            }
+                        </select>
+                        <input type="hidden" name="userId" value="@user.Id" />
+                        <button type="submit" class="btn btn-primary">Assign</button>
+                    </form>
+                </td>
+                <td>
+                    <a asp-page-handler="Edit" asp-route-id="@user.Id" class="btn btn-primary">Edit</a>
+                </td>
+                <td>
+                    <a asp-page-handler="ResetPassword" asp-route-id="@user.Id" class="btn btn-warning">Reset Password</a>
+                </td>
+                <td>
+                    <form method="post" asp-page-handler="Delete" asp-route-id="@user.Id">
+                        <button type="submit" class="btn btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div>
+    <a asp-page-handler="Create" class="btn btn-success">Create New User</a>
+</div>

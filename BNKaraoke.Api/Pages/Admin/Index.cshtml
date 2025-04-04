@@ -1,0 +1,35 @@
+﻿@model IEnumerable<BNKaraoke.Api.Models.ApplicationUser>
+
+@{
+    ViewData["Title"] = "User Management";
+}
+
+<h1>User Management</h1>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>User Name</th>
+            <th>Edit</th>
+            <th>Reset Password</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in Model)
+        {
+            <tr>
+                <td>@user.UserName</td>
+                <td>
+                    <a asp-action="Edit" asp-route-id="@user.Id" class="btn btn-primary">Edit</a>
+                </td>
+                <td>
+                    <a asp-action="ResetPassword" asp-route-id="@user.Id" class="btn btn-warning">Reset Password</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div>
+    <a asp-action="Create" class="btn btn-success">Create New User</a>
+</div>
