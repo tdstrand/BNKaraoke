@@ -7,15 +7,20 @@ using System.Text;
 using BNKaraoke.Api.Models;
 using BNKaraoke.Api.Data;
 
-using BNKaraoke.Api.Models;
 var builder = WebApplication.CreateBuilder(args);
 
-// **Configure Database**
+// Configure Kestrel and URLs (only for development)
+if (builder.Environment.IsDevelopment())
+{
+    builder.WebHost.UseKestrel().UseUrls("https://localhost:7280;http://localhost:5176");
+}
+
+// Configure Database
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// **Configure Identity & Authentication**
+// Configure Identity & Authentication
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
     options.SignIn.RequireConfirmedAccount = true;
@@ -23,6 +28,23 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
+
+// Enable CORS for React Frontend
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", builder =>
+    {
+        builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+    });
+});
+
+// Validate JWT Key Length & Configure Authentication
+var keyString = builder.Configuration["JwtSettings:SecretKey"];
+
+if (string.IsNullOrEmpty(keyString) || Encoding.UTF8.GetBytes(keyString).Length < 32)
+{
+    throw new InvalidOperationException("Jwt secret key is missing or too short. It must be at least 256 bits (32+ characters).");
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -35,26 +57,26 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
 {
-    var keyString = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt key is not set.");
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer = builder.Configuration["Jwt:Issuer"],
-        ValidAudience = builder.Configuration["Jwt:Audience"],
+        ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+        ValidAudience = builder.Configuration["JwtSettings:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString))
     };
 });
 
-// **Register MVC Controllers & Razor Pages**
+// Register MVC Controllers & Razor Pages
 builder.Services.AddRazorPages();
 builder.Services.AddControllersWithViews();
+builder.Services.AddControllers(); // Ensure API controllers are registered
 
 var app = builder.Build();
 
-// **Configure Middleware**
+// Configure Middleware
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
@@ -67,20 +89,14 @@ else
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
-
-// **Define Route Mappings**
+app.MapControllers(); // Registers API controllers properly
 app.MapRazorPages();
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
+app.MapDefaultControllerRoute(); // Ensures default controller behavior
 
-app.MapControllerRoute(
-    name: "userManagement",
-    pattern: "{controller=UserManagement}/{action=Index}/{id?}");
-
-// **Seed Roles & Users in an Async Manner**
+// Seed Roles & Users
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();

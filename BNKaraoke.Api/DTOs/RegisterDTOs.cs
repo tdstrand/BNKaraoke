@@ -1,16 +1,23 @@
-﻿using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
-namespace BNKaraoke.Web.DTOs
+namespace BNKaraoke.Api.DTOs
 {
     public class RegisterDto
     {
         [Required]
-        public string PhoneNumber { get; set; }
+        public string PhoneNumber { get; set; } = string.Empty;
 
         [Required]
-        public string Password { get; set; }
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = string.Empty;
 
-        public List<string> Roles { get; set; }
+        [Required] // ✅ Add First Name field
+        public string FirstName { get; set; } = string.Empty;
+
+        [Required] // ✅ Add Last Name field
+        public string LastName { get; set; } = string.Empty;
+
+        [Required]
+        public List<string> Roles { get; set; } = new List<string>();
     }
 }

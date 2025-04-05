@@ -1,7 +1,23 @@
-﻿namespace BNKaraoke.Api.DTOs;
+﻿using System.ComponentModel.DataAnnotations;
 
-public class LoginDto
+namespace BNKaraoke.Api.DTOs
 {
-    public string PhoneNumber { get; set; }
-    public string Password { get; set; }
+    public class LoginDto
+    {
+        [Required]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = string.Empty;
+    }
+
+    // ✅ Add UserResponseDto to return additional info on login
+    public class UserResponseDto
+    {
+        public string Token { get; set; } = string.Empty;
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public List<string> Roles { get; set; } = new List<string>();
+    }
 }
