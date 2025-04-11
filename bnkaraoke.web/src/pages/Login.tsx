@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_ROUTES } from "../config/apiConfig";
+import { API_ROUTES } from "../config/apiConfig"; // Remove BASE_API_URL
 import "./Login.css";
 
 const Login = () => {
@@ -13,21 +13,33 @@ const Login = () => {
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const handleLogin = async () => {
-    if (!userName || !password) return; // Prevent login if fields are empty
+    if (!userName || !password) {
+      setError("Please enter both phone number and password");
+      return;
+    }
 
     try {
+      console.log(`Attempting login fetch to: ${API_ROUTES.LOGIN}`);
       const response = await fetch(API_ROUTES.LOGIN, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userName, password }),
+        body: JSON.stringify({ UserName: userName, Password: password }), // Fixed keys
       });
 
+      const responseText = await response.text();
+      console.log("Login Raw Response:", responseText);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Invalid credentials");
+        let errorData;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch {
+          errorData = { message: "Invalid credentials or server error" };
+        }
+        throw new Error(errorData.message || `Login failed: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data = JSON.parse(responseText);
       localStorage.setItem("token", data.token);
       localStorage.setItem("roles", JSON.stringify(data.roles));
       localStorage.setItem("firstName", data.firstName);
@@ -35,18 +47,19 @@ const Login = () => {
 
       navigate("/dashboard");
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : "Unknown error");
+      console.error("Login Error:", err);
     }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       if (!userName && userNameRef.current) {
-        userNameRef.current.focus(); // ✅ Move to username field if empty
+        userNameRef.current.focus();
       } else if (!password && passwordRef.current) {
-        passwordRef.current.focus(); // ✅ Move to password field if empty
+        passwordRef.current.focus();
       } else {
-        handleLogin(); // ✅ Log in only if both fields are filled
+        handleLogin();
       }
     }
   };
