@@ -6,36 +6,38 @@ using System.Text;
 using BNKaraoke.Api.Models;
 using BNKaraoke.Api.Data;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Kestrel based on environment
-if (builder.Environment.IsDevelopment())
+builder.Configuration.AddUserSecrets<Program>();
+builder.Configuration.AddEnvironmentVariables();
+
+// Configure Kestrel
+builder.WebHost.ConfigureKestrel(options =>
 {
-    builder.WebHost.ConfigureKestrel(options =>
+    options.ListenLocalhost(7290, listenOptions =>
     {
-        options.ListenLocalhost(7290, listenOptions =>
-        {
-            listenOptions.UseHttps(); // Uses dev cert (dotnet dev-certs)
-            listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-        });
-        Console.WriteLine("Kestrel configured to listen on https://localhost:7290 in Development");
+        listenOptions.UseHttps();
+        listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
     });
-}
-else
+});
+
+// Configure logging
+builder.Services.AddLogging(logging =>
 {
-    builder.WebHost.ConfigureKestrel(options =>
-    {
-        options.ListenLocalhost(7290, listenOptions =>
-        {
-            listenOptions.UseHttps(); // Production cert handled elsewhere
-            listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-        });
-        Console.WriteLine("Kestrel configured to listen on https://localhost:7290 in Production");
-    });
-}
+    logging.AddConsole();
+    logging.AddDebug();
+});
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrEmpty(connectionString))
+{
+    throw new InvalidOperationException("Database connection string 'DefaultConnection' is missing.");
+}
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
@@ -43,6 +45,9 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
     options.SignIn.RequireConfirmedAccount = true;
     options.User.RequireUniqueEmail = false;
+    options.Password.RequireDigit = true;
+    options.Password.RequiredLength = 8;
+    options.Password.RequireNonAlphanumeric = true;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
@@ -96,13 +101,52 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowNetwork", policy =>
     {
-        policy.AllowAnyOrigin()
+        var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+        if (builder.Environment.IsDevelopment())
+        {
+            allowedOrigins = allowedOrigins.Concat(new[] { "http://localhost:8080" }).Distinct().ToArray();
+        }
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader();
     });
 });
 
 builder.Services.AddControllers();
+
+// Add Swagger
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "BNKaraoke API",
+        Version = "v1",
+        Description = "API for managing karaoke users and songs"
+    });
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        In = ParameterLocation.Header,
+        Description = "Please enter JWT with Bearer into field",
+        Name = "Authorization",
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
 builder.Services.AddHttpClient();
 
 var app = builder.Build();
@@ -110,6 +154,12 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "BNKaraoke API v1");
+        c.RoutePrefix = string.Empty; // Serve Swagger at root (/)
+    });
 }
 else
 {
@@ -117,26 +167,29 @@ else
     {
         errorApp.Run(async context =>
         {
-            Console.WriteLine($"Unhandled exception at {context.Request.Path}: {context.Response.StatusCode}");
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            var error = context.Features.Get<IExceptionHandlerFeature>();
+            logger.LogError(error?.Error, "Unhandled exception at {Path}", context.Request.Path);
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync("{\"error\": \"An unexpected error occurred.\"}");
+            await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred." });
         });
     });
     app.UseHsts();
 }
 
+app.UseHttpsRedirection();
 app.UseRouting();
 app.UseCors("AllowNetwork");
-Console.WriteLine("CORS policy 'AllowNetwork' applied");
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.Use(async (context, next) =>
 {
-    Console.WriteLine($"Request Incoming: {context.Request.Method} {context.Request.Path}");
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Request Incoming: {Method} {Path}", context.Request.Method, context.Request.Path);
     await next.Invoke();
-    Console.WriteLine($"Response Sent: {context.Response.StatusCode}");
+    logger.LogInformation("Response Sent: {StatusCode}", context.Response.StatusCode);
 });
 
 app.MapControllers();
@@ -174,7 +227,7 @@ using (var scope = app.Services.CreateScope())
 
         if (await userManager.FindByNameAsync(appUser.UserName) == null)
         {
-            var result = await userManager.CreateAsync(appUser, "pwd");
+            var result = await userManager.CreateAsync(appUser, "SecurePassword123!");
             if (result.Succeeded)
             {
                 await userManager.AddToRolesAsync(appUser, user.Roles);

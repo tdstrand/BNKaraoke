@@ -5,19 +5,18 @@ namespace BNKaraoke.Api.DTOs
     public class LoginDto
     {
         [Required]
-        public string UserName { get; set; } = string.Empty;
+        public required string UserName { get; set; }
 
         [Required]
         [DataType(DataType.Password)]
-        public string Password { get; set; } = string.Empty;
+        public required string Password { get; set; }
     }
 
-    // ✅ Add UserResponseDto to return additional info on login
     public class UserResponseDto
     {
-        public string Token { get; set; } = string.Empty;
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
-        public List<string> Roles { get; set; } = new List<string>();
+        public required string Token { get; set; }
+        public required string FirstName { get; set; }
+        public required string LastName { get; set; }
+        public required List<string> Roles { get; set; }
     }
 }

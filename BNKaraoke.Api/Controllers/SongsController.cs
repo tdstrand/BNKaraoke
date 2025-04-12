@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Security.Claims;
+using Microsoft.Extensions.Logging;
 
 namespace BNKaraoke.Controllers
 {
@@ -17,18 +18,28 @@ namespace BNKaraoke.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _configuration;
+        private readonly ILogger<SongsController> _logger;
 
-        public SongsController(ApplicationDbContext context, IHttpClientFactory httpClientFactory, IConfiguration configuration)
+        public SongsController(ApplicationDbContext context, IHttpClientFactory httpClientFactory, IConfiguration configuration, ILogger<SongsController> logger)
         {
             _context = context;
             _httpClientFactory = httpClientFactory;
             _configuration = configuration;
+            _logger = logger;
         }
 
         [HttpGet("search")]
         [Authorize(Policy = "Singer")]
         public async Task<IActionResult> Search(string query = "", int page = 1, int pageSize = 50)
         {
+            _logger.LogInformation("Search: Query={Query}, Page={Page}, PageSize={PageSize}", query, page, pageSize);
+
+            if (pageSize > 100)
+            {
+                _logger.LogWarning("Search: PageSize {PageSize} exceeds maximum limit of 100", pageSize);
+                return BadRequest(new { error = "PageSize cannot exceed 100" });
+            }
+
             var songsQuery = _context.Songs.Where(s => s.Status == "active");
             if (!string.IsNullOrEmpty(query) && query.ToLower() != "all")
             {
@@ -42,6 +53,8 @@ namespace BNKaraoke.Controllers
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
+
+            _logger.LogInformation("Search: Found {TotalSongs} songs, returning {SongCount} for page {Page}", totalSongs, songs.Count, page);
 
             return Ok(new
             {
@@ -58,15 +71,19 @@ namespace BNKaraoke.Controllers
         public async Task<IActionResult> GetUserRequests()
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            Console.WriteLine($"GetUserRequests: UserId from token: {userId}");
+            _logger.LogInformation("GetUserRequests: UserId={UserId}", userId);
+
             if (string.IsNullOrEmpty(userId))
             {
-                return BadRequest("User identity not found in token");
+                _logger.LogWarning("GetUserRequests: User identity not found in token");
+                return BadRequest(new { error = "User identity not found in token" });
             }
+
             var songs = await _context.Songs
                 .Where(s => s.RequestedBy == userId && s.Status == "pending")
                 .ToListAsync();
-            Console.WriteLine($"GetUserRequests: Found {songs.Count} pending songs for {userId}");
+
+            _logger.LogInformation("GetUserRequests: Found {SongCount} pending songs for UserId={UserId}", songs.Count, userId);
             return Ok(songs);
         }
 
@@ -74,20 +91,21 @@ namespace BNKaraoke.Controllers
         [Authorize(Policy = "SongManager")]
         public async Task<IActionResult> GetPending()
         {
-            Console.WriteLine("GetPending: Endpoint called - Starting execution");
+            _logger.LogInformation("GetPending: Querying database for pending songs");
+
             try
             {
-                Console.WriteLine("GetPending: Querying database for pending songs");
                 var songs = await _context.Songs
                     .Where(s => s.Status == "pending")
                     .ToListAsync();
-                Console.WriteLine($"GetPending: Found {songs.Count} pending songs");
+
+                _logger.LogInformation("GetPending: Found {SongCount} pending songs", songs.Count);
                 return Ok(songs);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"GetPending: Exception occurred - {ex.Message}");
-                throw;
+                _logger.LogError(ex, "GetPending: Exception occurred");
+                return StatusCode(500, new { error = "Failed to retrieve pending songs" });
             }
         }
 
@@ -95,48 +113,56 @@ namespace BNKaraoke.Controllers
         [Authorize(Policy = "SongManager")]
         public async Task<IActionResult> YouTubeSearch(string query)
         {
+            _logger.LogInformation("YouTubeSearch: Query={Query}", query);
+
             try
             {
                 var client = _httpClientFactory.CreateClient();
                 var apiKey = _configuration["YouTube:ApiKey"];
                 if (string.IsNullOrEmpty(apiKey))
                 {
-                    throw new InvalidOperationException("YouTube API key is missing in configuration.");
+                    _logger.LogError("YouTubeSearch: YouTube API key is missing in configuration");
+                    return BadRequest(new { error = "YouTube API key is missing" });
                 }
+
                 var response = await client.GetAsync(
                     $"https://www.googleapis.com/youtube/v3/search?part=snippet&q={Uri.EscapeDataString(query)}&type=video&key={apiKey}&maxResults=10"
                 );
-                Console.WriteLine($"YouTubeSearch: Status for query '{query}': {response.StatusCode}");
+
+                _logger.LogInformation("YouTubeSearch: Status for query '{Query}': {StatusCode}", query, response.StatusCode);
+
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorText = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"YouTubeSearch: Error response: {errorText}");
-                    return BadRequest($"YouTube search failed: {errorText}");
+                    _logger.LogWarning("YouTubeSearch: Error response: {ErrorText}", errorText);
+                    return BadRequest(new { error = $"YouTube search failed: {errorText}" });
                 }
 
                 var json = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"YouTubeSearch JSON: {json}");
                 var data = JsonSerializer.Deserialize<YouTubeSearchResponse>(json);
-                Console.WriteLine($"YouTubeSearch Deserialized Data: {JsonSerializer.Serialize(data)}");
-                if (data == null)
+
+                if (data?.Items == null)
                 {
-                    Console.WriteLine("YouTubeSearch: No valid response found");
+                    _logger.LogWarning("YouTubeSearch: No valid response found for query '{Query}'", query);
                     return Ok(new List<object>());
                 }
 
-                var videos = (data.Items ?? new List<YouTubeItem>()).Select(v => new
-                {
-                    videoId = v.Id?.VideoId ?? "unknown",
-                    title = v.Snippet?.Title ?? "Untitled",
-                    url = v.Id?.VideoId != null ? $"https://www.youtube.com/watch?v={v.Id.VideoId}" : "unknown"
-                }).ToList();
-                Console.WriteLine($"YouTubeSearch: Found {videos.Count} videos");
+                var videos = data.Items
+                    .Where(v => v != null)
+                    .Select(v => new
+                    {
+                        videoId = v.Id?.VideoId ?? "unknown",
+                        title = v.Snippet?.Title ?? "Untitled",
+                        url = v.Id?.VideoId != null ? $"https://www.youtube.com/watch?v={v.Id.VideoId}" : "unknown"
+                    }).ToList();
+
+                _logger.LogInformation("YouTubeSearch: Found {VideoCount} videos for query '{Query}'", videos.Count, query);
                 return Ok(videos);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"YouTubeSearch: Exception: {ex.Message}");
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                _logger.LogError(ex, "YouTubeSearch: Exception for query '{Query}'", query);
+                return StatusCode(500, new { error = "Failed to search YouTube" });
             }
         }
 
@@ -144,40 +170,42 @@ namespace BNKaraoke.Controllers
         [Authorize(Policy = "Singer")]
         public async Task<IActionResult> SpotifySearch(string query)
         {
+            _logger.LogInformation("SpotifySearch: Query={Query}", query);
+
             try
             {
                 if (string.IsNullOrEmpty(query))
                 {
-                    return BadRequest("Query parameter is required.");
+                    _logger.LogWarning("SpotifySearch: Query parameter is missing");
+                    return BadRequest(new { error = "Query parameter is required" });
                 }
 
-                Console.WriteLine($"SpotifySearch: Starting with query: {query}");
                 var client = _httpClientFactory.CreateClient();
                 var token = await GetSpotifyToken(client);
-                Console.WriteLine($"SpotifySearch: Token retrieved: {token}");
                 client.DefaultRequestHeaders.Clear();
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
 
                 var response = await client.GetAsync($"https://api.spotify.com/v1/search?q={Uri.EscapeDataString(query)}&type=track&limit=10");
-                Console.WriteLine($"SpotifySearch: Search status: {response.StatusCode}");
+                _logger.LogInformation("SpotifySearch: Search status: {StatusCode}", response.StatusCode);
+
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorText = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"SpotifySearch: Search error response: {errorText}");
-                    return BadRequest($"Spotify search failed: {errorText}");
+                    _logger.LogWarning("SpotifySearch: Search error response: {ErrorText}", errorText);
+                    return BadRequest(new { error = $"Spotify search failed: {errorText}" });
                 }
 
                 var json = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"SpotifySearch: Search JSON: {json}");
                 var data = JsonSerializer.Deserialize<SpotifySearchResponse>(json);
+
                 if (data?.Tracks == null)
                 {
-                    Console.WriteLine("SpotifySearch: Tracks object is null");
-                    return BadRequest("No tracks data in Spotify response");
+                    _logger.LogWarning("SpotifySearch: Tracks object is null for query '{Query}'", query);
+                    return BadRequest(new { error = "No tracks found in Spotify response" });
                 }
 
                 var songs = new List<Song>();
-                foreach (var track in data.Tracks.Items ?? new List<SpotifyTrack>())
+                foreach (var track in data.Tracks.Items)
                 {
                     var song = new Song
                     {
@@ -186,7 +214,7 @@ namespace BNKaraoke.Controllers
                         SpotifyId = track.Id,
                         Status = "pending",
                         RequestDate = DateTime.UtcNow,
-                        RequestedBy = User.Identity.Name ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value,
+                        RequestedBy = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty,
                         Bpm = 0,
                         Danceability = 0,
                         Energy = 0
@@ -226,13 +254,13 @@ namespace BNKaraoke.Controllers
                     songs.Add(song);
                 }
 
-                Console.WriteLine($"SpotifySearch: Found {songs.Count} songs");
+                _logger.LogInformation("SpotifySearch: Found {SongCount} songs for query '{Query}'", songs.Count, query);
                 return Ok(songs);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"SpotifySearch: Exception: {ex.Message}");
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                _logger.LogError(ex, "SpotifySearch: Exception for query '{Query}'", query);
+                return StatusCode(500, new { error = "Failed to search Spotify" });
             }
         }
 
@@ -240,26 +268,34 @@ namespace BNKaraoke.Controllers
         [Authorize(Policy = "SongManager")]
         public async Task<IActionResult> ApproveSong([FromBody] ApproveSongRequest request)
         {
+            _logger.LogInformation("ApproveSong: SongId={SongId}", request.Id);
+
             try
             {
                 var song = await _context.Songs.FindAsync(request.Id);
-                if (song == null) return NotFound("Song not found");
+                if (song == null)
+                {
+                    _logger.LogWarning("ApproveSong: Song not found - SongId={SongId}", request.Id);
+                    return NotFound(new { error = "Song not found" });
+                }
+
                 song.YouTubeUrl = request.YouTubeUrl;
                 song.Status = "active";
                 song.ApprovedBy = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
                 if (string.IsNullOrEmpty(song.ApprovedBy))
                 {
-                    Console.WriteLine("ApprovedBy is null in ApproveSong. Claims: " +
-                        string.Join(", ", User.Claims.Select(c => $"{c.Type}: {c.Value}")));
+                    _logger.LogWarning("ApproveSong: ApprovedBy is null. Claims: {Claims}", string.Join(", ", User.Claims.Select(c => $"{c.Type}: {c.Value}")));
                 }
+
                 await _context.SaveChangesAsync();
-                Console.WriteLine($"ApproveSong: Song '{song.Title}' approved by {song.ApprovedBy}");
+                _logger.LogInformation("ApproveSong: Song '{Title}' approved by {ApprovedBy}", song.Title, song.ApprovedBy);
                 return Ok(new { message = "Party hit approved!" });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ApproveSong: Exception: {ex.Message}");
-                return StatusCode(500, $"Failed to approve song: {ex.Message}");
+                _logger.LogError(ex, "ApproveSong: Exception for SongId={SongId}", request.Id);
+                return StatusCode(500, new { error = "Failed to approve song" });
             }
         }
 
@@ -267,19 +303,26 @@ namespace BNKaraoke.Controllers
         [Authorize(Policy = "SongManager")]
         public async Task<IActionResult> RejectSong([FromBody] RejectSongRequest request)
         {
+            _logger.LogInformation("RejectSong: SongId={SongId}", request.Id);
+
             try
             {
                 var song = await _context.Songs.FindAsync(request.Id);
-                if (song == null) return NotFound("Song not found");
+                if (song == null)
+                {
+                    _logger.LogWarning("RejectSong: Song not found - SongId={SongId}", request.Id);
+                    return NotFound(new { error = "Song not found" });
+                }
+
                 song.Status = "unavailable";
                 await _context.SaveChangesAsync();
-                Console.WriteLine($"RejectSong: Song '{song.Title}' rejected");
+                _logger.LogInformation("RejectSong: Song '{Title}' rejected", song.Title);
                 return Ok(new { message = "Song sidelined for now!" });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"RejectSong: Exception: {ex.Message}");
-                return StatusCode(500, $"Failed to reject song: {ex.Message}");
+                _logger.LogError(ex, "RejectSong: Exception for SongId={SongId}", request.Id);
+                return StatusCode(500, new { error = "Failed to reject song" });
             }
         }
 
@@ -287,39 +330,44 @@ namespace BNKaraoke.Controllers
         [Authorize(Policy = "Singer")]
         public async Task<IActionResult> RequestSong([FromBody] Song song)
         {
+            _logger.LogInformation("RequestSong: Title={Title}, Artist={Artist}", song.Title, song.Artist);
+
             try
             {
                 song.Status = "pending";
                 song.RequestDate = DateTime.UtcNow;
-                song.RequestedBy = User.Identity.Name ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                song.RequestedBy = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+
                 if (string.IsNullOrEmpty(song.RequestedBy))
                 {
-                    Console.WriteLine("RequestedBy is null in RequestSong. Claims: " +
-                        string.Join(", ", User.Claims.Select(c => $"{c.Type}: {c.Value}")));
-                    return BadRequest("User identity not found in token");
+                    _logger.LogWarning("RequestSong: RequestedBy is null. Claims: {Claims}", string.Join(", ", User.Claims.Select(c => $"{c.Type}: {c.Value}")));
+                    return BadRequest(new { error = "User identity not found in token" });
                 }
 
                 _context.Songs.Add(song);
                 await _context.SaveChangesAsync();
-                Console.WriteLine($"RequestSong: Song '{song.Title}' added by {song.RequestedBy}");
+                _logger.LogInformation("RequestSong: Song '{Title}' added by {RequestedBy}", song.Title, song.RequestedBy);
                 return Ok(new { message = "Song added to the party queue!" });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"RequestSong: Exception: {ex.Message}");
-                return StatusCode(500, $"Failed to add song request: {ex.Message}");
+                _logger.LogError(ex, "RequestSong: Exception for Title={Title}", song.Title);
+                return StatusCode(500, new { error = "Failed to add song request" });
             }
         }
 
         private async Task<string> GetSpotifyToken(HttpClient client)
         {
+            _logger.LogInformation("GetSpotifyToken: Requesting token");
+
             try
             {
                 var clientId = _configuration["Spotify:ClientId"];
                 var clientSecret = _configuration["Spotify:ClientSecret"];
                 if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
                 {
-                    throw new InvalidOperationException("Spotify ClientId or ClientSecret is missing in configuration.");
+                    _logger.LogError("GetSpotifyToken: Spotify ClientId or ClientSecret is missing in configuration");
+                    throw new InvalidOperationException("Spotify ClientId or ClientSecret is missing.");
                 }
 
                 var request = new HttpRequestMessage(HttpMethod.Post, "https://accounts.spotify.com/api/token")
@@ -333,27 +381,30 @@ namespace BNKaraoke.Controllers
                 };
 
                 var response = await client.SendAsync(request);
-                Console.WriteLine($"GetSpotifyToken: Response status: {response.StatusCode}");
+                _logger.LogInformation("GetSpotifyToken: Response status: {StatusCode}", response.StatusCode);
+
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorText = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"GetSpotifyToken: Error response: {errorText}");
+                    _logger.LogWarning("GetSpotifyToken: Error response: {ErrorText}", errorText);
                     throw new InvalidOperationException($"Failed to get Spotify token: {errorText}");
                 }
 
                 var json = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"GetSpotifyToken: Raw JSON: {json}");
                 var tokenData = JsonSerializer.Deserialize<SpotifyTokenResponse>(json);
+
                 if (string.IsNullOrEmpty(tokenData?.AccessToken))
                 {
+                    _logger.LogError("GetSpotifyToken: Spotify token response missing access_token");
                     throw new InvalidOperationException("Spotify token response missing access_token");
                 }
 
+                _logger.LogInformation("GetSpotifyToken: Token retrieved successfully");
                 return tokenData.AccessToken;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"GetSpotifyToken: Exception: {ex.Message}");
+                _logger.LogError(ex, "GetSpotifyToken: Exception occurred");
                 throw;
             }
         }
@@ -361,37 +412,37 @@ namespace BNKaraoke.Controllers
         public class SpotifySearchResponse
         {
             [JsonPropertyName("tracks")]
-            public SpotifyTracks Tracks { get; set; }
+            public required SpotifyTracks Tracks { get; set; }
         }
 
         public class SpotifyTracks
         {
             [JsonPropertyName("items")]
-            public List<SpotifyTrack> Items { get; set; }
+            public required List<SpotifyTrack> Items { get; set; }
         }
 
         public class SpotifyTrack
         {
             [JsonPropertyName("id")]
-            public string Id { get; set; }
+            public required string Id { get; set; }
             [JsonPropertyName("name")]
-            public string Name { get; set; }
+            public required string Name { get; set; }
             [JsonPropertyName("artists")]
-            public List<SpotifyArtist> Artists { get; set; }
+            public required List<SpotifyArtist> Artists { get; set; }
         }
 
         public class SpotifyArtist
         {
             [JsonPropertyName("id")]
-            public string Id { get; set; }
+            public required string Id { get; set; }
             [JsonPropertyName("name")]
-            public string Name { get; set; }
+            public required string Name { get; set; }
         }
 
         public class SpotifyTokenResponse
         {
             [JsonPropertyName("access_token")]
-            public string AccessToken { get; set; }
+            public required string AccessToken { get; set; }
         }
 
         public class SpotifyTrackDetails
@@ -403,39 +454,39 @@ namespace BNKaraoke.Controllers
         public class SpotifyArtistDetails
         {
             [JsonPropertyName("genres")]
-            public List<string> Genres { get; set; }
+            public required List<string> Genres { get; set; }
         }
 
         public class YouTubeSearchResponse
         {
             [JsonPropertyName("items")]
-            public List<YouTubeItem> Items { get; set; }
+            public required List<YouTubeItem> Items { get; set; }
         }
 
         public class YouTubeItem
         {
             [JsonPropertyName("id")]
-            public YouTubeId Id { get; set; }
+            public YouTubeId? Id { get; set; }
             [JsonPropertyName("snippet")]
-            public YouTubeSnippet Snippet { get; set; }
+            public YouTubeSnippet? Snippet { get; set; }
         }
 
         public class YouTubeId
         {
             [JsonPropertyName("videoId")]
-            public string VideoId { get; set; }
+            public string? VideoId { get; set; }
         }
 
         public class YouTubeSnippet
         {
             [JsonPropertyName("title")]
-            public string Title { get; set; }
+            public string? Title { get; set; }
         }
 
         public class ApproveSongRequest
         {
             public int Id { get; set; }
-            public string YouTubeUrl { get; set; }
+            public string? YouTubeUrl { get; set; }
         }
 
         public class RejectSongRequest

@@ -7,7 +7,7 @@ public class Song
     public required string Artist { get; set; }
     public required string SpotifyId { get; set; }
     public string? YouTubeUrl { get; set; }
-    public required string Status { get; set; } = "pending"; // "pending", "active", "unavailable"
+    public required string Status { get; set; } = "pending";
     public string? Genre { get; set; }
     public float Bpm { get; set; }
     public float Energy { get; set; }
@@ -15,6 +15,6 @@ public class Song
     public float Danceability { get; set; }
     public int Popularity { get; set; }
     public DateTime RequestDate { get; set; }
-    public required string RequestedBy { get; set; } // Placeholder user ID
+    public required string RequestedBy { get; set; }
     public string? ApprovedBy { get; set; }
 }

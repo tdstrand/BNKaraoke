@@ -1,5 +1,7 @@
-// Temporary for dev testing
-const API_BASE_URL = "https://localhost:7280"; // Force dev URL
+// Use environment-based configuration
+const API_BASE_URL = process.env.NODE_ENV === "production"
+    ? "https://api.bnkaraoke.com"
+    : "https://localhost:7290";
 
 console.log(`API_BASE_URL set to: ${API_BASE_URL}`);
 
