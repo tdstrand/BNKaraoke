@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -6,21 +5,40 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using BNKaraoke.Api.Models;
 using BNKaraoke.Api.Data;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Kestrel and URLs (only for development)
+// Configure Kestrel based on environment
 if (builder.Environment.IsDevelopment())
 {
-    builder.WebHost.UseKestrel().UseUrls("https://localhost:7280;http://localhost:5176");
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.ListenLocalhost(7290, listenOptions =>
+        {
+            listenOptions.UseHttps(); // Uses dev cert (dotnet dev-certs)
+            listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+        });
+        Console.WriteLine("Kestrel configured to listen on https://localhost:7290 in Development");
+    });
+}
+else
+{
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.ListenLocalhost(7290, listenOptions =>
+        {
+            listenOptions.UseHttps(); // Production cert handled elsewhere
+            listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+        });
+        Console.WriteLine("Kestrel configured to listen on https://localhost:7290 in Production");
+    });
 }
 
-// Configure Database
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// Configure Identity & Authentication
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
     options.SignIn.RequireConfirmedAccount = true;
@@ -29,18 +47,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
-// Enable CORS for React Frontend
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll", builder =>
-    {
-        builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
-    });
-});
-
-// Validate JWT Key Length & Configure Authentication
 var keyString = builder.Configuration["JwtSettings:SecretKey"];
-
 if (string.IsNullOrEmpty(keyString) || Encoding.UTF8.GetBytes(keyString).Length < 32)
 {
     throw new InvalidOperationException("Jwt secret key is missing or too short. It must be at least 256 bits (32+ characters).");
@@ -48,12 +55,8 @@ if (string.IsNullOrEmpty(keyString) || Encoding.UTF8.GetBytes(keyString).Length 
 
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-})
-.AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
-{
-    options.Cookie.Name = "BNKaraokeCookie";
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
 .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
 {
@@ -65,38 +68,80 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = true,
         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
         ValidAudience = builder.Configuration["JwtSettings:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString))
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString)),
+        NameClaimType = "sub"
     };
 });
 
-// Register MVC Controllers & Razor Pages
-builder.Services.AddRazorPages();
-builder.Services.AddControllersWithViews();
-builder.Services.AddControllers(); // Ensure API controllers are registered
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Singer", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole("Singer");
+    });
+    options.AddPolicy("SongManager", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole("Song Manager");
+    });
+    options.AddPolicy("UserManager", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole("User Manager");
+    });
+});
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowNetwork", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
+builder.Services.AddControllers();
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
-// Configure Middleware
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
 }
 else
 {
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            Console.WriteLine($"Unhandled exception at {context.Request.Path}: {context.Response.StatusCode}");
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync("{\"error\": \"An unexpected error occurred.\"}");
+        });
+    });
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
-app.UseStaticFiles();
 app.UseRouting();
-app.UseCors("AllowAll");
+app.UseCors("AllowNetwork");
+Console.WriteLine("CORS policy 'AllowNetwork' applied");
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapControllers(); // Registers API controllers properly
-app.MapRazorPages();
-app.MapDefaultControllerRoute(); // Ensures default controller behavior
 
-// Seed Roles & Users
+app.Use(async (context, next) =>
+{
+    Console.WriteLine($"Request Incoming: {context.Request.Method} {context.Request.Path}");
+    await next.Invoke();
+    Console.WriteLine($"Response Sent: {context.Response.StatusCode}");
+});
+
+app.MapControllers();
+
+// Seed roles and users
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
@@ -113,13 +158,8 @@ using (var scope = app.Services.CreateScope())
 
     var users = new[]
     {
-        new { PhoneNumber = "12345678901", Role = "Singer", FirstName = "Singer", LastName = "One" },
-        new { PhoneNumber = "12345678902", Role = "Karaoke DJ", FirstName = "DJ", LastName = "Two" },
-        new { PhoneNumber = "12345678903", Role = "User Manager", FirstName = "Manager", LastName = "Three" },
-        new { PhoneNumber = "12345678904", Role = "Queue Manager", FirstName = "Queue", LastName = "Four" },
-        new { PhoneNumber = "12345678905", Role = "Song Manager", FirstName = "Song", LastName = "Five" },
-        new { PhoneNumber = "12345678906", Role = "Event Manager", FirstName = "Event", LastName = "Six" },
-        new { PhoneNumber = "12345678907", Role = "Application Manager", FirstName = "Application", LastName = "Seven" }
+        new { PhoneNumber = "12345678901", Roles = new[] {"Singer"}, FirstName = "Singer", LastName = "One" },
+        new { PhoneNumber = "12345678905", Roles = new[] {"Song Manager"}, FirstName = "Song", LastName = "Five" }
     };
 
     foreach (var user in users)
@@ -137,7 +177,7 @@ using (var scope = app.Services.CreateScope())
             var result = await userManager.CreateAsync(appUser, "pwd");
             if (result.Succeeded)
             {
-                await userManager.AddToRoleAsync(appUser, user.Role);
+                await userManager.AddToRolesAsync(appUser, user.Roles);
             }
         }
     }
