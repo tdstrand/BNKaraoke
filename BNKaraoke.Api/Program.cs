@@ -21,7 +21,10 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenLocalhost(7290, listenOptions =>
     {
-        listenOptions.UseHttps();
+        if (builder.Environment.IsDevelopment())
+        {
+            listenOptions.UseHttps();
+        }
         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
     });
 });
@@ -158,7 +161,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "BNKaraoke API v1");
-        c.RoutePrefix = string.Empty; // Serve Swagger at root (/)
+        c.RoutePrefix = string.Empty;
     });
 }
 else
