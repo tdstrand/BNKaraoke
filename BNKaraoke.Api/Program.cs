@@ -104,16 +104,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowNetwork", policy =>
     {
-        var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
-        allowedOrigins = allowedOrigins.Concat(new[] { "https://www.bnkaraoke.com" }).Distinct().ToArray();
-        allowedOrigins = allowedOrigins.Concat(new[] { "https://bnkaraoke.com" }).Distinct().ToArray();
-        if (builder.Environment.IsDevelopment())
-        {
-            allowedOrigins = allowedOrigins.Concat(new[] { "http://localhost:8080" }).Distinct().ToArray();
-        }
-        policy.WithOrigins(allowedOrigins)
+        policy.WithOrigins("https://www.bnkaraoke.com", "https://bnkaraoke.com")
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
 });
 
@@ -183,7 +177,6 @@ else
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
 app.UseRouting();
 app.UseCors("AllowNetwork");
 app.UseAuthentication();
