@@ -1,4 +1,5 @@
 // Use environment-based configuration
+console.log("NODE_ENV:", process.env.NODE_ENV);
 const API_BASE_URL = process.env.NODE_ENV === "production"
     ? "https://api.bnkaraoke.com"
     : "https://localhost:7290";

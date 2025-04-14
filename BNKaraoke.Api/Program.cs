@@ -104,10 +104,11 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowNetwork", policy =>
     {
-        policy.WithOrigins("https://www.bnkaraoke.com", "https://bnkaraoke.com")
+        policy.WithOrigins("http://localhost:8080", "https://www.bnkaraoke.com", "https://bnkaraoke.com")
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
+        Console.WriteLine("CORS policy configured for http://localhost:8080, https://www.bnkaraoke.com, https://bnkaraoke.com");
     });
 });
 
@@ -225,7 +226,7 @@ using (var scope = app.Services.CreateScope())
 
         if (await userManager.FindByNameAsync(appUser.UserName) == null)
         {
-            var result = await userManager.CreateAsync(appUser, "SecurePassword123!");
+            var result = await userManager.CreateAsync(appUser, "Pwd123.");
             if (result.Succeeded)
             {
                 await userManager.AddToRolesAsync(appUser, user.Roles);

@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -12,10 +11,11 @@ using Microsoft.Extensions.Configuration;
 using System.Linq;
 using Newtonsoft.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Identity;
 
 namespace BNKaraoke.Api.Controllers
 {
-    [Route("api/auth")]
+    [Route("api/[controller]")]
     [ApiController]
     public class AuthController : ControllerBase
     {
@@ -297,7 +297,6 @@ namespace BNKaraoke.Api.Controllers
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
             var claims = new List<Claim>
             {
-                // Explicitly ensure non-null UserName for Sub claim
                 new Claim(JwtRegisteredClaimNames.Sub, user.UserName ?? throw new InvalidOperationException("UserName cannot be null")),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
                 new Claim("firstName", user.FirstName ?? string.Empty),
