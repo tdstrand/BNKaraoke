@@ -3,8 +3,20 @@
   "WorkspaceRootPath": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{CBC00D39-C20A-4448-9CCD-BD08FFD18364}|BNKaraoke.Api\\BNKaraoke.Api.csproj|c:\\users\\tstra\\source\\repos\\bnkaraoke\\bnkaraoke.api\\controllers\\authcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CBC00D39-C20A-4448-9CCD-BD08FFD18364}|BNKaraoke.Api\\BNKaraoke.Api.csproj|solutionrelative:bnkaraoke.api\\controllers\\authcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CBC00D39-C20A-4448-9CCD-BD08FFD18364}|BNKaraoke.Api\\BNKaraoke.Api.csproj|c:\\users\\tstra\\source\\repos\\bnkaraoke\\bnkaraoke.api\\dtos\\logindto.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CBC00D39-C20A-4448-9CCD-BD08FFD18364}|BNKaraoke.Api\\BNKaraoke.Api.csproj|solutionrelative:bnkaraoke.api\\dtos\\logindto.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{CBC00D39-C20A-4448-9CCD-BD08FFD18364}|BNKaraoke.Api\\BNKaraoke.Api.csproj|c:\\users\\tstra\\source\\repos\\bnkaraoke\\bnkaraoke.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{CBC00D39-C20A-4448-9CCD-BD08FFD18364}|BNKaraoke.Api\\BNKaraoke.Api.csproj|solutionrelative:bnkaraoke.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CBC00D39-C20A-4448-9CCD-BD08FFD18364}|BNKaraoke.Api\\BNKaraoke.Api.csproj|c:\\users\\tstra\\source\\repos\\bnkaraoke\\bnkaraoke.api\\.gitignore||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{CBC00D39-C20A-4448-9CCD-BD08FFD18364}|BNKaraoke.Api\\BNKaraoke.Api.csproj|solutionrelative:bnkaraoke.api\\.gitignore||{3B902123-F8A7-4915-9F01-361F908088D0}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\tstra\\AppData\\Roaming\\Microsoft\\UserSecrets\\33e8e14b-7e7d-43ce-8045-f0e61bf2a169\\secrets.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
@@ -29,11 +41,11 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 9,
+          "SelectedChildIndex": 2,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 5,
               "Title": "appsettings.json",
               "DocumentMoniker": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\BNKaraoke.Api\\appsettings.json",
               "RelativeDocumentMoniker": "BNKaraoke.Api\\appsettings.json",
@@ -42,46 +54,45 @@
               "ViewState": "AgIAAAAAAAAAAAAAAAAAABMAAAARAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
               "WhenOpened": "2025-04-05T15:17:49.329Z",
-              "IsPinned": true,
+              "IsPinned": true
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": ".gitignore",
+              "DocumentMoniker": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\BNKaraoke.Api\\.gitignore",
+              "RelativeDocumentMoniker": "BNKaraoke.Api\\.gitignore",
+              "ToolTip": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\BNKaraoke.Api\\.gitignore",
+              "RelativeToolTip": "BNKaraoke.Api\\.gitignore",
+              "ViewState": "AgIAAD8BAAAAAAAAAAAUwG0BAAACAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-04-13T21:24:10.486Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "AuthController.cs",
+              "DocumentMoniker": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\BNKaraoke.Api\\Controllers\\AuthController.cs",
+              "RelativeDocumentMoniker": "BNKaraoke.Api\\Controllers\\AuthController.cs",
+              "ToolTip": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\BNKaraoke.Api\\Controllers\\AuthController.cs",
+              "RelativeToolTip": "BNKaraoke.Api\\Controllers\\AuthController.cs",
+              "ViewState": "AgIAACMBAAAAAAAAAAAmwFsBAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-04-13T20:53:08.218Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
               "DocumentIndex": 1,
-              "Title": "secrets.json",
-              "DocumentMoniker": "C:\\Users\\tstra\\AppData\\Roaming\\Microsoft\\UserSecrets\\33e8e14b-7e7d-43ce-8045-f0e61bf2a169\\secrets.json",
-              "RelativeDocumentMoniker": "..\\..\\..\\AppData\\Roaming\\Microsoft\\UserSecrets\\33e8e14b-7e7d-43ce-8045-f0e61bf2a169\\secrets.json",
-              "ToolTip": "C:\\Users\\tstra\\AppData\\Roaming\\Microsoft\\UserSecrets\\33e8e14b-7e7d-43ce-8045-f0e61bf2a169\\secrets.json",
-              "RelativeToolTip": "..\\..\\..\\AppData\\Roaming\\Microsoft\\UserSecrets\\33e8e14b-7e7d-43ce-8045-f0e61bf2a169\\secrets.json",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAMAAAA8AAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
-              "WhenOpened": "2025-04-13T15:53:54.77Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 4,
-              "Title": "Export-SolutionFiles.ps1",
-              "DocumentMoniker": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\Export-SolutionFiles.ps1",
-              "RelativeDocumentMoniker": "Export-SolutionFiles.ps1",
-              "ToolTip": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\Export-SolutionFiles.ps1",
-              "RelativeToolTip": "Export-SolutionFiles.ps1",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2025-04-12T19:47:16.741Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 3,
-              "Title": "ExportFE.ps1",
-              "DocumentMoniker": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\ExportFE.ps1",
-              "RelativeDocumentMoniker": "ExportFE.ps1",
-              "ToolTip": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\ExportFE.ps1",
-              "RelativeToolTip": "ExportFE.ps1",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAMAAAAqAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2025-04-12T19:47:59.07Z",
+              "Title": "LoginDto.cs",
+              "DocumentMoniker": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\BNKaraoke.Api\\DTOs\\LoginDto.cs",
+              "RelativeDocumentMoniker": "BNKaraoke.Api\\DTOs\\LoginDto.cs",
+              "ToolTip": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\BNKaraoke.Api\\DTOs\\LoginDto.cs",
+              "RelativeToolTip": "BNKaraoke.Api\\DTOs\\LoginDto.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABUAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-04-13T20:08:21.28Z",
               "EditorCaption": ""
             },
             {
@@ -106,13 +117,50 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 4,
+              "Title": "secrets.json",
+              "DocumentMoniker": "C:\\Users\\tstra\\AppData\\Roaming\\Microsoft\\UserSecrets\\33e8e14b-7e7d-43ce-8045-f0e61bf2a169\\secrets.json",
+              "RelativeDocumentMoniker": "..\\..\\..\\AppData\\Roaming\\Microsoft\\UserSecrets\\33e8e14b-7e7d-43ce-8045-f0e61bf2a169\\secrets.json",
+              "ToolTip": "C:\\Users\\tstra\\AppData\\Roaming\\Microsoft\\UserSecrets\\33e8e14b-7e7d-43ce-8045-f0e61bf2a169\\secrets.json",
+              "RelativeToolTip": "..\\..\\..\\AppData\\Roaming\\Microsoft\\UserSecrets\\33e8e14b-7e7d-43ce-8045-f0e61bf2a169\\secrets.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAQAAABVAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2025-04-13T15:53:54.77Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "Export-SolutionFiles.ps1",
+              "DocumentMoniker": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\Export-SolutionFiles.ps1",
+              "RelativeDocumentMoniker": "Export-SolutionFiles.ps1",
+              "ToolTip": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\Export-SolutionFiles.ps1",
+              "RelativeToolTip": "Export-SolutionFiles.ps1",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-04-12T19:47:16.741Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "ExportFE.ps1",
+              "DocumentMoniker": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\ExportFE.ps1",
+              "RelativeDocumentMoniker": "ExportFE.ps1",
+              "ToolTip": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\ExportFE.ps1",
+              "RelativeToolTip": "ExportFE.ps1",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAMAAAAqAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-04-12T19:47:59.07Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
               "Title": "Program.cs",
               "DocumentMoniker": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\BNKaraoke.Api\\Program.cs",
               "RelativeDocumentMoniker": "BNKaraoke.Api\\Program.cs",
               "ToolTip": "C:\\Users\\tstra\\source\\repos\\BNKaraoke\\BNKaraoke.Api\\Program.cs",
               "RelativeToolTip": "BNKaraoke.Api\\Program.cs",
-              "ViewState": "AgIAALkAAAAAAAAAAAAmwPEAAAAKAAAAAAAAAA==",
+              "ViewState": "AgIAALUAAAAAAAAAAAAmwO0AAAAKAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-04-04T16:14:10.512Z",
               "EditorCaption": ""

@@ -361,3 +361,20 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Environment files
+.env
+.env.development
+.env.production
+# React-specific ignores for bnkaraoke.web
+bnkaraoke.web/build/
+bnkaraoke.web/package-lock.json
+bnkaraoke.web/.env.local
+bnkaraoke.web/.env.development.local
+bnkaraoke.web/.env.test
+bnkaraoke.web/.env.test.local
+bnkaraoke.web/.env.production.local
+bnkaraoke.web/coverage/
+bnkaraoke.web/npm-debug.log*
+bnkaraoke.web/yarn-debug.log*
+bnkaraoke.web/yarn-error.log*

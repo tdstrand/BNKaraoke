@@ -46,6 +46,13 @@ namespace BNKaraoke.Api.Controllers
             return Ok("API is working!");
         }
 
+        [HttpGet("version")]
+        public IActionResult GetVersion()
+        {
+            _logger.LogInformation("Version endpoint called");
+            return Ok(new { Version = "Post-0987694", CorsEnabled = true });
+        }
+
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterDto model)
         {
