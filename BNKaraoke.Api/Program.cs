@@ -108,7 +108,7 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
-        Console.WriteLine("CORS policy configured for http://localhost:8080, https://www.bnkaraoke.com, https://bnkaraoke.com");
+        Console.WriteLine("CORS policy configured for origins: http://localhost:8080, https://www.bnkaraoke.com, https://bnkaraoke.com");
     });
 });
 
@@ -150,6 +150,17 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddHttpClient();
 
 var app = builder.Build();
+
+// Add CORS logging middleware
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Processing request: {Method} {Path} from Origin: {Origin}",
+        context.Request.Method, context.Request.Path, context.Request.Headers["Origin"]);
+    await next.Invoke();
+    logger.LogInformation("Sending response: {StatusCode} with CORS headers: {AllowOrigin}",
+        context.Response.StatusCode, context.Response.Headers["Access-Control-Allow-Origin"]);
+});
 
 if (app.Environment.IsDevelopment())
 {
