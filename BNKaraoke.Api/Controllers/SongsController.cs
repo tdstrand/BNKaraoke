@@ -43,8 +43,8 @@ namespace BNKaraoke.Controllers
             var songsQuery = _context.Songs.Where(s => s.Status == "active");
             if (!string.IsNullOrEmpty(query) && query.ToLower() != "all")
             {
-                songsQuery = songsQuery.Where(s => s.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                                                  s.Artist.Contains(query, StringComparison.OrdinalIgnoreCase));
+                songsQuery = songsQuery.Where(s => EF.Functions.ILike(s.Title, $"%{query}%") ||
+                                                  EF.Functions.ILike(s.Artist, $"%{query}%"));
             }
 
             var totalSongs = await songsQuery.CountAsync();
