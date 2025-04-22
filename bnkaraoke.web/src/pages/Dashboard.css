@@ -1,556 +1,366 @@
-/* Mobile-first base styles */
-.dashboard-container {
-  min-height: 100vh;
-  background: linear-gradient(to right, #2563eb, #3b82f6);
-  font-family: 'Poppins', sans-serif;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  align-items: center;
-  width: 100%;
+.dashboard {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg, #007bff, #0056b3); /* Gradient blue background */
+  min-height: 100vh; /* Ensure it covers the full viewport height */
 }
 
-.dashboard-navbar {
+.event-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px;
-  width: 100%;
-  max-width: 1200px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-}
-
-.admin-dropdown {
-  order: 0; /* Left side on mobile */
-}
-
-.dashboard-user {
-  font-size: 14px;
-  font-weight: bold;
-  color: white;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  text-align: center;
-}
-
-.logout-button {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: none;
-  font-size: 14px;
-  cursor: pointer;
-  background: #FF8787;
-  color: white;
-  transition: 0.3s;
-  order: 2; /* Right side on mobile */
-}
-
-.logout-button:hover {
-  background: #FF6B6B;
-}
-
-.return-button {
-  background: #6c757d;
-  order: 0; /* Left side on UserManagementPage */
-}
-
-.return-button:hover {
-  background: #5a6268;
-}
-
-.dashboard-title {
-  font-size: 1.5rem;
-  color: #fff;
-  text-align: center;
-  margin: 10px 0;
-  width: 100%;
-  max-width: 1200px;
-}
-
-.dashboard-card {
-  background: white;
+  align-items: center;
+  background: #007bff; /* Blue background */
+  color: white; /* White text for contrast */
   padding: 15px;
-  border-radius: 12px;
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  max-width: 1200px;
-  overflow: visible;
+  border-radius: 8px;
+  margin-bottom: 20px;
 }
 
-.add-user-card {
-  overflow: visible;
+.event-header h1 {
+  margin: 0;
+  font-size: 1.8em;
 }
 
-.section-title {
-  font-size: 1.2rem;
-  color: #2563eb;
-  margin-bottom: 10px;
+.event-header h2 {
+  margin: 0 0 5px 0;
+  font-size: 1.2em;
 }
 
-.sub-title {
-  font-size: 1rem;
-  color: #2563eb;
-  margin: 10px 0 5px;
+.event-header select {
+  padding: 8px;
+  font-size: 1em;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: white;
+  color: #333;
+}
+
+.reminder-banner {
+  background: #ffeb3b;
+  padding: 10px;
+  text-align: center;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.reminder-banner button {
+  margin-left: 10px;
+  padding: 5px 10px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reminder-banner button:hover {
+  background: #0056b3;
+}
+
+.search-section {
+  margin-bottom: 20px;
+}
+
+.search-bar-container {
+  display: flex;
+  gap: 10px;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .search-bar {
-  display: flex;
-  margin-bottom: 10px;
-  width: 100%;
-  align-items: center;
-  flex-wrap: nowrap;
+  flex: 1;
+  padding: 10px;
+  font-size: 1em;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 
-.search-bar input {
-  flex: 1;
-  padding: 8px;
-  border-radius: 8px 0 0 8px;
+.search-button,
+.reset-button {
+  padding: 10px 15px;
+  background: #007bff;
+  color: white;
   border: none;
-  font-size: 0.9rem;
-  color: #000;
-  min-width: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1em;
 }
 
-.search-bar .dashboard-button {
-  border-radius: 0 8px 8px 0;
-  padding: 8px 15px;
-  font-size: 0.9rem;
-  white-space: nowrap;
-}
-
-.song-list {
-  list-style: none;
-  padding: 0;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.user-list {
-  list-style: none;
-  padding: 0;
-  max-height: 50vh;
-  overflow-y: auto;
-}
-
-.user-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 8px;
-  border-bottom: 2px solid #999;
-  background: #f9f9f9;
-}
-
-.user-name {
-  font-size: 0.95rem;
-  color: #374151;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.edit-button {
-  background: #f0ad4e;
-}
-
-.edit-button:hover {
-  background: #ec971f;
-}
-
-.song-item {
-  padding: 8px 0;
-  border-bottom: 1px solid #ccc;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.song-manager-item {
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.song-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.song-title {
-  font-weight: bold;
-  margin: 0;
-  font-size: 0.95rem;
-  color: #374151;
-}
-
-.song-text {
-  margin: 2px 0;
-  font-size: 0.85rem;
-  color: #374151;
-}
-
-.action-button {
-  margin-top: 5px;
-}
-
-.song-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.youtube-results {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.youtube-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.approve-button {
-  background: #28a745;
-}
-
-.approve-button:hover {
-  background: #218838;
-}
-
-.reject-button {
+.reset-button {
   background: #dc3545;
 }
 
-.reject-button:hover {
+.search-button:hover {
+  background: #0056b3;
+}
+
+.reset-button:hover {
   background: #c82333;
 }
 
-.error-text {
-  font-size: 0.9rem;
-  color: #ff6b6b;
-  margin: 5px 0;
-}
-
-.manual-link-input {
+.main-content {
   display: flex;
-  gap: 10px;
-  margin-top: 10px;
-  width: 100%;
+  gap: 20px;
 }
 
-.search-bar-input {
-  width: 100%;
-  max-width: 300px;
-  padding: 8px;
+/* Favorites Section (Left) */
+.favorites-section {
+  flex: 0 0 250px; /* Fixed width for the left sidebar */
+  background: #f0f8ff; /* Light blue background */
+  padding: 15px;
   border-radius: 8px;
-  border: 1px solid #ccc;
-  font-size: 0.9rem;
-  color: #000;
-}
-
-.form-label {
-  font-size: 0.9rem;
-  color: #2563eb;
-  margin-bottom: 5px;
-}
-
-.watch-link {
-  font-size: 0.85rem;
-  color: #2563eb;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
-  text-align: center;
-  max-width: 90%;
-  width: 300px;
-}
-
-.edit-user-modal {
-  width: 100%;
-  max-width: 600px;
-}
-
-.modal-title {
-  font-size: 1.2rem;
-  color: #2563eb;
-  margin-bottom: 10px;
-}
-
-.modal-text {
-  font-size: 0.95rem;
-  color: #374151;
-  margin-bottom: 15px;
-}
-
-.modal-buttons {
+  min-height: 300px; /* Match Sing Queue height */
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
-.modal-buttons .dashboard-button {
-  width: 100%;
+.favorites-section h2 {
+  font-size: 1.5em;
+  margin-bottom: 10px;
+  color: #007bff; /* Blue header */
 }
 
-/* Dropdown Styles */
-.admin-dropdown {
+.favorites-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  overflow-y: auto; /* Allow scrolling if content overflows */
+}
+
+.favorite-song {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.favorite-song:hover {
+  background: #e9ecef;
+}
+
+.favorite-song span {
+  font-size: 1em;
+  color: #333;
+}
+
+/* Center Content */
+.center-content {
+  flex: 1; /* Takes remaining space in the center */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Explore Songs Button */
+.explore-songs-button {
+  padding: 10px 20px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1em;
+  align-self: center;
+}
+
+.explore-songs-button:hover {
+  background: #0056b3;
+}
+
+/* Queue Panel (Right) */
+.queue-panel {
+  flex: 0 0 250px; /* Fixed width for the right sidebar */
+  background: #f0f8ff; /* Light blue background */
+  padding: 15px;
+  border-radius: 8px;
+  min-height: 300px; /* Match Favorites height */
+  display: flex;
+  flex-direction: column;
+}
+
+.queue-panel h2 {
+  font-size: 1.5em;
+  margin-bottom: 10px;
+  color: #007bff; /* Blue header */
+}
+
+.queue-panel p {
+  margin: 5px 0;
+  color: #666;
+}
+
+.queue-song {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+.queue-song span {
+  font-size: 1em;
+  color: #333;
+}
+
+.request-badge {
+  background: #ffeb3b;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  margin-left: 5px;
+}
+
+.song-actions {
   position: relative;
-  order: 0; /* Left side on mobile */
+  display: flex;
+  gap: 5px;
 }
 
-.dropdown-toggle {
-  padding: 8px 16px;
-  font-size: 1rem;
+.delete-btn,
+.more-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1em;
 }
 
-.dropdown-menu {
+.delete-btn:hover {
+  color: #dc3545;
+}
+
+.more-btn:hover {
+  color: #007bff;
+}
+
+.actions-dropdown {
   position: absolute;
   top: 100%;
-  left: 0;
+  right: 0;
   background: white;
-  border-radius: 8px;
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-  list-style: none;
-  padding: 8px 0;
-  margin: 0;
-  z-index: 1000;
-  min-width: 200px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  z-index: 10;
 }
 
-.dropdown-item {
-  padding: 8px 20px;
-  color: #2563eb;
+.actions-dropdown button {
+  display: block;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
   cursor: pointer;
-  font-size: 1rem;
-  white-space: nowrap;
 }
 
-.dropdown-item:hover {
-  background: #f0f0f0;
+.actions-dropdown button:hover {
+  background: #f4f4f4;
 }
 
-/* User Management Styles */
-.role-checkboxes {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  max-height: 150px;
-  overflow-y: auto;
+.leave-btn {
+  margin-top: 10px;
+  padding: 10px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  width: 100%;
+  cursor: pointer;
 }
 
-.role-checkbox {
+.leave-btn:hover {
+  background: #c82333;
+}
+
+.pending-requests {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #ffeb3b;
+  padding: 10px 20px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
-  gap: 5px;
-}
-
-.user-management-section {
-  margin-top: 15px;
-}
-
-.add-user-form {
-  display: flex;
-  flex-direction: column;
   gap: 10px;
-  margin-bottom: 15px;
 }
 
-/* Desktop layout (768px and up) */
-@media (min-width: 768px) {
-  .dashboard-container {
-    flex-direction: column;
-    padding: 20px;
-    align-items: center;
-  }
-
-  .dashboard-navbar {
-    width: 100%;
-    max-width: 1200px;
-  }
-
-  .dashboard-user {
-    font-size: 16px;
-    max-width: 30%;
-  }
-
-  .dashboard-title {
-    font-size: 24px;
-    width: 100%;
-    margin: 20px 0;
-  }
-
-  .card-container {
-    display: flex;
-    flex-direction: row;
-    gap: 20px;
-    width: 100%;
-    max-width: 1200px;
-    justify-content: center;
-  }
-
-  .dashboard-card {
-    padding: 20px;
-    flex: 1;
-    min-width: 0;
-    overflow: visible;
-  }
-
-  .user-management-section {
-    order: 0; /* Left side */
-  }
-
-  .add-user-card {
-    order: 1; /* Right side */
-  }
-
-  .section-title {
-    font-size: 24px;
-  }
-
-  .sub-title {
-    font-size: 18px;
-  }
-
-  .search-bar {
-    padding: 10px 0;
-  }
-
-  .search-bar input {
-    padding: 10px;
-    font-size: 1rem;
-  }
-
-  .search-bar .dashboard-button {
-    padding: 10px 20px;
-    font-size: 1rem;
-  }
-
-  .song-title {
-    font-size: 18px;
-  }
-
-  .song-text {
-    font-size: 14px;
-  }
-
-  .action-button {
-    margin-top: 0;
-  }
-
-  .song-manager-item {
-    flex-direction: row;
-    align-items: center;
-  }
-
-  .song-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .youtube-results {
-    flex-direction: column; /* Vertical stack in modal */
-    gap: 20px;
-  }
-
-  .youtube-item {
-    display: flex;
-    flex-direction: row; /* Video and button side-by-side */
-    align-items: center;
-    gap: 15px; /* Space between video and button */
-    width: auto;
-  }
-
-  .youtube-item iframe {
-    width: 300px; /* Wider video */
-    height: 169px; /* 16:9 aspect ratio */
-  }
-
-  .modal-buttons {
-    flex-direction: row;
-    justify-content: space-around;
-    gap: 15px;
-  }
-
-  .modal-buttons .dashboard-button {
-    width: auto;
-  }
-
-  .dropdown-toggle {
-    padding: 10px 20px;
-    font-size: 1.1rem;
-  }
-
-  .dropdown-menu {
-    padding: 10px 0;
-  }
-
-  .dropdown-item {
-    padding: 10px 25px;
-    font-size: 1.1rem;
-  }
-
-  .admin-dropdown {
-    order: 0; /* Left side on desktop */
-  }
-
-  .role-checkboxes {
-    flex-direction: row;
-    flex-wrap: wrap;
-    max-height: 100px;
-    overflow-y: auto;
-    gap: 10px;
-  }
-
-  .user-list {
-    max-height: 60vh;
-  }
-
-  .user-item {
-    padding: 12px 16px;
-  }
-}
-
-/* Button styles */
-.dashboard-button {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: none;
-  font-size: 0.9rem;
-  cursor: pointer;
-  background: #2563eb;
+.pending-requests button {
+  padding: 5px 10px;
+  background: #007bff;
   color: white;
-  transition: 0.3s;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
-.dashboard-button:hover {
-  background: #003366;
+.pending-requests button:hover {
+  background: #0056b3;
+}
+
+.menu-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #007bff; /* Blue background */
+  padding: 10px;
+  display: flex;
+  justify-content: space-around;
+  border-top: 1px solid #0056b3;
+}
+
+.menu-bar button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.2em;
+  cursor: pointer;
+}
+
+.menu-bar button:hover {
+  color: #e9ecef;
+}
+
+.song-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+}
+
+.song-card {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+  cursor: pointer;
+}
+
+.song-card:hover {
+  background: #f4f4f4;
+}
+
+.song-text {
+  font-size: 1em;
+  color: #333;
+}
+
+.error-text {
+  color: #dc3545;
+}
+
+.modal-cancel {
+  padding: 10px 20px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1em;
+  width: 100%;
+}
+
+.modal-cancel:hover {
+  background: #0056b3;
 }

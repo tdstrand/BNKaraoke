@@ -1,14 +1,11 @@
-﻿using System.ComponentModel.DataAnnotations;
-
-namespace BNKaraoke.Api.Models;
-
-public class QueueItem
+﻿namespace BNKaraoke.Api.Models
 {
-    public int Id { get; set; }
-
-    [Required]
-    public string SingerId { get; set; } = string.Empty;
-
-    public int SongId { get; set; }
-    public DateTime RequestTime { get; set; }
+    public class QueueItem
+    {
+        public int Id { get; set; }
+        public int EventId { get; set; }
+        public int SongId { get; set; }
+        public string[] Singers { get; set; } = Array.Empty<string>();
+        public string[] Requests { get; set; } = Array.Empty<string>(); // e.g., ["For Sarah: Pending"]
+    }
 }

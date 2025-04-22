@@ -1,8 +1,19 @@
+// bnkaraoke.web/src/config/apiConfig.ts
 // Use environment-based configuration
 console.log("NODE_ENV:", process.env.NODE_ENV);
+
+// Dynamically determine the frontend's host
+const getFrontendHost = () => {
+  const host = window.location.hostname; // e.g., "localhost" or "172.16.1.188"
+  const port = window.location.port; // e.g., "8080"
+  console.log(`Frontend running on: ${host}:${port}`);
+  return host;
+};
+
+// Set the base URL based on environment
 const API_BASE_URL = process.env.NODE_ENV === "production"
-    ? "https://api.bnkaraoke.com"
-    : "https://localhost:7290";
+    ? "https://api.bnkaraoke.com" // Unchanged for production
+    : process.env.REACT_APP_API_URL || `http://${getFrontendHost()}:7290`; // Dynamic in dev
 
 console.log(`API_BASE_URL set to: ${API_BASE_URL}`);
 
@@ -20,7 +31,11 @@ export const API_ROUTES = {
   USERS: `${API_BASE_URL}/api/auth/users`,
   UPDATE_USER: `${API_BASE_URL}/api/auth/update-user`,
   DELETE_USER: `${API_BASE_URL}/api/auth/delete-user`,
-  USER_REQUESTS: `${API_BASE_URL}/api/songs/user-requests`
+  USER_REQUESTS: `${API_BASE_URL}/api/songs/user-requests`,
+  EVENT_QUEUE: `${API_BASE_URL}/api/events`,
+  FAVORITES: `${API_BASE_URL}/api/songs/favorites`, // Added for favorites endpoint
+  ARTISTS: `${API_BASE_URL}/api/songs/artists`, // Added
+  GENRES: `${API_BASE_URL}/api/songs/genres`,   // Added
 };
 
 export default API_BASE_URL;

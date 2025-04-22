@@ -5,6 +5,7 @@
 *.vsidx
 *.db-shm
 *.db-wal
+*.sln.docstates
 
 # Build outputs
 bin/
@@ -20,3 +21,11 @@ BNKaraokeFiles.txt
 BNKaraokeWEBFiles.txt
 Export-SolutionFiles.ps1
 ExportFE.ps1
+
+# Node modules
+node_modules/
+bnkaraoke.web/node_modules/
+
+# Generated or temporary directories (remove these lines if you want to track these files)
+Scripts/
+bnkaraoke.web/src/assets/

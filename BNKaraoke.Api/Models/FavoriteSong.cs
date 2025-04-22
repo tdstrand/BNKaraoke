@@ -1,13 +1,9 @@
-﻿using System.ComponentModel.DataAnnotations;
-
-namespace BNKaraoke.Api.Models;
-
-public class FavoriteSong
+﻿namespace BNKaraoke.Api.Models
 {
-    public int Id { get; set; }
-
-    [Required]
-    public string SingerId { get; set; } = string.Empty;
-
-    public int SongId { get; set; }
+    public class FavoriteSong
+    {
+        public int Id { get; set; }
+        public string SingerId { get; set; } = string.Empty;
+        public int SongId { get; set; }
+    }
 }

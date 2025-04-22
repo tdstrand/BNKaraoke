@@ -1,339 +1,683 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { API_ROUTES } from "../config/apiConfig";
-import "../pages/Dashboard.css";
+// BNKaraoke/bnkaraoke.web/src/pages/Dashboard.tsx
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import './Dashboard.css';
+import { API_ROUTES } from '../config/apiConfig';
+import SongDetailsModal from '../components/SongDetailsModal';
+import { Song, SpotifySong, QueueItem, Event, User } from '../types';
+
+const mockEvents: Event[] = [
+  { id: 1, name: "Joe's Karaoke Night", status: "Live", date: "2025-04-14" },
+  { id: 2, name: "Sally’s Singalong", status: "Upcoming", date: "2025-04-25" },
+  { id: 3, name: "March Karaoke Bash", status: "Archived", date: "2025-03-01" },
+];
+
+const user: User = { firstName: "Sarah", lastName: "Singer" };
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [firstName, setFirstName] = useState("");
-  const [karaokeLibrary, setKaraokeLibrary] = useState<any[]>([]);
-  const [totalSongs, setTotalSongs] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(50);
-  const [favorites, setFavorites] = useState<any[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-  const [singQueue, setSingQueue] = useState<any[]>([]);
-  const [librarySearch, setLibrarySearch] = useState("");
-  const [favoritesSearch, setFavoritesSearch] = useState("");
-  const [showNotFoundModal, setShowNotFoundModal] = useState(false);
-  const [showBrowseModal, setShowBrowseModal] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [browseFilter, setBrowseFilter] = useState({ artist: "", genre: "", popularity: "" });
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [currentEvent, setCurrentEvent] = useState<Event>(mockEvents[0]);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [favorites, setFavorites] = useState<Song[]>([]);
+  const [showReminder, setShowReminder] = useState<boolean>(currentEvent.status === "Live" || currentEvent.status === "Upcoming");
+  const [checkedIn, setCheckedIn] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [spotifySongs, setSpotifySongs] = useState<SpotifySong[]>([]);
+  const [selectedSpotifySong, setSelectedSpotifySong] = useState<SpotifySong | null>(null);
+  const [showSpotifyModal, setShowSpotifyModal] = useState<boolean>(false);
+  const [showSpotifyDetailsModal, setShowSpotifyDetailsModal] = useState<boolean>(false);
+  const [showRequestConfirmationModal, setShowRequestConfirmationModal] = useState<boolean>(false);
+  const [requestedSong, setRequestedSong] = useState<SpotifySong | null>(null);
+  const [showActions, setShowActions] = useState<number | null>(null);
+  const [selectedSong, setSelectedSong] = useState<Song | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    const storedFirstName = localStorage.getItem("firstName");
     if (!token) {
-      console.log("No token found, redirecting to login");
-      navigate("/");
+      console.error("No token found");
+      setQueue([]);
       return;
     }
-    if (storedFirstName) setFirstName(storedFirstName);
-
-    fetchKaraokeLibrary(token, 1);
-    fetchPendingRequests(token);
-  }, [navigate]);
-
-  const fetchKaraokeLibrary = async (token: string, page: number) => {
-    try {
-      console.log(`Fetching karaoke library from: ${API_ROUTES.SONGS_SEARCH}?query=all&page=${page}&pageSize=${pageSize}`);
-      const response = await fetch(`${API_ROUTES.SONGS_SEARCH}?query=all&page=${page}&pageSize=${pageSize}`, {
-        headers: { Authorization: `Bearer ${token}` },
+    fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.id}/queue`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`Fetch queue failed: ${res.status}`);
+        return res.json();
+      })
+      .then((data: QueueItem[]) => {
+        console.log("Fetched queue:", data);
+        setQueue(data || []);
+      })
+      .catch(err => {
+        console.error("Fetch queue error:", err);
+        setQueue([]);
       });
-      const responseText = await response.text();
-      console.log(`Karaoke Library Response - Status: ${response.status}, Body: ${responseText}`);
-      if (!response.ok) throw new Error(`Failed to fetch karaoke library: ${response.status} ${response.statusText} - ${responseText}`);
-      const data = JSON.parse(responseText);
-      console.log("Karaoke Library Parsed Data:", data);
-      if (!data || typeof data.totalSongs !== 'number' || !Array.isArray(data.songs)) {
-        throw new Error("Invalid response format: Expected { totalSongs, songs }");
-      }
-      setKaraokeLibrary(data.songs.sort((a: any, b: any) => a.title.localeCompare(b.title)));
-      setTotalSongs(data.totalSongs);
-      setCurrentPage(data.currentPage || 1);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-      setKaraokeLibrary([]);
-      setTotalSongs(0);
-      console.error("Fetch Karaoke Library Error:", err);
-    }
-  };
+  }, [currentEvent]);
 
-  const fetchPendingRequests = async (token: string) => {
-    try {
-      console.log(`Fetching pending requests from: ${API_ROUTES.USER_REQUESTS}, Token: ${token}`);
-      const response = await fetch(API_ROUTES.USER_REQUESTS, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const responseText = await response.text();
-      console.log(`Pending Requests Response - Status: ${response.status}, Body: ${responseText}`);
-      if (!response.ok) throw new Error(`Failed to fetch requests: ${response.status} ${response.statusText} - ${responseText}`);
-      const data = JSON.parse(responseText);
-      console.log("Pending Requests Parsed Data:", data);
-      if (!Array.isArray(data)) {
-        throw new Error("Invalid response format: Expected an array");
-      }
-      setPendingRequests(data.filter((song: any) => song.status === "pending"));
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-      setPendingRequests([]);
-      console.error("Fetch Pending Requests Error:", err);
-    }
-  };
-
-  const handleLibrarySearch = async () => {
+  useEffect(() => {
     const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found");
+      setFavorites([]);
+      return;
+    }
+    console.log("Fetching favorites from:", API_ROUTES.FAVORITES);
+    fetch(`${API_ROUTES.FAVORITES}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => {
+        if (!res.ok) {
+          console.error(`Fetch favorites failed with status: ${res.status}`);
+          throw new Error(`Fetch favorites failed: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data: Song[]) => {
+        console.log("Fetched favorites:", data);
+        setFavorites(data || []);
+      })
+      .catch(err => {
+        console.error("Fetch favorites error:", err);
+        setFavorites([]);
+      });
+  }, []);
+
+  const fetchSongs = async () => {
+    if (!searchQuery.trim()) {
+      console.log("Search query is empty, resetting songs");
+      setSongs([]);
+      setShowSearchModal(false);
+      setSearchError(null);
+      return;
+    }
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found");
+      setSearchError("Authentication token missing. Please log in again.");
+      setShowSearchModal(true);
+      return;
+    }
+    setIsSearching(true);
+    setSearchError(null);
+    console.log(`Fetching songs with query: ${searchQuery}`);
     try {
-      console.log(`Searching karaoke library with query: ${librarySearch}`);
-      const response = await fetch(`${API_ROUTES.SONGS_SEARCH}?query=${encodeURIComponent(librarySearch)}&page=1&pageSize=${pageSize}`, {
+      const response = await fetch(`${API_ROUTES.SONGS_SEARCH}?query=${encodeURIComponent(searchQuery)}&page=1&pageSize=50`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const responseText = await response.text();
-      console.log(`Search Response - Status: ${response.status}, Body: ${responseText}`);
-      if (!response.ok) throw new Error(`Failed to search karaoke library: ${response.status} ${response.statusText} - ${responseText}`);
-      const data = JSON.parse(responseText);
-      console.log("Search Parsed Data:", data);
-      if (!data || typeof data.totalSongs !== 'number' || !Array.isArray(data.songs)) {
-        throw new Error("Invalid response format: Expected { totalSongs, songs }");
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Fetch failed with status: ${response.status}, response: ${errorText}`);
+        throw new Error(`Search failed: ${response.status} - ${errorText}`);
       }
-      if (data.songs.length === 0) {
-        setShowNotFoundModal(true);
+      const data = await response.json();
+      console.log("Fetch response:", data);
+      const fetchedSongs = (data.songs as Song[]) || [];
+      console.log("Fetched songs:", fetchedSongs);
+      const activeSongs = fetchedSongs.filter(song => song.status && song.status.toLowerCase() === "active");
+      console.log("Filtered active songs:", activeSongs);
+      setSongs(activeSongs);
+
+      if (activeSongs.length === 0) {
+        setSearchError("There are no Karaoke songs Available that match your search terms. Would you like to request a Karaoke Song be added?");
+        setShowSearchModal(true);
       } else {
-        setKaraokeLibrary(data.songs.sort((a: any, b: any) => a.title.localeCompare(b.title)));
-        setTotalSongs(data.totalSongs);
-        setCurrentPage(data.currentPage || 1);
-        setError(null);
+        setShowSearchModal(true);
       }
+      setIsSearching(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-      setKaraokeLibrary([]);
-      console.error("Search Karaoke Library Error:", err);
+      console.error("Search error:", err);
+      setSearchError(err instanceof Error ? err.message : "An unknown error occurred while searching.");
+      setSongs([]);
+      setShowSearchModal(true);
+      setIsSearching(false);
     }
   };
 
-  const handlePageChange = (newPage: number) => {
+  const fetchSpotifySongs = async () => {
     const token = localStorage.getItem("token");
     if (!token) {
-      console.log("No token found in handlePageChange");
+      console.error("No token found");
       return;
     }
-    fetchKaraokeLibrary(token, newPage);
-  };
-
-  const handleFavoritesSearch = () => {
-    const filtered = favorites.filter(
-      (song) =>
-        song.title.toLowerCase().includes(favoritesSearch.toLowerCase()) ||
-        song.artist.toLowerCase().includes(favoritesSearch.toLowerCase())
-    );
-    setFavorites(filtered);
-  };
-
-  const handleBrowseFilter = () => {
-    let filtered = karaokeLibrary;
-    if (browseFilter.artist) {
-      filtered = filtered.filter((song) => song.artist.toLowerCase().includes(browseFilter.artist.toLowerCase()));
+    console.log(`Fetching Spotify songs with query: ${searchQuery}`);
+    try {
+      const response = await fetch(`${API_ROUTES.SPOTIFY_SEARCH}?query=${encodeURIComponent(searchQuery)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Spotify fetch failed with status: ${response.status}, response: ${errorText}`);
+        throw new Error(`Spotify search failed: ${response.status} - ${errorText}`);
+      }
+      const data = await response.json();
+      console.log("Spotify fetch response:", data);
+      const fetchedSpotifySongs = (data.songs as SpotifySong[]) || [];
+      console.log("Fetched Spotify songs:", fetchedSpotifySongs);
+      setSpotifySongs(fetchedSpotifySongs);
+      setShowSpotifyModal(true);
+      setShowSearchModal(false);
+    } catch (err) {
+      console.error("Spotify search error:", err);
+      setSearchError(err instanceof Error ? err.message : "An unknown error occurred while searching Spotify.");
+      setShowSearchModal(true);
     }
-    if (browseFilter.genre) {
-      filtered = filtered.filter((song) => song.genre.toLowerCase().includes(browseFilter.genre.toLowerCase()));
-    }
-    if (browseFilter.popularity) {
-      filtered = filtered.filter((song) => song.popularity.toString().includes(browseFilter.popularity));
-    }
-    return filtered;
   };
 
-  const handleAnotherSearch = () => {
-    setLibrarySearch("");
-    setShowNotFoundModal(false);
-    if (searchInputRef.current) searchInputRef.current.focus();
+  const handleSpotifySongSelect = (song: SpotifySong) => {
+    setSelectedSpotifySong(song);
+    setShowSpotifyDetailsModal(true);
   };
 
-  const handleRequestSongRedirect = () => {
-    navigate("/request-song", { state: { searchQuery: librarySearch } });
-    setShowNotFoundModal(false);
+  const submitSongRequest = async (song: SpotifySong) => {
+    console.log("Submitting song request:", song);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found");
+      setSearchError("Please log in again to request a song.");
+      return;
+    }
+
+    const userId = `${localStorage.getItem("firstName")} ${localStorage.getItem("lastName")}` || "Unknown User";
+    const requestData = {
+      title: song.title || "Unknown Title",
+      artist: song.artist || "Unknown Artist",
+      spotifyId: song.id,
+      bpm: song.bpm || 0,
+      danceability: song.danceability || 0,
+      energy: song.energy || 0,
+      valence: song.valence || null,
+      popularity: song.popularity || 0,
+      genre: song.genre || null,
+      status: "pending",
+      requestDate: new Date().toISOString(),
+      requestedBy: userId,
+      decade: song.decade || null
+    };
+
+    console.log("Request data:", requestData);
+
+    try {
+      setIsSearching(true);
+      const response = await fetch(API_ROUTES.REQUEST_SONG, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      const responseText = await response.text();
+      console.log(`Song request response status: ${response.status}, body: ${responseText}`);
+
+      if (!response.ok) {
+        console.error(`Failed to submit song request: ${response.status} - ${responseText}`);
+        throw new Error(`Song request failed: ${response.status} - ${responseText}`);
+      }
+
+      let result = {};
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText);
+        } catch (error) {
+          console.error("Failed to parse response as JSON:", responseText);
+          throw new Error("Invalid response format from server");
+        }
+      }
+
+      console.log("Parsed response:", result);
+      console.log("Setting state: closing Spotify modal, opening confirmation");
+      setRequestedSong(song);
+      setShowSpotifyDetailsModal(false);
+      setShowRequestConfirmationModal(true);
+    } catch (err) {
+      console.error("Song request error:", err);
+      setSearchError(err instanceof Error ? err.message : "Failed to submit song request.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchClick = () => {
+    fetchSongs();
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      fetchSongs();
+    }
+  };
+
+  const resetSearch = () => {
+    console.log("Resetting search state");
+    setSearchQuery("");
+    setSongs([]);
+    setSpotifySongs([]);
+    setSelectedSpotifySong(null);
+    setShowSearchModal(false);
+    setShowSpotifyModal(false);
+    setShowSpotifyDetailsModal(false);
+    setShowRequestConfirmationModal(false);
+    setRequestedSong(null);
+    setSelectedSong(null);
+    setSearchError(null);
+  };
+
+  const toggleFavorite = async (song: Song) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found in toggleFavorite");
+      return;
+    }
+
+    const isFavorite = favorites.some(fav => fav.id === song.id);
+    const method = isFavorite ? 'DELETE' : 'POST';
+    const url = isFavorite ? `${API_ROUTES.FAVORITES}/${song.id}` : API_ROUTES.FAVORITES;
+
+    console.log(`Toggling favorite for song ${song.id}, isFavorite: ${isFavorite}, method: ${method}, url: ${url}`);
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: method === 'POST' ? JSON.stringify({ songId: song.id }) : undefined,
+      });
+
+      const responseText = await response.text();
+      console.log(`Toggle favorite response status: ${response.status}, body: ${responseText}`);
+
+      if (!response.ok) {
+        console.error(`Failed to ${isFavorite ? 'remove' : 'add'} favorite: ${response.status} - ${responseText}`);
+        throw new Error(`${isFavorite ? 'Remove' : 'Add'} favorite failed: ${response.status}`);
+      }
+
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (error) {
+        console.error("Failed to parse response as JSON:", responseText);
+        throw new Error("Invalid response format from server");
+      }
+
+      console.log(`Parsed toggle favorite response:`, result);
+
+      if (result.success) {
+        const updatedFavorites = isFavorite
+          ? favorites.filter(fav => fav.id !== song.id)
+          : [...favorites, { ...song }];
+        console.log(`Updated favorites after ${isFavorite ? 'removal' : 'addition'}:`, updatedFavorites);
+        setFavorites([...updatedFavorites]);
+      } else {
+        console.error("Toggle favorite failed: Success flag not set in response");
+      }
+    } catch (err) {
+      console.error(`${isFavorite ? 'Remove' : 'Add'} favorite error:`, err);
+    }
+  };
+
+  const addToEventQueue = (song: Song) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found in addToEventQueue");
+      return;
+    }
+
+    const isInQueue = queue.some(q => q.id === song.id);
+    console.log(`Toggling queue for song ${song.id}, isInQueue: ${isInQueue}`);
+
+    const updatedQueue = isInQueue
+      ? queue.filter(q => q.id !== song.id)
+      : [...queue, { id: song.id, title: song.title, artist: song.artist, status: song.status, singers: ["Me"], requests: [] }];
+    console.log(`Updated queue after ${isInQueue ? 'removal' : 'addition'} (placeholder):`, updatedQueue);
+    setQueue([...updatedQueue]);
+    setSelectedSong(null);
+    setShowSearchModal(false);
+    setSearchQuery("");
+    setSongs([]);
+  };
+
+  const handleEventChange = (eventId: number) => {
+    const event = mockEvents.find(e => e.id === eventId);
+    if (event) {
+      setCurrentEvent(event);
+      setShowReminder(event.status === "Live" || currentEvent.status === "Upcoming");
+      setCheckedIn(false);
+    }
+  };
+
+  const handleCheckIn = () => {
+    setCheckedIn(true);
+    setShowReminder(false);
+  };
+
+  const handleLeaveEvent = () => {
+    if (window.confirm(`Leave ${currentEvent.name}? Your queue will be ${currentEvent.status === "Live" ? "archived" : "cleared"}.`)) {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        console.error("No token found");
+        return;
+      }
+      fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.id}/queue`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(res => {
+          if (!res.ok) throw new Error(`Fetch queue failed: ${res.status}`);
+          return res.json();
+        })
+        .then((data: QueueItem[]) => {
+          const queueItems: QueueItem[] = data || [];
+          Promise.all(queueItems.map((item: QueueItem) =>
+            fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.id}/queue/${item.id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+            })
+          )).then(() => {
+            setQueue([]);
+            setCurrentEvent(mockEvents.find(e => e.status !== "Archived") || mockEvents[0]);
+            setCheckedIn(false);
+            setShowReminder(false);
+          });
+        })
+        .catch(err => {
+          console.error("Clear queue error:", err);
+          setQueue([]);
+          setCurrentEvent(mockEvents.find(e => e.status !== "Archived") || mockEvents[0]);
+          setCheckedIn(false);
+          setShowReminder(false);
+        });
+    }
+  };
+
+  const handleDeleteSong = (songId: number) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found");
+      return;
+    }
+    fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.id}/queue/${songId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`Delete from queue failed: ${res.status}`);
+        return res.json();
+      })
+      .then(() => {
+        setQueue(queue.filter(s => s.id !== songId));
+        setShowActions(null);
+      })
+      .catch(err => {
+        console.error("Delete from queue error:", err);
+        setQueue(queue.filter(s => s.id !== songId));
+        setShowActions(null);
+      });
+  };
+
+  const toggleActions = (songId: number) => {
+    setShowActions(showActions === songId ? null : songId);
   };
 
   return (
-    <div className="dashboard-container">
-      <h1 className="dashboard-title">Welcome, {firstName || "Singer"}!</h1>
-      <div className="card-container">
-        <section className="dashboard-card">
-          <h2 className="section-title">Available Songs</h2>
-          <p className="song-text">{totalSongs} Active Songs</p>
-          <div className="search-bar">
+    <>
+      <div className="dashboard">
+        <header className="event-header">
+          <div>
+            <h2>Welcome, {user.firstName} {user.lastName}!</h2>
+            <h1>{currentEvent.status === "Live" ? "Live!" : currentEvent.status} {currentEvent.name}</h1>
+          </div>
+          <select value={currentEvent.id} onChange={e => handleEventChange(Number(e.target.value))} aria-label="Select event">
+            {mockEvents.map(event => (
+              <option key={event.id} value={event.id}>
+                {event.status}: {event.name} ({event.date})
+              </option>
+            ))}
+          </select>
+        </header>
+
+        {showReminder && (
+          <div className="reminder-banner">
+            {currentEvent.status === "Live" ? (
+              <>
+                Live Now: {currentEvent.name}—check in to sing!
+                <button onClick={handleCheckIn}>Check In</button>
+                <button onClick={() => setShowReminder(false)}>Dismiss</button>
+              </>
+            ) : (
+              <>
+                Tomorrow: {currentEvent.name}—pre-load songs!
+                <button onClick={() => navigate("/dashboard")}>Pre-Load</button>
+                <button onClick={() => setShowReminder(false)}>Dismiss</button>
+              </>
+            )}
+          </div>
+        )}
+
+        <section className="search-section">
+          <div className="search-bar-container">
             <input
               type="text"
-              value={librarySearch}
-              onChange={(e) => setLibrarySearch(e.target.value)}
-              placeholder="Search Available Songs..."
-              ref={searchInputRef}
+              placeholder="Search for Karaoke Songs to Sing"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              className="search-bar"
+              aria-label="Search for karaoke songs"
             />
-            <button onClick={handleLibrarySearch} className="dashboard-button">
-              Search
+            <button onClick={handleSearchClick} className="search-button" aria-label="Search">
+              ▶
+            </button>
+            <button onClick={resetSearch} className="reset-button" aria-label="Reset search">
+              ■
             </button>
           </div>
-          <button
-            className="dashboard-button"
-            onClick={() => setShowBrowseModal(true)}
-            style={{ marginTop: "10px" }}
-          >
-            Browse Available Songs
-          </button>
         </section>
-        <section className="dashboard-card">
-          <h2 className="section-title">Your Favorites</h2>
-          <div className="search-bar">
-            <input
-              type="text"
-              value={favoritesSearch}
-              onChange={(e) => setFavoritesSearch(e.target.value)}
-              placeholder="Search Favorites..."
-            />
-            <button onClick={handleFavoritesSearch} className="dashboard-button">
-              Search
-            </button>
-          </div>
-          {favorites.length > 0 ? (
-            <ul className="song-list">
-              {favorites.map((song) => (
-                <li key={song.id} className="song-item">
-                  <div>
-                    <p className="song-title">{song.title} - {song.artist}</p>
-                    <p className="song-text">Genre: {song.genre}</p>
-                  </div>
-                  <button
-                    className="dashboard-button action-button"
-                    onClick={() => setSingQueue([...singQueue, song])}
+
+        <div className="main-content">
+          <section className="favorites-section">
+            <h2>Your Favorites</h2>
+            {favorites.length === 0 ? (
+              <p>No favorites added yet.</p>
+            ) : (
+              <ul className="favorites-list">
+                {favorites.map(song => (
+                  <li
+                    key={song.id}
+                    className="favorite-song"
+                    onClick={() => setSelectedSong(song)}
                   >
-                    Send to Sing Queue
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="dashboard-text">No favorites added yet.</p>
-          )}
-        </section>
-        <section className="dashboard-card">
-          <h2 className="section-title">Pending Requests</h2>
-          {pendingRequests.length > 0 ? (
-            <ul className="song-list">
-              {pendingRequests.map((song) => (
-                <li key={song.id} className="song-item">
-                  <p className="song-title">{song.title} - {song.artist}</p>
-                  <p className="song-text">Genre: {song.genre} | Awaiting Approval</p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="dashboard-text">No songs awaiting approval yet.</p>
-          )}
-          {error && <p className="error-text">{error}</p>}
-        </section>
-        <section className="dashboard-card">
-          <h2 className="section-title">Sing Queue</h2>
-          {singQueue.length > 0 ? (
-            <ul className="song-list">
-              {singQueue.map((song) => (
-                <li key={song.id} className="song-item">
-                  <p className="song-title">{song.title} - {song.artist}</p>
-                  <p className="song-text">Genre: {song.genre}</p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="dashboard-text">No songs in your Sing Queue yet.</p>
-          )}
-        </section>
+                    <span>{song.title} - {song.artist}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <div className="center-content">
+            <button
+              className="explore-songs-button"
+              onClick={() => navigate('/explore-songs')}
+            >
+              Explore Songs
+            </button>
+          </div>
+
+          <aside className="queue-panel">
+            <h2>My Sing Queue: {currentEvent.name}</h2>
+            {currentEvent.status === "Live" && !checkedIn ? (
+              <p>Check in to activate songs! <button onClick={handleCheckIn}>Check In</button></p>
+            ) : (
+              <p>{currentEvent.status === "Live" ? "Checked in—ready for DJ’s order!" : `Pre-loading for ${currentEvent.date}`}</p>
+            )}
+            {currentEvent.status === "Live" && <p>Karaoke DJ sets the sing order—keep queuing!</p>}
+            {queue.length === 0 ? (
+              <p>Add songs for {currentEvent.name}!</p>
+            ) : (
+              queue.map(song => (
+                <div key={song.id} className="queue-song">
+                  <span>
+                    {song.title} - {song.artist}
+                    {song.singers.length > 0 && ` (${song.singers.join(", ")})`}
+                    {song.requests.length > 0 && <span className="request-badge">For {song.requests[0].forWhom}</span>}
+                    {song.status === "pending" && <span className="request-badge">Pending</span>}
+                  </span>
+                  <div className="song-actions">
+                    <button className="delete-btn" onClick={() => handleDeleteSong(song.id)}>🗑️</button>
+                    <button className="more-btn" onClick={() => toggleActions(song.id)}>⋯</button>
+                    {showActions === song.id && (
+                      <div className="actions-dropdown">
+                        <button onClick={() => console.log("Add Co-Singer")}>Add Co-Singer</button>
+                        <button onClick={() => console.log("Request for...")}>Request for...</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            <button className="leave-btn" onClick={handleLeaveEvent}>Leave Event</button>
+          </aside>
+        </div>
+
+        {queue.some(s => s.requests.length > 0) && (
+          <div className="pending-requests">
+            {queue.filter(s => s.requests.length > 0).length} pending requests!
+            <button>View</button>
+          </div>
+        )}
+
+        <nav className="menu-bar">
+          <button title="Search" aria-label="Search">🔍</button>
+          <button title="Queue" aria-label="Queue">🎤</button>
+          <button title="Favorites" aria-label="Favorites">⭐</button>
+          <button title="Requests" aria-label="Requests">✉️</button>
+          {localStorage.getItem("role")?.includes("Manager") && <button title="Admin" aria-label="Admin">⚙️</button>}
+          <button title="Events" aria-label="Events">📅</button>
+          <button title="Profile" aria-label="Profile">👤</button>
+          <button title="Help" aria-label="Help">?</button>
+        </nav>
       </div>
 
-      {showBrowseModal && (
+      {showSearchModal && (
         <div className="modal-overlay">
-          <div className="modal-content edit-user-modal">
-            <h2 className="modal-title">Browse Available Songs</h2>
-            <div className="add-user-form">
-              <label className="form-label">Filter by Artist</label>
-              <input
-                type="text"
-                value={browseFilter.artist}
-                onChange={(e) => setBrowseFilter({ ...browseFilter, artist: e.target.value })}
-                placeholder="Artist Name"
-                className="search-bar-input"
-              />
-              <label className="form-label">Filter by Genre</label>
-              <input
-                type="text"
-                value={browseFilter.genre}
-                onChange={(e) => setBrowseFilter({ ...browseFilter, genre: e.target.value })}
-                placeholder="Genre"
-                className="search-bar-input"
-              />
-              <label className="form-label">Filter by Popularity</label>
-              <input
-                type="text"
-                value={browseFilter.popularity}
-                onChange={(e) => setBrowseFilter({ ...browseFilter, popularity: e.target.value })}
-                placeholder="Popularity (0-100)"
-                className="search-bar-input"
-              />
-            </div>
-            <ul className="song-list" style={{ maxHeight: "400px", overflowY: "auto" }}>
-              {handleBrowseFilter().map((song) => (
-                <li key={song.id} className="song-item">
-                  <div className="song-info">
-                    <p className="song-title">{song.title}</p>
-                    <p className="song-text">Artist: {song.artist}</p>
-                    <p className="song-text">Genre: {song.genre}</p>
-                    <p className="song-text">Popularity: {song.popularity}</p>
+          <div className="modal-content">
+            <h3 className="modal-title">Search Results</h3>
+            {isSearching ? (
+              <p className="modal-text">Loading...</p>
+            ) : searchError ? (
+              <>
+                <p className="modal-text error-text">{searchError}</p>
+                <div className="song-actions">
+                  <button onClick={fetchSpotifySongs} className="action-button">Yes</button>
+                  <button onClick={resetSearch} className="action-button">No</button>
+                </div>
+              </>
+            ) : songs.length === 0 ? (
+              <p className="modal-text">No active songs found</p>
+            ) : (
+              <div className="song-list">
+                {songs.map(song => (
+                  <div key={song.id} className="song-card" onClick={() => setSelectedSong(song)}>
+                    <span className="song-text">{song.title} - {song.artist}</span>
                   </div>
-                </li>
-              ))}
-            </ul>
-            <div className="modal-buttons">
+                ))}
+              </div>
+            )}
+            {!searchError && (
+              <button onClick={resetSearch} className="modal-cancel">Done</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showSpotifyModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 className="modal-title">Spotify Search Results</h3>
+            {spotifySongs.length === 0 ? (
+              <p className="modal-text">No songs found on Spotify</p>
+            ) : (
+              <div className="song-list">
+                {spotifySongs.map(song => (
+                  <div key={song.id} className="song-card" onClick={() => handleSpotifySongSelect(song)}>
+                    <span className="song-text">{song.title} - {song.artist}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button onClick={resetSearch} className="modal-cancel">Done</button>
+          </div>
+        </div>
+      )}
+
+      {showSpotifyDetailsModal && selectedSpotifySong && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 className="modal-title">{selectedSpotifySong.title}</h3>
+            <div className="song-details">
+              <p className="modal-text"><strong>Artist:</strong> {selectedSpotifySong.artist}</p>
+              {selectedSpotifySong.genre && <p className="modal-text"><strong>Genre:</strong> {selectedSpotifySong.genre}</p>}
+              {selectedSpotifySong.popularity && <p className="modal-text"><strong>Popularity:</strong> {selectedSpotifySong.popularity}</p>}
+              {selectedSpotifySong.bpm && <p className="modal-text"><strong>BPM:</strong> {selectedSpotifySong.bpm}</p>}
+              {selectedSpotifySong.energy && <p className="modal-text"><strong>Energy:</strong> {selectedSpotifySong.energy}</p>}
+              {selectedSpotifySong.valence && <p className="modal-text"><strong>Valence:</strong> {selectedSpotifySong.valence}</p>}
+              {selectedSpotifySong.danceability && <p className="modal-text"><strong>Danceability:</strong> {selectedSpotifySong.danceability}</p>}
+              {selectedSpotifySong.decade && <p className="modal-text"><strong>Decade:</strong> {selectedSpotifySong.decade}</p>}
+            </div>
+            {searchError && <p className="modal-text error-text">{searchError}</p>}
+            <div className="song-actions">
               <button
-                className="dashboard-button"
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage <= 1}
+                onClick={() => submitSongRequest(selectedSpotifySong)}
+                className="action-button"
+                disabled={isSearching}
               >
-                Previous
+                {isSearching ? "Requesting..." : "Add Request for Karaoke Version"}
               </button>
-              <span>Page {currentPage} of {Math.ceil(totalSongs / pageSize)}</span>
               <button
-                className="dashboard-button"
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage >= Math.ceil(totalSongs / pageSize)}
+                onClick={() => {
+                  setShowSpotifyDetailsModal(false);
+                  setSearchError(null);
+                }}
+                className="action-button"
+                disabled={isSearching}
               >
-                Next
-              </button>
-              <button className="dashboard-button" onClick={() => setShowBrowseModal(false)}>
-                Close
+                Done
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {showNotFoundModal && (
+      {showRequestConfirmationModal && requestedSong && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3 className="modal-title">Song Not Found</h3>
-            <p className="modal-text">"{librarySearch}" isn’t in the Available Songs List.</p>
-            <div className="modal-buttons">
-              <button className="dashboard-button" onClick={handleAnotherSearch}>
-                Do Another Search
-              </button>
-              <button className="dashboard-button" onClick={handleRequestSongRedirect}>
-                Request a Karaoke Song
-              </button>
-            </div>
+            <h3 className="modal-title">Request Submitted</h3>
+            <p className="modal-text">
+              A request has been made on your behalf to find a Karaoke version of "{requestedSong.title}" by {requestedSong.artist}.
+            </p>
+            <button onClick={resetSearch} className="modal-cancel">Done</button>
           </div>
         </div>
       )}
-    </div>
+
+      {selectedSong && (
+        <SongDetailsModal
+          song={selectedSong}
+          isFavorite={favorites.some(fav => fav.id === selectedSong.id)}
+          isInQueue={queue.some(q => q.id === selectedSong.id)}
+          onClose={() => setSelectedSong(null)}
+          onToggleFavorite={toggleFavorite}
+          onAddToQueue={addToEventQueue}
+        />
+      )}
+    </>
   );
 };
 

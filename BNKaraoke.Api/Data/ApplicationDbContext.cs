@@ -2,17 +2,275 @@
 using Microsoft.EntityFrameworkCore;
 using BNKaraoke.Api.Models;
 
-namespace BNKaraoke.Api.Data;
-
-public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
+namespace BNKaraoke.Api.Data
 {
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
-        : base(options)
+    public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     {
-    }
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+            : base(options)
+        {
+        }
 
-    public DbSet<Song> Songs { get; set; }
-    public DbSet<Event> Events { get; set; }
-    public DbSet<QueueItem> QueueItems { get; set; }
-    public DbSet<FavoriteSong> FavoriteSongs { get; set; }
+        public DbSet<Song> Songs { get; set; }
+        public DbSet<Event> Events { get; set; }
+        public DbSet<QueueItem> QueueItems { get; set; }
+        public DbSet<FavoriteSong> FavoriteSongs { get; set; }
+        public DbSet<EventQueue> EventQueues { get; set; }
+        public DbSet<EventAttendance> EventAttendances { get; set; }
+        public DbSet<EventAttendanceHistory> EventAttendanceHistories { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            // Map tables with quoted identifiers to match the database
+            // Event
+            modelBuilder.Entity<Event>()
+                .ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_Event_Status", "Status IN ('Upcoming', 'Live', 'Archived')");
+                    t.HasCheckConstraint("CK_Event_Visibility", "Visibility IN ('Hidden', 'Visible')");
+                })
+                .HasKey(e => e.EventId);
+
+            modelBuilder.Entity<Event>()
+                .HasMany(e => e.EventQueues)
+                .WithOne(eq => eq.Event)
+                .HasForeignKey(eq => eq.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Event>()
+                .HasMany(e => e.EventAttendances)
+                .WithOne(ea => ea.Event)
+                .HasForeignKey(ea => ea.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Event>()
+                .Property(e => e.EventId).HasColumnName("EventId");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.EventCode).HasColumnName("EventCode");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.Description).HasColumnName("Description");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.Status).HasColumnName("Status").HasMaxLength(20);
+            modelBuilder.Entity<Event>()
+                .Property(e => e.Visibility).HasColumnName("Visibility").HasMaxLength(20);
+            modelBuilder.Entity<Event>()
+                .Property(e => e.Location).HasColumnName("Location");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.ScheduledDate).HasColumnName("ScheduledDate");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.ScheduledStartTime).HasColumnName("ScheduledStartTime");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.ScheduledEndTime).HasColumnName("ScheduledEndTime");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.KaraokeDJName).HasColumnName("KaraokeDJName");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.IsCanceled).HasColumnName("IsCanceled");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+            modelBuilder.Entity<Event>()
+                .Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+
+            // Constraints for Event
+            modelBuilder.Entity<Event>()
+                .HasIndex(e => e.EventCode)
+                .IsUnique();
+
+            // EventQueue
+            modelBuilder.Entity<EventQueue>()
+                .ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_EventQueue_Status", "Status IN ('Upcoming', 'Live', 'Archived')");
+                })
+                .HasKey(eq => eq.QueueId);
+
+            modelBuilder.Entity<EventQueue>()
+                .HasOne(eq => eq.Event)
+                .WithMany(e => e.EventQueues)
+                .HasForeignKey(eq => eq.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EventQueue>()
+                .HasOne(eq => eq.Song)
+                .WithMany()
+                .HasForeignKey(eq => eq.SongId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<EventQueue>()
+                .HasOne(eq => eq.Singer)
+                .WithMany()
+                .HasForeignKey(eq => eq.SingerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.QueueId).HasColumnName("QueueId");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.EventId).HasColumnName("EventId");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.SongId).HasColumnName("SongId");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.SingerId).HasColumnName("SingerId");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.Position).HasColumnName("Position");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.Status).HasColumnName("Status").HasMaxLength(20);
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.IsActive).HasColumnName("IsActive");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.WasSkipped).HasColumnName("WasSkipped");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.CreatedAt).HasColumnName("CreatedAt");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.UpdatedAt).HasColumnName("UpdatedAt");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.IsCurrentlyPlaying).HasColumnName("IsCurrentlyPlaying");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.SungAt).HasColumnName("SungAt");
+
+            // EventAttendance
+            modelBuilder.Entity<EventAttendance>()
+                .ToTable("EventAttendance")
+                .HasKey(ea => ea.AttendanceId);
+
+            modelBuilder.Entity<EventAttendance>()
+                .HasOne(ea => ea.Event)
+                .WithMany(e => e.EventAttendances)
+                .HasForeignKey(ea => ea.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EventAttendance>()
+                .HasOne(ea => ea.Singer)
+                .WithMany()
+                .HasForeignKey(ea => ea.SingerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EventAttendance>()
+                .HasMany(ea => ea.AttendanceHistories)
+                .WithOne(eah => eah.Attendance)
+                .HasForeignKey(eah => eah.AttendanceId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<EventAttendance>()
+                .Property(ea => ea.AttendanceId).HasColumnName("AttendanceId");
+            modelBuilder.Entity<EventAttendance>()
+                .Property(ea => ea.EventId).HasColumnName("EventId");
+            modelBuilder.Entity<EventAttendance>()
+                .Property(ea => ea.SingerId).HasColumnName("SingerId");
+            modelBuilder.Entity<EventAttendance>()
+                .Property(ea => ea.IsCheckedIn).HasColumnName("IsCheckedIn");
+            modelBuilder.Entity<EventAttendance>()
+                .Property(ea => ea.IsOnBreak).HasColumnName("IsOnBreak");
+            modelBuilder.Entity<EventAttendance>()
+                .Property(ea => ea.BreakStartAt).HasColumnName("BreakStartAt");
+            modelBuilder.Entity<EventAttendance>()
+                .Property(ea => ea.BreakEndAt).HasColumnName("BreakEndAt");
+
+            // Constraints for EventAttendance
+            modelBuilder.Entity<EventAttendance>()
+                .HasIndex(ea => new { ea.EventId, ea.SingerId })
+                .IsUnique();
+
+            // EventAttendanceHistory
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_EventAttendanceHistory_Action", "Action IN ('CheckIn', 'CheckOut')");
+                })
+                .HasKey(eah => eah.HistoryId);
+
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .HasOne(eah => eah.Event)
+                .WithMany()
+                .HasForeignKey(eah => eah.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .HasOne(eah => eah.Singer)
+                .WithMany()
+                .HasForeignKey(eah => eah.SingerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .HasOne(eah => eah.Attendance)
+                .WithMany(ea => ea.AttendanceHistories)
+                .HasForeignKey(eah => eah.AttendanceId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .Property(eah => eah.HistoryId).HasColumnName("HistoryId");
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .Property(eah => eah.EventId).HasColumnName("EventId");
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .Property(eah => eah.SingerId).HasColumnName("SingerId");
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .Property(eah => eah.Action).HasColumnName("Action").HasMaxLength(20);
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .Property(eah => eah.ActionTimestamp).HasColumnName("ActionTimestamp");
+            modelBuilder.Entity<EventAttendanceHistory>()
+                .Property(eah => eah.AttendanceId).HasColumnName("AttendanceId");
+
+            // Existing configurations for other entities
+            modelBuilder.Entity<Song>()
+                .ToTable("Songs")
+                .HasKey(s => s.Id);
+
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Id).HasColumnName("Id");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Title).HasColumnName("Title");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Artist).HasColumnName("Artist");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Genre).HasColumnName("Genre");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.YouTubeUrl).HasColumnName("YouTubeUrl");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Status).HasColumnName("Status");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.ApprovedBy).HasColumnName("ApprovedBy");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Bpm).HasColumnName("Bpm");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Popularity).HasColumnName("Popularity");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.RequestDate).HasColumnName("RequestDate");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.RequestedBy).HasColumnName("RequestedBy");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.SpotifyId).HasColumnName("SpotifyId");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Valence).HasColumnName("Valence");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Decade).HasColumnName("Decade");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.MusicBrainzId).HasColumnName("MusicBrainzId");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Mood).HasColumnName("Mood");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.LastFmPlaycount).HasColumnName("LastFmPlaycount");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Danceability).HasColumnName("Danceability");
+            modelBuilder.Entity<Song>()
+                .Property(s => s.Energy).HasColumnName("Energy");
+
+            modelBuilder.Entity<QueueItem>()
+                .ToTable("QueueItems")
+                .HasKey(qi => qi.Id);
+
+            modelBuilder.Entity<QueueItem>()
+                .Property(qi => qi.Id).HasColumnName("Id");
+
+            modelBuilder.Entity<FavoriteSong>()
+                .ToTable("FavoriteSongs")
+                .HasKey(fs => fs.Id);
+
+            modelBuilder.Entity<FavoriteSong>()
+                .Property(fs => fs.Id).HasColumnName("Id");
+            modelBuilder.Entity<FavoriteSong>()
+                .Property(fs => fs.SingerId).HasColumnName("SingerId");
+            modelBuilder.Entity<FavoriteSong>()
+                .Property(fs => fs.SongId).HasColumnName("SongId");
+        }
+    }
 }

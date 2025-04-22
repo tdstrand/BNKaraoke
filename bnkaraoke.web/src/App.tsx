@@ -8,6 +8,7 @@ import RequestSongPage from "./pages/RequestSongPage";
 import SongManagerPage from "./pages/SongManagerPage";
 import UserManagementPage from "./pages/UserManagementPage"; // Added import
 import Header from "./components/Header";
+import ExploreSongs from './pages/ExploreSongs';
 
 const App = () => {
   return (
@@ -21,6 +22,7 @@ const App = () => {
         <Route path="/pending-requests" element={<><Header /><PendingRequests /></>} />
         <Route path="/song-manager" element={<SongManagerPage />} />
         <Route path="/user-management" element={<UserManagementPage />} />
+        <Route path="/explore-songs" element={<ExploreSongs />} />
       </Routes>
     </Router>
   );

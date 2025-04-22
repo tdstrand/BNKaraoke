@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import "../pages/Dashboard.css";
 
 const Header: React.FC = () => {
+  console.log("Header component rendering"); // Debug log to confirm rendering
+
   const navigate = useNavigate();
   const [firstName, setFirstName] = useState("");
   const [roles, setRoles] = useState<string[]>([]);
@@ -29,12 +31,14 @@ const Header: React.FC = () => {
   };
 
   const handleLogout = () => {
+    console.log("Logout button clicked");
     localStorage.clear();
-    navigate("/");
+    navigate("/login"); // Ensure navigation to /login
+    window.location.reload(); // Force reload to ensure state reset
   };
 
   return (
-    <div className="dashboard-navbar">
+    <div className="dashboard-navbar" style={{ border: "2px solid red" }}>
       {hasAdminRole && (
         <div className="admin-dropdown">
           <button
