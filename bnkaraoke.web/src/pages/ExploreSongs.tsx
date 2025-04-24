@@ -1,15 +1,16 @@
-// BNKaraoke/bnkaraoke.web/src/pages/ExploreSongs.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_ROUTES } from '../config/apiConfig';
 import SongDetailsModal from '../components/SongDetailsModal';
 import './ExploreSongs.css';
-import { Song, QueueItem } from '../types';
+import { Song, EventQueueItem, Event } from '../types';
 
 const ExploreSongs: React.FC = () => {
   const navigate = useNavigate();
-  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [queues, setQueues] = useState<{ [eventId: number]: EventQueueItem[] }>({});
   const [favorites, setFavorites] = useState<Song[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [currentEvent, setCurrentEvent] = useState<Event | null>(null);
   const [artistFilter, setArtistFilter] = useState<string>("All Artists");
   const [decadeFilter, setDecadeFilter] = useState<string>("All Decades");
   const [genreFilter, setGenreFilter] = useState<string>("All Genres");
@@ -30,6 +31,67 @@ const ExploreSongs: React.FC = () => {
   // Static data for Decade and Popularity (working as-is)
   const decades = ["All Decades", ...["1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s"].sort()];
   const popularityRanges = ["All Popularities", ...["Very Popular (80+)", "Popular (50-79)", "Moderate (20-49)", "Less Popular (0-19)"].sort()];
+
+  // Fetch events on component mount
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found");
+      setEvents([]);
+      return;
+    }
+
+    fetch(API_ROUTES.EVENTS, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`Fetch events failed: ${res.status}`);
+        return res.json();
+      })
+      .then((data: Event[]) => {
+        console.log("Fetched events:", data);
+        setEvents(data || []);
+        const liveOrUpcomingEvent = data.find(e => e.status === "Live" || e.status === "Upcoming");
+        setCurrentEvent(liveOrUpcomingEvent || data[0] || null);
+      })
+      .catch(err => {
+        console.error("Fetch events error:", err);
+        setEvents([]);
+      });
+  }, []);
+
+  // Fetch queues for all events whenever events change
+  useEffect(() => {
+    if (events.length === 0) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found");
+      setQueues({});
+      return;
+    }
+
+    const fetchQueues = async () => {
+      const newQueues: { [eventId: number]: EventQueueItem[] } = {};
+      for (const event of events) {
+        try {
+          const response = await fetch(`${API_ROUTES.EVENT_QUEUE}/${event.eventId}/queue`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!response.ok) throw new Error(`Fetch queue failed for event ${event.eventId}: ${response.status}`);
+          const data: EventQueueItem[] = await response.json();
+          console.log(`Fetched queue for event ${event.eventId}:`, data);
+          newQueues[event.eventId] = data || [];
+        } catch (err) {
+          console.error(`Fetch queue error for event ${event.eventId}:`, err);
+          newQueues[event.eventId] = [];
+        }
+      }
+      setQueues(newQueues);
+    };
+
+    fetchQueues();
+  }, [events]);
 
   // Fetch favorites on mount
   useEffect(() => {
@@ -143,7 +205,6 @@ const ExploreSongs: React.FC = () => {
       return;
     }
 
-    // Log current filter values for debugging
     console.log("Current filters:", {
       artistFilter,
       decadeFilter,
@@ -151,7 +212,6 @@ const ExploreSongs: React.FC = () => {
       popularityFilter,
     });
 
-    // Construct query parameters based on all active filters
     const queryParams: string[] = [];
     if (artistFilter !== "All Artists") {
       queryParams.push(`artist=${encodeURIComponent(artistFilter)}`);
@@ -183,7 +243,6 @@ const ExploreSongs: React.FC = () => {
       queryParams.push(sortParam);
     }
 
-    // If no filters are active, fetch all songs
     const queryString = queryParams.length > 0 ? queryParams.join('&') : "query=all";
     const url = `${API_ROUTES.SONGS_SEARCH}?${queryString}&sort=title&page=${page}&pageSize=${pageSize}`;
     console.log("Fetching songs with URL:", url);
@@ -197,9 +256,7 @@ const ExploreSongs: React.FC = () => {
         return res.json();
       })
       .then(data => {
-        // Filter for active songs only
         const newSongs = ((data.songs as Song[]) || []).filter(song => song.status?.toLowerCase() === 'active');
-        // Fallback client-side sorting if backend doesn't support sort=title
         newSongs.sort((a, b) => a.title.localeCompare(b.title));
         setBrowseSongs(newSongs);
         setTotalPages(data.totalPages || 1);
@@ -267,21 +324,65 @@ const ExploreSongs: React.FC = () => {
     }
   };
 
-  const addToEventQueue = (song: Song) => {
+  const addToEventQueue = async (song: Song, eventId: number): Promise<void> => {
     const token = localStorage.getItem("token");
+    const singerId = localStorage.getItem("userName");
+    console.log("addToEventQueue - token:", token, "singerId:", singerId);
+
     if (!token) {
       console.error("No token found in addToEventQueue");
+      throw new Error("Authentication token missing. Please log in again.");
+    }
+
+    if (!singerId) {
+      console.error("Invalid or missing singerId in addToEventQueue");
+      throw new Error("User not found. Please log in again to add songs to the queue.");
+    }
+
+    const event = events.find(e => e.eventId === eventId);
+    if (!event) {
+      console.error("Event not found for eventId:", eventId);
+      throw new Error("Selected event not found.");
+    }
+
+    const queueForEvent = queues[eventId] || [];
+    const isInQueue = queueForEvent.some(q => q.songId === song.id);
+    if (isInQueue) {
+      console.log(`Song ${song.id} is already in the queue for event ${eventId}`);
       return;
     }
 
-    const isInQueue = queue.some(q => q.id === song.id);
-    console.log(`Toggling queue for song ${song.id}, isInQueue: ${isInQueue}`);
+    try {
+      const response = await fetch(`${API_ROUTES.EVENT_QUEUE}/${eventId}/queue`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          songId: song.id,
+          singerId: singerId, // Use userName (phone number) as singerId
+        }),
+      });
 
-    const updatedQueue = isInQueue
-      ? queue.filter(q => q.id !== song.id)
-      : [...queue, { id: song.id, title: song.title, artist: song.artist, status: song.status, singers: ["Me"], requests: [] }];
-    console.log(`Updated queue after ${isInQueue ? 'removal' : 'addition'} (placeholder):`, updatedQueue);
-    setQueue([...updatedQueue]);
+      const responseText = await response.text();
+      console.log(`Add to queue response for event ${eventId}: status=${response.status}, body=${responseText}`);
+
+      if (!response.ok) {
+        console.error(`Failed to add song to queue for event ${eventId}: ${response.status} - ${responseText}`);
+        throw new Error(`Add to queue failed: ${responseText || response.statusText}`);
+      }
+
+      const newQueueItem: EventQueueItem = JSON.parse(responseText);
+      console.log(`Added to queue for event ${eventId}:`, newQueueItem);
+      setQueues(prev => ({
+        ...prev,
+        [eventId]: [...(prev[eventId] || []), newQueueItem],
+      }));
+    } catch (err) {
+      console.error("Add to queue error:", err);
+      throw err;
+    }
   };
 
   const handleFilterSelect = (type: string, value: string) => {
@@ -471,7 +572,7 @@ const ExploreSongs: React.FC = () => {
         <SongDetailsModal
           song={selectedSong}
           isFavorite={favorites.some(fav => fav.id === selectedSong.id)}
-          isInQueue={queue.some(q => q.id === selectedSong.id)}
+          isInQueue={currentEvent ? (queues[currentEvent.eventId]?.some(q => q.songId === selectedSong.id) || false) : false}
           onClose={() => setSelectedSong(null)}
           onToggleFavorite={toggleFavorite}
           onAddToQueue={addToEventQueue}

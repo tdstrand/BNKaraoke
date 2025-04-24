@@ -23,7 +23,7 @@ export const API_ROUTES = {
   USER_ROLES: `${API_BASE_URL}/api/auth/roles`,
   PENDING_SONGS: `${API_BASE_URL}/api/songs/pending`,
   YOUTUBE_SEARCH: `${API_BASE_URL}/api/songs/youtube-search`,
-  APPROVE_SONG: `${API_BASE_URL}/api/songs/approve`,
+  APPROVE_SONGS: `${API_BASE_URL}/api/songs/approve`,
   REJECT_SONG: `${API_BASE_URL}/api/songs/reject`,
   SONGS_SEARCH: `${API_BASE_URL}/api/songs/search`,
   SPOTIFY_SEARCH: `${API_BASE_URL}/api/songs/spotify-search`,
@@ -33,9 +33,10 @@ export const API_ROUTES = {
   DELETE_USER: `${API_BASE_URL}/api/auth/delete-user`,
   USER_REQUESTS: `${API_BASE_URL}/api/songs/user-requests`,
   EVENT_QUEUE: `${API_BASE_URL}/api/events`,
-  FAVORITES: `${API_BASE_URL}/api/songs/favorites`, // Added for favorites endpoint
-  ARTISTS: `${API_BASE_URL}/api/songs/artists`, // Added
-  GENRES: `${API_BASE_URL}/api/songs/genres`,   // Added
+  FAVORITES: `${API_BASE_URL}/api/songs/favorites`,
+  ARTISTS: `${API_BASE_URL}/api/songs/artists`,
+  GENRES: `${API_BASE_URL}/api/songs/genres`,
+  EVENTS: `${API_BASE_URL}/api/events`, // Added for fetching all events
 };
 
 export default API_BASE_URL;

@@ -5,7 +5,8 @@
         public int QueueId { get; set; }
         public int EventId { get; set; }
         public int SongId { get; set; }
-        public string SingerId { get; set; } = string.Empty; // Matches AspNetUsers.Id (text)
+        public string RequestorId { get; set; } = string.Empty; // Matches AspNetUsers.Id (text)
+        public List<string> Singers { get; set; } = new List<string>(); // List of SingerIds or special groups
         public int Position { get; set; }
         public string Status { get; set; } = "Upcoming"; // Upcoming, Live, Archived
         public bool IsActive { get; set; } = false;
@@ -18,6 +19,6 @@
         // Navigation properties
         public Event Event { get; set; } = null!;
         public Song Song { get; set; } = null!;
-        public ApplicationUser Singer { get; set; } = null!;
+        public ApplicationUser Requestor { get; set; } = null!; // Renamed from Singer
     }
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_ROUTES } from "../config/apiConfig"; // Remove BASE_API_URL
+import { API_ROUTES } from "../config/apiConfig";
 import '../components/Home.css';
 
 const PendingRequests: React.FC = () => {
@@ -49,13 +49,13 @@ const PendingRequests: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`${API_ROUTES.APPROVE_SONG}?id=${songId}`, {
+      const response = await fetch(API_ROUTES.APPROVE_SONGS, { // Fixed typo: APPROVE_SONG -> APPROVE_SONGS
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(youtubeUrl),
+        body: JSON.stringify({ id: songId, youtubeUrl }), // Updated to send id and youtubeUrl in the body
       });
       const responseText = await response.text();
       console.log('Approve Song Response:', { status: response.status, body: responseText });

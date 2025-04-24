@@ -10,6 +10,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Diagnostics;
+using BNKaraoke.Api.Controllers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +28,10 @@ builder.WebHost.ConfigureKestrel(options =>
         {
             listenOptions.UseHttps();
         }
+        else
+        {
+            listenOptions.UseHttps();
+        }
         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
     });
 });
@@ -34,6 +41,9 @@ builder.Services.AddLogging(logging =>
 {
     logging.AddConsole();
     logging.AddDebug();
+    logging.SetMinimumLevel(LogLevel.Debug);
+    logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Debug);
+    logging.AddFilter("Microsoft.AspNetCore", LogLevel.Debug);
 });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -104,15 +114,40 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowNetwork", policy =>
     {
-        policy.WithOrigins("http://localhost:8080", "https://www.bnkaraoke.com", "https://bnkaraoke.com")
+        policy.WithOrigins("http://localhost:8080", "http://localhost:3000", "https://www.bnkaraoke.com", "https://bnkaraoke.com")
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
-        Console.WriteLine("CORS policy configured for origins: http://localhost:8080, https://www.bnkaraoke.com, https://bnkaraoke.com");
+        Console.WriteLine("CORS policy configured for origins: http://localhost:8080, http://localhost:3000, https://www.bnkaraoke.com, https://bnkaraoke.com");
     });
 });
 
-builder.Services.AddControllers();
+// Add controllers and ensure discovery
+builder.Services.AddControllers()
+    .AddApplicationPart(typeof(EventController).Assembly)
+    .AddControllersAsServices();
+
+// Explicitly register EventController
+builder.Services.AddTransient<EventController>();
+
+// Add diagnostic logging for controller discovery
+var loggerFactory = LoggerFactory.Create(logging =>
+{
+    logging.AddConsole();
+    logging.AddDebug();
+    logging.SetMinimumLevel(LogLevel.Debug);
+});
+var logger = loggerFactory.CreateLogger<Program>();
+logger.LogInformation("Starting controller discovery diagnostics...");
+var assembly = typeof(EventController).Assembly;
+var controllerTypes = assembly.GetTypes()
+    .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract)
+    .ToList();
+logger.LogInformation("Found {Count} controller types in assembly: {AssemblyName}", controllerTypes.Count, assembly.GetName().Name);
+foreach (var controllerType in controllerTypes)
+{
+    logger.LogInformation("Discovered controller: {ControllerName}", controllerType.Name);
+}
 
 // Add Swagger
 builder.Services.AddSwaggerGen(c =>
@@ -151,14 +186,39 @@ builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
-// Add CORS logging middleware
+// Add logging middleware for incoming connections at the earliest stage
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("Processing request: {Method} {Path} from Origin: {Origin}",
-        context.Request.Method, context.Request.Path, context.Request.Headers["Origin"]);
+    logger.LogDebug("Earliest middleware - Connection received: {Method} {Path} from {RemoteIp}",
+        context.Request.Method, context.Request.Path, context.Connection.RemoteIpAddress);
     await next.Invoke();
-    logger.LogInformation("Sending response: {StatusCode} with CORS headers: {AllowOrigin}",
+});
+
+// Add DI failure logging middleware
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next.Invoke();
+    }
+    catch (Exception ex)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error processing request {Method} {Path}: {Message}",
+            context.Request.Method, context.Request.Path, ex.Message);
+        throw; // Re-throw to ensure the error is handled by other middleware
+    }
+});
+
+// Add logging middleware for incoming requests
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogDebug("Processing request: {Method} {Path} from Origin: {Origin} with Scheme: {Scheme}",
+        context.Request.Method, context.Request.Path, context.Request.Headers["Origin"], context.Request.Scheme);
+    await next.Invoke();
+    logger.LogDebug("Sending response: {StatusCode} with CORS headers: {AllowOrigin}",
         context.Response.StatusCode, context.Response.Headers["Access-Control-Allow-Origin"]);
 });
 
@@ -169,7 +229,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "BNKaraoke API v1");
-        c.RoutePrefix = "swagger"; // Explicitly set to /swagger
+        c.RoutePrefix = "swagger";
     });
 }
 else
@@ -189,17 +249,20 @@ else
     app.UseHsts();
 }
 
+app.UseHttpsRedirection();
 app.UseRouting();
 app.UseCors("AllowNetwork");
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Add logging middleware for request/response lifecycle
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("Request Incoming: {Method} {Path}", context.Request.Method, context.Request.Path);
+    logger.LogDebug("Request Incoming: {Method} {Path} with Scheme: {Scheme}",
+        context.Request.Method, context.Request.Path, context.Request.Scheme);
     await next.Invoke();
-    logger.LogInformation("Response Sent: {StatusCode}", context.Response.StatusCode);
+    logger.LogDebug("Response Sent: {StatusCode}", context.Response.StatusCode);
 });
 
 app.MapControllers();
@@ -237,10 +300,14 @@ using (var scope = app.Services.CreateScope())
 
         if (await userManager.FindByNameAsync(appUser.UserName) == null)
         {
-            var result = await userManager.CreateAsync(appUser, "Pwd123.");
+            var result = await userManager.CreateAsync(appUser, "Pwd1234.");
             if (result.Succeeded)
             {
                 await userManager.AddToRolesAsync(appUser, user.Roles);
+            }
+            else
+            {
+                app.Logger.LogError("Failed to create user {UserName}: {Errors}", appUser.UserName, string.Join(", ", result.Errors.Select(e => e.Description)));
             }
         }
     }

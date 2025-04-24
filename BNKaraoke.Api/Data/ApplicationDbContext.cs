@@ -68,6 +68,8 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<Event>()
                 .Property(e => e.IsCanceled).HasColumnName("IsCanceled");
             modelBuilder.Entity<Event>()
+                .Property(e => e.RequestLimit).HasColumnName("RequestLimit");
+            modelBuilder.Entity<Event>()
                 .Property(e => e.CreatedAt).HasColumnName("CreatedAt");
             modelBuilder.Entity<Event>()
                 .Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
@@ -98,9 +100,9 @@ namespace BNKaraoke.Api.Data
                 .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<EventQueue>()
-                .HasOne(eq => eq.Singer)
+                .HasOne(eq => eq.Requestor)
                 .WithMany()
-                .HasForeignKey(eq => eq.SingerId)
+                .HasForeignKey(eq => eq.RequestorId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<EventQueue>()
@@ -110,7 +112,9 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<EventQueue>()
                 .Property(eq => eq.SongId).HasColumnName("SongId");
             modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.SingerId).HasColumnName("SingerId");
+                .Property(eq => eq.RequestorId).HasColumnName("RequestorId");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.Singers).HasColumnType("text[]");
             modelBuilder.Entity<EventQueue>()
                 .Property(eq => eq.Position).HasColumnName("Position");
             modelBuilder.Entity<EventQueue>()
@@ -140,9 +144,9 @@ namespace BNKaraoke.Api.Data
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<EventAttendance>()
-                .HasOne(ea => ea.Singer)
+                .HasOne(ea => ea.Requestor)
                 .WithMany()
-                .HasForeignKey(ea => ea.SingerId)
+                .HasForeignKey(ea => ea.RequestorId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<EventAttendance>()
@@ -156,7 +160,7 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<EventAttendance>()
                 .Property(ea => ea.EventId).HasColumnName("EventId");
             modelBuilder.Entity<EventAttendance>()
-                .Property(ea => ea.SingerId).HasColumnName("SingerId");
+                .Property(ea => ea.RequestorId).HasColumnName("RequestorId");
             modelBuilder.Entity<EventAttendance>()
                 .Property(ea => ea.IsCheckedIn).HasColumnName("IsCheckedIn");
             modelBuilder.Entity<EventAttendance>()
@@ -168,7 +172,7 @@ namespace BNKaraoke.Api.Data
 
             // Constraints for EventAttendance
             modelBuilder.Entity<EventAttendance>()
-                .HasIndex(ea => new { ea.EventId, ea.SingerId })
+                .HasIndex(ea => new { ea.EventId, ea.RequestorId })
                 .IsUnique();
 
             // EventAttendanceHistory
@@ -186,9 +190,9 @@ namespace BNKaraoke.Api.Data
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<EventAttendanceHistory>()
-                .HasOne(eah => eah.Singer)
+                .HasOne(eah => eah.Requestor)
                 .WithMany()
-                .HasForeignKey(eah => eah.SingerId)
+                .HasForeignKey(eah => eah.RequestorId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<EventAttendanceHistory>()
@@ -202,7 +206,7 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<EventAttendanceHistory>()
                 .Property(eah => eah.EventId).HasColumnName("EventId");
             modelBuilder.Entity<EventAttendanceHistory>()
-                .Property(eah => eah.SingerId).HasColumnName("SingerId");
+                .Property(eah => eah.RequestorId).HasColumnName("RequestorId");
             modelBuilder.Entity<EventAttendanceHistory>()
                 .Property(eah => eah.Action).HasColumnName("Action").HasMaxLength(20);
             modelBuilder.Entity<EventAttendanceHistory>()

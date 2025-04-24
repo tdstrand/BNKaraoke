@@ -91,8 +91,8 @@ const SongManagerPage: React.FC = () => {
 
   const handleApproveSong = async (songId: number, YouTubeUrl: string, token: string) => {
     try {
-      console.log(`Approving song ${songId} at: ${API_ROUTES.APPROVE_SONG}`);
-      const response = await fetch(API_ROUTES.APPROVE_SONG, {
+      console.log(`Approving song ${songId} at: ${API_ROUTES.APPROVE_SONGS}`); // Fixed typo: APPROVE_SONG -> APPROVE_SONGS
+      const response = await fetch(API_ROUTES.APPROVE_SONGS, { // Fixed typo: APPROVE_SONG -> APPROVE_SONGS
         method: "POST",
         headers: {
           "Content-Type": "application/json",

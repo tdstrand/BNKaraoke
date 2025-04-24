@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
 import LogoDuet from '../assets/TwoSingerMnt.png';
-import { API_ROUTES } from '../config/apiConfig'; // Adjusted import path
+import { API_ROUTES } from '../config/apiConfig';
 
 const Login: React.FC = () => {
   const [userName, setUserName] = useState<string>("");
@@ -57,6 +57,7 @@ const Login: React.FC = () => {
       localStorage.setItem("roles", JSON.stringify(data.roles));
       localStorage.setItem("firstName", data.firstName);
       localStorage.setItem("lastName", data.lastName);
+      localStorage.setItem("userName", cleanPhone); // Store UserName (phone number) in localStorage
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");

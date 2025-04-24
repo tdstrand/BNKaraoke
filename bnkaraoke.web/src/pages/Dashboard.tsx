@@ -1,26 +1,14 @@
-// BNKaraoke/bnkaraoke.web/src/pages/Dashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
 import { API_ROUTES } from '../config/apiConfig';
 import SongDetailsModal from '../components/SongDetailsModal';
-import { Song, SpotifySong, QueueItem, Event, User } from '../types';
-
-const mockEvents: Event[] = [
-  { id: 1, name: "Joe's Karaoke Night", status: "Live", date: "2025-04-14" },
-  { id: 2, name: "Sally’s Singalong", status: "Upcoming", date: "2025-04-25" },
-  { id: 3, name: "March Karaoke Bash", status: "Archived", date: "2025-03-01" },
-];
-
-const user: User = { firstName: "Sarah", lastName: "Singer" };
+import { Song, SpotifySong, EventQueueItem } from '../types';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [currentEvent, setCurrentEvent] = useState<Event>(mockEvents[0]);
-  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [queues, setQueues] = useState<{ [eventId: number]: EventQueueItem[] }>({});
   const [favorites, setFavorites] = useState<Song[]>([]);
-  const [showReminder, setShowReminder] = useState<boolean>(currentEvent.status === "Live" || currentEvent.status === "Upcoming");
-  const [checkedIn, setCheckedIn] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [songs, setSongs] = useState<Song[]>([]);
   const [spotifySongs, setSpotifySongs] = useState<SpotifySong[]>([]);
@@ -35,30 +23,48 @@ const Dashboard: React.FC = () => {
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
 
+  // Fetch queues for all events on component mount
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("No token found");
-      setQueue([]);
+      setQueues({});
       return;
     }
-    fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.id}/queue`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(res => {
-        if (!res.ok) throw new Error(`Fetch queue failed: ${res.status}`);
-        return res.json();
-      })
-      .then((data: QueueItem[]) => {
-        console.log("Fetched queue:", data);
-        setQueue(data || []);
-      })
-      .catch(err => {
-        console.error("Fetch queue error:", err);
-        setQueue([]);
-      });
-  }, [currentEvent]);
 
+    const fetchQueues = async () => {
+      const newQueues: { [eventId: number]: EventQueueItem[] } = {};
+      try {
+        const response = await fetch(API_ROUTES.EVENTS, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`Fetch events failed: ${response.status}`);
+        const events = await response.json();
+
+        for (const event of events) {
+          try {
+            const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${event.eventId}/queue`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!queueResponse.ok) throw new Error(`Fetch queue failed for event ${event.eventId}: ${queueResponse.status}`);
+            const data: EventQueueItem[] = await queueResponse.json();
+            console.log(`Fetched queue for event ${event.eventId}:`, data);
+            newQueues[event.eventId] = data || [];
+          } catch (err) {
+            console.error(`Fetch queue error for event ${event.eventId}:`, err);
+            newQueues[event.eventId] = [];
+          }
+        }
+      } catch (err) {
+        console.error("Fetch events error:", err);
+      }
+      setQueues(newQueues);
+    };
+
+    fetchQueues();
+  }, []);
+
+  // Fetch favorites on component mount
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -323,144 +329,102 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const addToEventQueue = (song: Song) => {
+  const addToEventQueue = async (song: Song, eventId: number) => {
     const token = localStorage.getItem("token");
+    const singerId = localStorage.getItem("userName");
+    console.log("addToEventQueue - token:", token, "singerId:", singerId);
+
     if (!token) {
       console.error("No token found in addToEventQueue");
+      throw new Error("Authentication token missing. Please log in again.");
+    }
+
+    if (!singerId) {
+      console.error("Invalid or missing singerId in addToEventQueue");
+      throw new Error("User not found. Please log in again to add songs to the queue.");
+    }
+
+    const queueForEvent = queues[eventId] || [];
+    const isInQueue = queueForEvent.some(q => q.songId === song.id);
+    if (isInQueue) {
+      console.log(`Song ${song.id} is already in the queue for event ${eventId}`);
       return;
     }
 
-    const isInQueue = queue.some(q => q.id === song.id);
-    console.log(`Toggling queue for song ${song.id}, isInQueue: ${isInQueue}`);
+    try {
+      const response = await fetch(`${API_ROUTES.EVENT_QUEUE}/${eventId}/queue`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          songId: song.id,
+          singerId: singerId, // Use userName (phone number) as singerId
+        }),
+      });
 
-    const updatedQueue = isInQueue
-      ? queue.filter(q => q.id !== song.id)
-      : [...queue, { id: song.id, title: song.title, artist: song.artist, status: song.status, singers: ["Me"], requests: [] }];
-    console.log(`Updated queue after ${isInQueue ? 'removal' : 'addition'} (placeholder):`, updatedQueue);
-    setQueue([...updatedQueue]);
-    setSelectedSong(null);
-    setShowSearchModal(false);
-    setSearchQuery("");
-    setSongs([]);
-  };
+      const responseText = await response.text();
+      console.log(`Add to queue response for event ${eventId}: status=${response.status}, body=${responseText}`);
 
-  const handleEventChange = (eventId: number) => {
-    const event = mockEvents.find(e => e.id === eventId);
-    if (event) {
-      setCurrentEvent(event);
-      setShowReminder(event.status === "Live" || currentEvent.status === "Upcoming");
-      setCheckedIn(false);
-    }
-  };
-
-  const handleCheckIn = () => {
-    setCheckedIn(true);
-    setShowReminder(false);
-  };
-
-  const handleLeaveEvent = () => {
-    if (window.confirm(`Leave ${currentEvent.name}? Your queue will be ${currentEvent.status === "Live" ? "archived" : "cleared"}.`)) {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        console.error("No token found");
-        return;
+      if (!response.ok) {
+        console.error(`Failed to add song to queue for event ${eventId}: ${response.status} - ${responseText}`);
+        throw new Error(`Add to queue failed: ${responseText || response.statusText}`);
       }
-      fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.id}/queue`, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(res => {
-          if (!res.ok) throw new Error(`Fetch queue failed: ${res.status}`);
-          return res.json();
-        })
-        .then((data: QueueItem[]) => {
-          const queueItems: QueueItem[] = data || [];
-          Promise.all(queueItems.map((item: QueueItem) =>
-            fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.id}/queue/${item.id}`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${token}` },
-            })
-          )).then(() => {
-            setQueue([]);
-            setCurrentEvent(mockEvents.find(e => e.status !== "Archived") || mockEvents[0]);
-            setCheckedIn(false);
-            setShowReminder(false);
-          });
-        })
-        .catch(err => {
-          console.error("Clear queue error:", err);
-          setQueue([]);
-          setCurrentEvent(mockEvents.find(e => e.status !== "Archived") || mockEvents[0]);
-          setCheckedIn(false);
-          setShowReminder(false);
-        });
+
+      const newQueueItem: EventQueueItem = JSON.parse(responseText);
+      console.log(`Added to queue for event ${eventId}:`, newQueueItem);
+      setQueues(prev => ({
+        ...prev,
+        [eventId]: [...(prev[eventId] || []), newQueueItem],
+      }));
+    } catch (err) {
+      console.error("Add to queue error:", err);
+      throw err;
     }
   };
 
-  const handleDeleteSong = (songId: number) => {
+  const handleDeleteSong = async (eventId: number, queueId: number) => {
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("No token found");
       return;
     }
-    fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.id}/queue/${songId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(res => {
-        if (!res.ok) throw new Error(`Delete from queue failed: ${res.status}`);
-        return res.json();
-      })
-      .then(() => {
-        setQueue(queue.filter(s => s.id !== songId));
-        setShowActions(null);
-      })
-      .catch(err => {
-        console.error("Delete from queue error:", err);
-        setQueue(queue.filter(s => s.id !== songId));
-        setShowActions(null);
+
+    try {
+      const response = await fetch(`${API_ROUTES.EVENT_QUEUE}/${eventId}/queue/${queueId}/skip`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Skip song failed: ${response.status} - ${errorText}`);
+        throw new Error(`Skip song failed: ${response.status}`);
+      }
+
+      setQueues(prev => ({
+        ...prev,
+        [eventId]: (prev[eventId] || []).filter(q => q.queueId !== queueId),
+      }));
+      setShowActions(null);
+    } catch (err) {
+      console.error("Skip song error:", err);
+      setQueues(prev => ({
+        ...prev,
+        [eventId]: (prev[eventId] || []).filter(q => q.queueId !== queueId),
+      }));
+      setShowActions(null);
+    }
   };
 
-  const toggleActions = (songId: number) => {
-    setShowActions(showActions === songId ? null : songId);
+  const toggleActions = (queueId: number) => {
+    setShowActions(showActions === queueId ? null : queueId);
   };
 
   return (
-    <>
-      <div className="dashboard">
-        <header className="event-header">
-          <div>
-            <h2>Welcome, {user.firstName} {user.lastName}!</h2>
-            <h1>{currentEvent.status === "Live" ? "Live!" : currentEvent.status} {currentEvent.name}</h1>
-          </div>
-          <select value={currentEvent.id} onChange={e => handleEventChange(Number(e.target.value))} aria-label="Select event">
-            {mockEvents.map(event => (
-              <option key={event.id} value={event.id}>
-                {event.status}: {event.name} ({event.date})
-              </option>
-            ))}
-          </select>
-        </header>
-
-        {showReminder && (
-          <div className="reminder-banner">
-            {currentEvent.status === "Live" ? (
-              <>
-                Live Now: {currentEvent.name}—check in to sing!
-                <button onClick={handleCheckIn}>Check In</button>
-                <button onClick={() => setShowReminder(false)}>Dismiss</button>
-              </>
-            ) : (
-              <>
-                Tomorrow: {currentEvent.name}—pre-load songs!
-                <button onClick={() => navigate("/dashboard")}>Pre-Load</button>
-                <button onClick={() => setShowReminder(false)}>Dismiss</button>
-              </>
-            )}
-          </div>
-        )}
-
+    <div className="dashboard">
+      <div className="dashboard-content">
         <section className="search-section">
           <div className="search-bar-container">
             <input
@@ -477,6 +441,12 @@ const Dashboard: React.FC = () => {
             </button>
             <button onClick={resetSearch} className="reset-button" aria-label="Reset search">
               ■
+            </button>
+            <button
+              className="browse-songs-button"
+              onClick={() => navigate('/explore-songs')}
+            >
+              Browse Karaoke Songs
             </button>
           </div>
         </section>
@@ -501,57 +471,41 @@ const Dashboard: React.FC = () => {
             )}
           </section>
 
-          <div className="center-content">
-            <button
-              className="explore-songs-button"
-              onClick={() => navigate('/explore-songs')}
-            >
-              Explore Songs
-            </button>
-          </div>
-
           <aside className="queue-panel">
-            <h2>My Sing Queue: {currentEvent.name}</h2>
-            {currentEvent.status === "Live" && !checkedIn ? (
-              <p>Check in to activate songs! <button onClick={handleCheckIn}>Check In</button></p>
+            <h2>My Sing Queue</h2>
+            {Object.values(queues).every(queue => queue.length === 0) ? (
+              <p>No songs in your queue.</p>
             ) : (
-              <p>{currentEvent.status === "Live" ? "Checked in—ready for DJ’s order!" : `Pre-loading for ${currentEvent.date}`}</p>
-            )}
-            {currentEvent.status === "Live" && <p>Karaoke DJ sets the sing order—keep queuing!</p>}
-            {queue.length === 0 ? (
-              <p>Add songs for {currentEvent.name}!</p>
-            ) : (
-              queue.map(song => (
-                <div key={song.id} className="queue-song">
-                  <span>
-                    {song.title} - {song.artist}
-                    {song.singers.length > 0 && ` (${song.singers.join(", ")})`}
-                    {song.requests.length > 0 && <span className="request-badge">For {song.requests[0].forWhom}</span>}
-                    {song.status === "pending" && <span className="request-badge">Pending</span>}
-                  </span>
-                  <div className="song-actions">
-                    <button className="delete-btn" onClick={() => handleDeleteSong(song.id)}>🗑️</button>
-                    <button className="more-btn" onClick={() => toggleActions(song.id)}>⋯</button>
-                    {showActions === song.id && (
-                      <div className="actions-dropdown">
-                        <button onClick={() => console.log("Add Co-Singer")}>Add Co-Singer</button>
-                        <button onClick={() => console.log("Request for...")}>Request for...</button>
+              Object.entries(queues).map(([eventId, queue]) => (
+                queue.length > 0 && (
+                  <div key={eventId} className="event-queue">
+                    <h3>Event {eventId}</h3>
+                    {queue.map(queueItem => (
+                      <div key={queueItem.queueId} className="queue-song">
+                        <span>
+                          {queueItem.songId} {/* Replace with actual song title/artist if available */}
+                          {queueItem.isCurrentlyPlaying && <span className="request-badge">Playing</span>}
+                          {queueItem.wasSkipped && <span className="request-badge">Skipped</span>}
+                          {queueItem.isOnBreak && <span className="request-badge">On Break</span>}
+                        </span>
+                        <div className="song-actions">
+                          <button className="delete-btn" onClick={() => handleDeleteSong(Number(eventId), queueItem.queueId)}>🗑️</button>
+                          <button className="more-btn" onClick={() => toggleActions(queueItem.queueId)}>⋯</button>
+                          {showActions === queueItem.queueId && (
+                            <div className="actions-dropdown">
+                              <button onClick={() => console.log("Add Co-Singer")}>Add Co-Singer</button>
+                              <button onClick={() => console.log("Request for...")}>Request for...</button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    ))}
                   </div>
-                </div>
+                )
               ))
             )}
-            <button className="leave-btn" onClick={handleLeaveEvent}>Leave Event</button>
           </aside>
         </div>
-
-        {queue.some(s => s.requests.length > 0) && (
-          <div className="pending-requests">
-            {queue.filter(s => s.requests.length > 0).length} pending requests!
-            <button>View</button>
-          </div>
-        )}
 
         <nav className="menu-bar">
           <button title="Search" aria-label="Search">🔍</button>
@@ -671,13 +625,13 @@ const Dashboard: React.FC = () => {
         <SongDetailsModal
           song={selectedSong}
           isFavorite={favorites.some(fav => fav.id === selectedSong.id)}
-          isInQueue={queue.some(q => q.id === selectedSong.id)}
+          isInQueue={false} // Simplified since event selection is removed
           onClose={() => setSelectedSong(null)}
           onToggleFavorite={toggleFavorite}
           onAddToQueue={addToEventQueue}
         />
       )}
-    </>
+    </div>
   );
 };
 

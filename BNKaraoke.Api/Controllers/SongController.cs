@@ -29,6 +29,61 @@ namespace BNKaraoke.Api.Controllers
             _logger = logger;
         }
 
+        [HttpGet("{songId}")]
+        [Authorize(Policy = "Singer")]
+        public async Task<IActionResult> GetSongById(int songId)
+        {
+            _logger.LogInformation("Fetching song with SongId: {SongId}", songId);
+
+            try
+            {
+                var song = await _context.Songs.FindAsync(songId);
+                if (song == null)
+                {
+                    _logger.LogWarning("Song not found with SongId: {SongId}", songId);
+                    return NotFound("Song not found");
+                }
+
+                _logger.LogInformation("Successfully fetched song with SongId: {SongId}", songId);
+                return Ok(song);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching song with SongId {SongId}: {Message}", songId, ex.Message);
+                return StatusCode(500, new { message = "An error occurred while fetching the song", details = ex.Message });
+            }
+        }
+
+        [HttpGet("users")]
+        [Authorize(Policy = "Singer")]
+        public async Task<IActionResult> GetUsers()
+        {
+            _logger.LogInformation("Fetching list of users");
+
+            try
+            {
+                var users = await _context.Users
+                    .Select(u => new
+                    {
+                        Id = u.Id,
+                        UserName = u.UserName,
+                        FirstName = u.FirstName,
+                        LastName = u.LastName
+                    })
+                    .OrderBy(u => u.FirstName)
+                    .ThenBy(u => u.LastName)
+                    .ToListAsync();
+
+                _logger.LogInformation("Successfully fetched {Count} users", users.Count);
+                return Ok(users);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching users: {Message}", ex.Message);
+                return StatusCode(500, new { message = "An error occurred while fetching users", details = ex.Message });
+            }
+        }
+
         [HttpGet("search")]
         [Authorize(Policy = "Singer")]
         public async Task<IActionResult> Search(
@@ -389,7 +444,7 @@ namespace BNKaraoke.Api.Controllers
                             if (trackDetails.Artists != null && trackDetails.Artists.Any() == true)
                             {
 #pragma warning disable CS8602 // Suppress false positive warning
-                                var artistId = trackDetails.Artists[0].Id; // Fixed line
+                                var artistId = trackDetails.Artists[0].Id;
 #pragma warning restore CS8602
                                 var artistResponse = await client.GetAsync($"https://api.spotify.com/v1/artists/{artistId}");
                                 if (artistResponse.IsSuccessStatusCode)
