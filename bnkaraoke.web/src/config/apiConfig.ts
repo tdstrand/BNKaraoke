@@ -36,7 +36,13 @@ export const API_ROUTES = {
   FAVORITES: `${API_BASE_URL}/api/songs/favorites`,
   ARTISTS: `${API_BASE_URL}/api/songs/artists`,
   GENRES: `${API_BASE_URL}/api/songs/genres`,
-  EVENTS: `${API_BASE_URL}/api/events`, // Added for fetching all events
+  EVENTS: `${API_BASE_URL}/api/events`,
+  // New routes for user management
+  ADD_USER: `${API_BASE_URL}/api/auth/add-user`,
+  FORCE_PASSWORD_CHANGE: `${API_BASE_URL}/api/auth/users`,
+  USER_DETAILS: `${API_BASE_URL}/api/auth/user-details`,
+  CHANGE_PASSWORD: `${API_BASE_URL}/api/auth/change-password`,
+  REGISTRATION_SETTINGS: `${API_BASE_URL}/api/auth/registration-settings`,
 };
 
 export default API_BASE_URL;

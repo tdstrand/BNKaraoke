@@ -1,14 +1,16 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using BNKaraoke.Api.Data;
-using BNKaraoke.Api.Models;
-using BNKaraoke.Api.Dtos;
-using Microsoft.Extensions.Logging;
-using System.Security.Claims;
-
-namespace BNKaraoke.Api.Controllers
+﻿namespace BNKaraoke.Api.Controllers
 {
+    using Microsoft.AspNetCore.Authorization;
+    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.Logging;
+    using System.Threading.Tasks;
+    using BNKaraoke.Api.Data;
+    using BNKaraoke.Api.Models;
+    using BNKaraoke.Api.Dtos;
+    using System.Linq;
+    using System.Security.Claims;
+
     [Route("api/events")]
     [ApiController]
     public class EventController : ControllerBase
@@ -18,8 +20,8 @@ namespace BNKaraoke.Api.Controllers
 
         public EventController(ApplicationDbContext context, ILogger<EventController> logger)
         {
-            _logger = logger;
             _context = context;
+            _logger = logger;
             _logger.LogInformation("EventController instantiated");
         }
 
@@ -376,26 +378,23 @@ namespace BNKaraoke.Api.Controllers
         // GET /api/events/{eventId}/queue: Retrieve the event queue (with break status and computed status)
         [HttpGet("{eventId}/queue")]
         [Authorize]
-        public async Task<IActionResult> GetEventQueue(int eventId)
+        public IActionResult GetEventQueue(int eventId)
         {
             try
             {
                 _logger.LogInformation("Fetching event queue for EventId: {EventId}", eventId);
-                var eventEntity = await _context.Events.FindAsync(eventId);
+                var eventEntity = _context.Events.FirstOrDefault(e => e.EventId == eventId);
                 if (eventEntity == null)
                 {
                     _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
-                var queueEntries = await _context.EventQueues
-                    .Where(eq => eq.EventId == eventId)
-                    .Join(
-                        _context.EventAttendances,
-                        eq => new { eq.EventId, eq.RequestorId },
-                        ea => new { ea.EventId, ea.RequestorId },
-                        (eq, ea) => new { QueueEntry = eq, Attendance = ea })
-                    .ToListAsync();
+                var queueEntries = (from queue in _context.EventQueues
+                                    join attendance in _context.EventAttendances
+                                    on new { queue.EventId, queue.RequestorId } equals new { attendance.EventId, attendance.RequestorId }
+                                    where queue.EventId == eventId
+                                    select new { QueueEntry = queue, Attendance = attendance }).ToList();
 
                 var queueDtos = new List<EventQueueDto>();
                 foreach (var entry in queueEntries)
@@ -412,8 +411,8 @@ namespace BNKaraoke.Api.Controllers
                             continue; // Special groups don't have break status
                         }
 
-                        var singerAttendance = await _context.EventAttendances
-                            .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == singerId);
+                        var singerAttendance = _context.EventAttendances
+                            .FirstOrDefault(ea => ea.EventId == eventId && ea.RequestorId == singerId);
                         if (singerAttendance != null && singerAttendance.IsOnBreak)
                         {
                             anySingerOnBreak = true;
@@ -504,7 +503,7 @@ namespace BNKaraoke.Api.Controllers
                 if (requestor == null)
                 {
                     _logger.LogWarning("Requestor not found with UserName: {UserName}", actionDto.RequestorId);
-                    return BadRequest("Requestor not found");
+                    return BadRequest("Requestor not found with UserName: " + actionDto.RequestorId);
                 }
 
                 var attendance = await _context.EventAttendances
@@ -535,14 +534,17 @@ namespace BNKaraoke.Api.Controllers
                     attendance.BreakEndAt = null;
                 }
 
-                // Log the check-in action
+                // Save the EventAttendance record first to generate the AttendanceId
+                await _context.SaveChangesAsync();
+
+                // Log the check-in action with the generated AttendanceId
                 var attendanceHistory = new EventAttendanceHistory
                 {
                     EventId = eventId,
                     RequestorId = requestor.Id,
                     Action = "CheckIn",
                     ActionTimestamp = DateTime.UtcNow,
-                    AttendanceId = attendance.AttendanceId
+                    AttendanceId = attendance.AttendanceId // Now guaranteed to have a valid value
                 };
                 _context.EventAttendanceHistories.Add(attendanceHistory);
 
@@ -557,9 +559,11 @@ namespace BNKaraoke.Api.Controllers
                     entry.UpdatedAt = DateTime.UtcNow;
                 }
 
+                // Save the EventAttendanceHistory and queue updates
                 await _context.SaveChangesAsync();
+
                 _logger.LogInformation("Successfully checked in requestor with UserName {UserName} for EventId {EventId}", actionDto.RequestorId, eventId);
-                return Ok();
+                return Ok(new { message = "Check-in successful" });
             }
             catch (Exception ex)
             {
@@ -611,7 +615,10 @@ namespace BNKaraoke.Api.Controllers
                 attendance.BreakStartAt = null;
                 attendance.BreakEndAt = null;
 
-                // Log the check-out action
+                // Save the updated EventAttendance record first
+                await _context.SaveChangesAsync();
+
+                // Log the check-out action with the AttendanceId
                 var attendanceHistory = new EventAttendanceHistory
                 {
                     EventId = eventId,
@@ -633,9 +640,11 @@ namespace BNKaraoke.Api.Controllers
                     entry.UpdatedAt = DateTime.UtcNow;
                 }
 
+                // Save the EventAttendanceHistory and queue updates
                 await _context.SaveChangesAsync();
+
                 _logger.LogInformation("Successfully checked out requestor with UserName {UserName} for EventId {EventId}", actionDto.RequestorId, eventId);
-                return Ok();
+                return Ok(new { message = "Check-out successful" });
             }
             catch (Exception ex)
             {
@@ -833,7 +842,7 @@ namespace BNKaraoke.Api.Controllers
                 }
 
                 // Get the user's ID from the token
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var userId = User.FindFirst(ClaimTypes.Name)?.Value;
                 if (string.IsNullOrEmpty(userId))
                 {
                     _logger.LogWarning("User identity not found in token");
@@ -982,5 +991,10 @@ namespace BNKaraoke.Api.Controllers
                 return StatusCode(500, new { message = "An error occurred while updating singers", details = ex.Message });
             }
         }
+    }
+
+    public class AttendanceActionDto
+    {
+        public required string RequestorId { get; set; }
     }
 }

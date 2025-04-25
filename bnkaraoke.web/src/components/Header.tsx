@@ -1,38 +1,84 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { LogoutOutlined } from '@ant-design/icons';
 import "./Header.css";
 import { API_ROUTES } from "../config/apiConfig";
+import useEventContext from "../context/EventContext";
 
 const Header: React.FC = () => {
   console.log("Header component rendering");
 
   const navigate = useNavigate();
-  const location = useLocation(); // To detect route changes
+  const location = useLocation();
+  const { currentEvent, setCurrentEvent, checkedIn, setCheckedIn, isCurrentEventLive, setIsCurrentEventLive } = useEventContext();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [roles, setRoles] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [events, setEvents] = useState<any[]>([]);
-  const [currentEvent, setCurrentEvent] = useState<any | null>(null);
-  const [checkedIn, setCheckedIn] = useState<boolean>(false);
+  const [liveEvents, setLiveEvents] = useState<any[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [isEventDropdownOpen, setIsEventDropdownOpen] = useState(false);
-  const [isCheckingIn, setIsCheckingIn] = useState(false); // Loading state for check-in
-  const [checkInError, setCheckInError] = useState<string | null>(null); // Error state for check-in
-  const [pendingRequests, setPendingRequests] = useState<number>(0); // Notification state
-  const [queues, setQueues] = useState<{ [eventId: number]: any[] }>({}); // Queues for notification
-  const eventDropdownRef = useRef<HTMLDivElement>(null); // Ref for the event dropdown
+  const [isPreloadDropdownOpen, setIsPreloadDropdownOpen] = useState(false);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [checkInError, setCheckInError] = useState<string | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<number>(0);
+  const [queues, setQueues] = useState<{ [eventId: number]: any[] }>({});
+  const [isOnBreak, setIsOnBreak] = useState<boolean>(false);
+  const eventDropdownRef = useRef<HTMLDivElement>(null);
+  const preloadDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on route change
+  // Fetch user details on mount
   useEffect(() => {
-    setIsEventDropdownOpen(false); // Close event dropdown when route changes
-    setIsDropdownOpen(false); // Close admin dropdown when route changes
+    const fetchUserDetails = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        console.error("No token found");
+        return;
+      }
+      try {
+        console.log(`Fetching user details from: ${API_ROUTES.USER_DETAILS}`);
+        const response = await fetch(API_ROUTES.USER_DETAILS, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const responseText = await response.text();
+        console.log("User Details Raw Response:", responseText);
+        if (!response.ok) throw new Error(`Failed to fetch user details: ${response.status} ${response.statusText} - ${responseText}`);
+        const data = JSON.parse(responseText);
+        setFirstName(data.firstName);
+        setLastName(data.lastName);
+        setRoles(data.roles || []);
+      } catch (err) {
+        console.error("Fetch User Details Error:", err);
+        const storedFirstName = localStorage.getItem("firstName");
+        const storedLastName = localStorage.getItem("lastName");
+        const storedRoles = localStorage.getItem("roles");
+        if (storedFirstName) setFirstName(storedFirstName);
+        if (storedLastName) setLastName(storedLastName);
+        if (storedRoles) {
+          const parsedRoles = JSON.parse(storedRoles) || [];
+          setRoles(parsedRoles);
+        }
+      }
+    };
+
+    fetchUserDetails();
+  }, []);
+
+  // Close dropdowns on route change
+  useEffect(() => {
+    setIsEventDropdownOpen(false);
+    setIsPreloadDropdownOpen(false);
+    setIsDropdownOpen(false);
   }, [location]);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (eventDropdownRef.current && !eventDropdownRef.current.contains(event.target as Node)) {
         setIsEventDropdownOpen(false);
+      }
+      if (preloadDropdownRef.current && !preloadDropdownRef.current.contains(event.target as Node)) {
+        setIsPreloadDropdownOpen(false);
       }
     };
 
@@ -42,43 +88,44 @@ const Header: React.FC = () => {
     };
   }, []);
 
-  // Fetch user data, events, and queues on component mount
+  // Fetch events and queues on component mount
   useEffect(() => {
-    const storedFirstName = localStorage.getItem("firstName");
-    const storedLastName = localStorage.getItem("lastName");
-    const storedRoles = localStorage.getItem("roles");
-    console.log("Header - Stored Roles from localStorage:", storedRoles);
-    if (storedFirstName) setFirstName(storedFirstName);
-    if (storedLastName) setLastName(storedLastName);
-    if (storedRoles) {
-      const parsedRoles = JSON.parse(storedRoles) || [];
-      setRoles(parsedRoles);
-      console.log("Header - Parsed Roles set to state:", parsedRoles);
-    }
-
-    // Fetch events and queues
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("No token found");
-      setEvents([]);
+      setLiveEvents([]);
+      setUpcomingEvents([]);
       setQueues({});
       return;
     }
 
     const fetchEventsAndQueues = async () => {
       try {
-        // Fetch events
         const eventsResponse = await fetch(API_ROUTES.EVENTS, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!eventsResponse.ok) throw new Error(`Fetch events failed: ${eventsResponse.status}`);
         const eventsData: any[] = await eventsResponse.json();
         console.log("Header - Fetched events:", eventsData);
-        setEvents(eventsData || []);
-        const liveOrUpcomingEvent = eventsData.find(e => e.status === "Live" || e.status === "Upcoming");
-        if (!currentEvent) setCurrentEvent(liveOrUpcomingEvent || eventsData[0] || null);
 
-        // Fetch queues for notification
+        // Split events into live and upcoming
+        const live = eventsData.filter(e => e.status === "Live") || [];
+        const upcoming = eventsData.filter(e => e.status === "Upcoming") || [];
+        setLiveEvents(live);
+        setUpcomingEvents(upcoming);
+
+        // Set the current event to a live event by default, if available
+        const liveEvent = live[0];
+        if (!currentEvent) {
+          setCurrentEvent(liveEvent || upcoming[0] || null);
+          setIsCurrentEventLive(liveEvent != null);
+        }
+        if (liveEvent) {
+          console.log("Selected live event status:", liveEvent.status);
+        } else if (upcoming[0]) {
+          console.log("Selected upcoming event status:", upcoming[0].status);
+        }
+
         const newQueues: { [eventId: number]: any[] } = {};
         for (const event of eventsData) {
           try {
@@ -95,7 +142,6 @@ const Header: React.FC = () => {
         }
         setQueues(newQueues);
 
-        // Calculate pending requests (songs currently playing)
         const totalPending = Object.values(newQueues).reduce(
           (total, queue) => total + queue.filter(q => q.isCurrentlyPlaying).length,
           0
@@ -103,7 +149,8 @@ const Header: React.FC = () => {
         setPendingRequests(totalPending);
       } catch (err) {
         console.error("Header - Fetch events error:", err);
-        setEvents([]);
+        setLiveEvents([]);
+        setUpcomingEvents([]);
         setQueues({});
       }
     };
@@ -137,7 +184,7 @@ const Header: React.FC = () => {
         console.error("Header - Fetch queue error:", err);
         setCheckedIn(false);
       });
-  }, [currentEvent]); // Added currentEvent to dependency array
+  }, [currentEvent]);
 
   const adminRoles = ["Song Manager", "User Manager", "Event Manager"];
   const hasAdminRole = roles.some(role => adminRoles.includes(role));
@@ -168,6 +215,8 @@ const Header: React.FC = () => {
     setCheckInError(null);
 
     try {
+      const requestorId = localStorage.getItem("userName") || "unknown";
+      console.log(`Checking into event: ${event.eventId}, status: ${event.status}, requestorId: ${requestorId}`);
       const response = await fetch(`${API_ROUTES.EVENT_QUEUE}/${event.eventId}/attendance/check-in`, {
         method: 'POST',
         headers: {
@@ -175,7 +224,7 @@ const Header: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          singerId: localStorage.getItem("userId") || "unknown",
+          requestorId: requestorId,
         }),
       });
 
@@ -186,15 +235,23 @@ const Header: React.FC = () => {
       }
 
       setCurrentEvent(event);
+      setIsCurrentEventLive(event.status === "Live");
       setCheckedIn(true);
       setIsEventDropdownOpen(false);
     } catch (err) {
       console.error("Check-in error:", err);
       setCheckInError(err instanceof Error ? err.message : "Failed to check in. Please try again.");
-      setIsEventDropdownOpen(false);
+      setIsEventDropdownOpen(true);
     } finally {
       setIsCheckingIn(false);
     }
+  };
+
+  const handlePreloadSongs = (event: any) => {
+    setCurrentEvent(event);
+    setIsCurrentEventLive(event.status === "Live");
+    setIsPreloadDropdownOpen(false);
+    // No navigation needed; Dashboard.tsx will handle preloading based on currentEvent
   };
 
   const handleLeaveEvent = async () => {
@@ -211,6 +268,8 @@ const Header: React.FC = () => {
       }
 
       try {
+        const requestorId = localStorage.getItem("userName") || "unknown";
+        console.log(`Checking out of event: ${currentEvent.eventId}, requestorId: ${requestorId}`);
         const response = await fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.eventId}/attendance/check-out`, {
           method: 'POST',
           headers: {
@@ -218,7 +277,7 @@ const Header: React.FC = () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            singerId: localStorage.getItem("userId") || "unknown",
+            requestorId: requestorId,
           }),
         });
 
@@ -229,13 +288,22 @@ const Header: React.FC = () => {
         }
 
         setCurrentEvent(null);
+        setIsCurrentEventLive(false);
         setCheckedIn(false);
+        setIsOnBreak(false);
       } catch (err) {
         console.error("Check-out error:", err);
         setCurrentEvent(null);
+        setIsCurrentEventLive(false);
         setCheckedIn(false);
+        setIsOnBreak(false);
       }
     }
+  };
+
+  const handleBreakToggle = () => {
+    setIsOnBreak(!isOnBreak);
+    console.log(`User is now ${isOnBreak ? "off break" : "on break"}`);
   };
 
   const fullName = firstName || lastName ? `${firstName} ${lastName}`.trim() : "User";
@@ -281,31 +349,65 @@ const Header: React.FC = () => {
             )}
           </div>
         )}
-        <span className="header-user">Hello, {fullName}!</span>
+        <span className="header-user" onClick={() => navigate("/profile")} style={{ cursor: "pointer" }}>
+          Hello, {fullName}!
+        </span>
         {currentEvent && checkedIn ? (
           <div className="event-status">
             <span className="event-name">Checked into: {currentEvent.eventCode}</span>
+            {isCurrentEventLive && (
+              <button className={isOnBreak ? "back-button" : "break-button"} onClick={handleBreakToggle}>
+                {isOnBreak ? "I'm Back" : "Go On Break"}
+              </button>
+            )}
             <button className="leave-event-button" onClick={handleLeaveEvent}>
               Leave Event
             </button>
           </div>
         ) : (
-          <div className="event-dropdown" ref={eventDropdownRef}>
-            <button
-              className="check-in-button"
-              onClick={() => setIsEventDropdownOpen(!isEventDropdownOpen)}
-              disabled={isCheckingIn}
-            >
-              {isCheckingIn ? "Checking In..." : "Check into an Event"}
-            </button>
-            {isEventDropdownOpen && (
-              <ul className="event-dropdown-menu">
-                {checkInError && (
-                  <li className="event-dropdown-error">{checkInError}</li>
+          <div className="event-actions">
+            {!(checkedIn && isCurrentEventLive) && (
+              <div className="event-dropdown preload-dropdown" ref={preloadDropdownRef}>
+                <button
+                  className="preload-button"
+                  onClick={() => setIsPreloadDropdownOpen(!isPreloadDropdownOpen)}
+                  disabled={upcomingEvents.length === 0}
+                  aria-label="Preload Songs for Upcoming Events"
+                >
+                  Preload Songs
+                </button>
+                {isPreloadDropdownOpen && (
+                  <ul className="event-dropdown-menu">
+                    {upcomingEvents.map(event => (
+                      <li
+                        key={event.eventId}
+                        className="event-dropdown-item"
+                        onClick={() => handlePreloadSongs(event)}
+                      >
+                        {event.status}: {event.eventCode} ({event.scheduledDate})
+                      </li>
+                    ))}
+                  </ul>
                 )}
-                {events
-                  .filter(event => event.status === "Live" || event.status === "Upcoming")
-                  .map(event => (
+              </div>
+            )}
+            <div className="event-dropdown join-event-dropdown" ref={eventDropdownRef}>
+              <button
+                className="check-in-button"
+                onClick={() => setIsEventDropdownOpen(!isEventDropdownOpen)}
+                disabled={isCheckingIn || liveEvents.length === 0}
+                aria-label="Join Live Event"
+              >
+                {isCheckingIn ? "Joining..." : "Join Event"}
+              </button>
+              {isEventDropdownOpen && (
+                <ul className="event-dropdown-menu">
+                  {checkInError && (
+                    <li className="event-dropdown-error">
+                      {checkInError}
+                    </li>
+                  )}
+                  {liveEvents.map(event => (
                     <li
                       key={event.eventId}
                       className="event-dropdown-item"
@@ -314,11 +416,13 @@ const Header: React.FC = () => {
                       {event.status}: {event.eventCode} ({event.scheduledDate})
                     </li>
                   ))}
-              </ul>
-            )}
+                </ul>
+              )}
+            </div>
           </div>
         )}
         <button className="logout-button" onClick={handleLogout}>
+          <LogoutOutlined style={{ fontSize: '24px', marginRight: '8px' }} />
           Logout
         </button>
       </div>

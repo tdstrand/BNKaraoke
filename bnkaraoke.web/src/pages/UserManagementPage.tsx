@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_ROUTES } from "../config/apiConfig"; // Only API_ROUTES
-import "../pages/Dashboard.css";
+import { API_ROUTES } from "../config/apiConfig";
+import "./UserManagementPage.css";
 
 const UserManagementPage: React.FC = () => {
   const navigate = useNavigate();
   const [users, setUsers] = useState<any[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
+  const [pinCode, setPinCode] = useState<string>("");
+  const [pinError, setPinError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [newUser, setNewUser] = useState({ userName: "", password: "", firstName: "", lastName: "", roles: [] as string[] });
+  const [newUser, setNewUser] = useState({ userName: "", firstName: "", lastName: "", forcePasswordChange: true });
   const [editUser, setEditUser] = useState<any | null>(null);
 
   useEffect(() => {
@@ -29,12 +31,13 @@ const UserManagementPage: React.FC = () => {
     }
     fetchUsers(token);
     fetchRoles(token);
+    fetchPinCode(token);
   }, [navigate]);
 
   const fetchUsers = async (token: string) => {
     try {
-      console.log(`Fetching users from: ${API_ROUTES.USERS}`); // Updated
-      const response = await fetch(API_ROUTES.USERS, { // Updated
+      console.log(`Fetching users from: ${API_ROUTES.USERS}`);
+      const response = await fetch(API_ROUTES.USERS, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const responseText = await response.text();
@@ -52,8 +55,8 @@ const UserManagementPage: React.FC = () => {
 
   const fetchRoles = async (token: string) => {
     try {
-      console.log(`Fetching roles from: ${API_ROUTES.USER_ROLES}`); // Updated
-      const response = await fetch(API_ROUTES.USER_ROLES, { // Updated
+      console.log(`Fetching roles from: ${API_ROUTES.USER_ROLES}`);
+      const response = await fetch(API_ROUTES.USER_ROLES, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const responseText = await response.text();
@@ -69,22 +72,38 @@ const UserManagementPage: React.FC = () => {
     }
   };
 
+  const fetchPinCode = async (token: string) => {
+    try {
+      console.log(`Fetching PIN code from: ${API_ROUTES.REGISTRATION_SETTINGS}`);
+      const response = await fetch(API_ROUTES.REGISTRATION_SETTINGS, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const responseText = await response.text();
+      console.log("PIN Code Raw Response:", responseText);
+      if (!response.ok) throw new Error(`Failed to fetch PIN code: ${response.status} ${response.statusText} - ${responseText}`);
+      const data = JSON.parse(responseText);
+      setPinCode(data.pinCode);
+      setPinError(null);
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : "Unknown error");
+      console.error("Fetch PIN Code Error:", err);
+    }
+  };
+
   const handleAddUser = async () => {
     const token = localStorage.getItem("token") || "";
-    if (!newUser.userName || !newUser.password) {
-      alert("Please enter a username and password for the new user");
+    if (!newUser.userName) {
+      alert("Please enter a phone number for the new user");
       return;
     }
     try {
       const payload = {
-        phoneNumber: newUser.userName, // Matches RegisterDto
-        password: newUser.password,
+        phoneNumber: newUser.userName,
         firstName: newUser.firstName,
-        lastName: newUser.lastName,
-        roles: newUser.roles
+        lastName: newUser.lastName
       };
       console.log("Add User Payload:", JSON.stringify(payload));
-      const response = await fetch(API_ROUTES.REGISTER, { // Updated
+      const response = await fetch(API_ROUTES.ADD_USER, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -95,8 +114,8 @@ const UserManagementPage: React.FC = () => {
       const responseText = await response.text();
       console.log("Add User Raw Response:", responseText);
       if (!response.ok) throw new Error(`Failed to add user: ${response.status} ${response.statusText} - ${responseText}`);
-      alert("User added successfully!");
-      setNewUser({ userName: "", password: "", firstName: "", lastName: "", roles: [] });
+      alert("User added successfully! Temporary password: Pwd1234.");
+      setNewUser({ userName: "", firstName: "", lastName: "", forcePasswordChange: true });
       fetchUsers(token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -109,7 +128,7 @@ const UserManagementPage: React.FC = () => {
     const token = localStorage.getItem("token") || "";
     try {
       console.log(`Updating user: ${editUser.userName}`);
-      const response = await fetch(API_ROUTES.UPDATE_USER, { // Updated
+      const response = await fetch(API_ROUTES.UPDATE_USER, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -141,7 +160,7 @@ const UserManagementPage: React.FC = () => {
     if (!window.confirm("Are you sure you want to delete this user?")) return;
     try {
       console.log(`Deleting user ${userId}`);
-      const response = await fetch(API_ROUTES.DELETE_USER, { // Updated
+      const response = await fetch(API_ROUTES.DELETE_USER, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -161,27 +180,66 @@ const UserManagementPage: React.FC = () => {
     }
   };
 
+  const handleForcePasswordChange = async (userId: string, mustChangePassword: boolean) => {
+    const token = localStorage.getItem("token") || "";
+    try {
+      console.log(`Setting MustChangePassword to ${mustChangePassword} for user ${userId}`);
+      const response = await fetch(`${API_ROUTES.FORCE_PASSWORD_CHANGE}/${userId}/force-password-change`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ mustChangePassword }),
+      });
+      const responseText = await response.text();
+      console.log("Force Password Change Raw Response:", responseText);
+      if (!response.ok) throw new Error(`Failed to update password change requirement: ${response.status} ${response.statusText} - ${responseText}`);
+      alert(`Password change requirement ${mustChangePassword ? "enabled" : "disabled"} successfully!`);
+      fetchUsers(token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+      console.error("Force Password Change Error:", err);
+    }
+  };
+
+  const handleUpdatePinCode = async () => {
+    if (!pinCode || pinCode.length !== 6 || !/^\d+$/.test(pinCode)) {
+      setPinError("PIN code must be exactly 6 digits");
+      return;
+    }
+    const token = localStorage.getItem("token") || "";
+    try {
+      console.log(`Updating PIN code to: ${pinCode}`);
+      const response = await fetch(API_ROUTES.REGISTRATION_SETTINGS, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ pinCode }),
+      });
+      const responseText = await response.text();
+      console.log("Update PIN Code Raw Response:", responseText);
+      if (!response.ok) throw new Error(`Failed to update PIN code: ${response.status} ${response.statusText} - ${responseText}`);
+      alert("PIN code updated successfully!");
+      setPinError(null);
+      fetchPinCode(token);
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : "Unknown error");
+      console.error("Update PIN Code Error:", err);
+    }
+  };
+
   const openEditUser = (user: any) => {
     setEditUser({ ...user, password: "" });
   };
 
   return (
-    <div className="dashboard-container">
-      <div className="dashboard-navbar">
-        <button
-          className="dashboard-button return-button"
-          onClick={() => navigate("/dashboard")}
-        >
-          Return to Dashboard
-        </button>
-        <span className="dashboard-user">User Management</span>
-        <button className="logout-button" onClick={() => { localStorage.clear(); navigate("/"); }}>
-          Logout
-        </button>
-      </div>
-      <h1 className="dashboard-title">User Management</h1>
+    <div className="user-management-container">
+      <h1 className="user-management-title">User Management</h1>
       <div className="card-container">
-        <section className="dashboard-card user-management-section">
+        <section className="user-management-card">
           <h2 className="section-title">Edit Users</h2>
           {error && <p className="error-text">{error}</p>}
           {users.length > 0 ? (
@@ -190,19 +248,25 @@ const UserManagementPage: React.FC = () => {
                 <li key={user.id} className="user-item">
                   <span className="user-name">{`${user.userName} (${user.firstName} ${user.lastName})`}</span>
                   <button
-                    className="dashboard-button edit-button"
+                    className="user-action-button edit-button"
                     onClick={() => openEditUser(user)}
                   >
                     Edit
+                  </button>
+                  <button
+                    className={`user-action-button ${user.mustChangePassword ? "disable-button" : "enable-button"}`}
+                    onClick={() => handleForcePasswordChange(user.id, !user.mustChangePassword)}
+                  >
+                    {user.mustChangePassword ? "Disable Password Change" : "Force Password Change"}
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="dashboard-text">No users found.</p>
+            <p className="user-management-text">No users found.</p>
           )}
         </section>
-        <section className="dashboard-card add-user-card">
+        <section className="user-management-card add-user-card">
           <h2 className="section-title">Add New User</h2>
           <div className="add-user-form">
             <label className="form-label">Phone Number</label>
@@ -210,16 +274,8 @@ const UserManagementPage: React.FC = () => {
               type="text"
               value={newUser.userName}
               onChange={(e) => setNewUser({ ...newUser, userName: e.target.value })}
-              placeholder="Phone Number"
-              className="search-bar-input"
-            />
-            <label className="form-label">Password</label>
-            <input
-              type="password"
-              value={newUser.password}
-              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              placeholder="Password"
-              className="search-bar-input"
+              placeholder="Phone Number (e.g., 1234567890)"
+              className="form-input"
             />
             <label className="form-label">First Name</label>
             <input
@@ -227,7 +283,7 @@ const UserManagementPage: React.FC = () => {
               value={newUser.firstName}
               onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
               placeholder="First Name"
-              className="search-bar-input"
+              className="form-input"
             />
             <label className="form-label">Last Name</label>
             <input
@@ -235,28 +291,28 @@ const UserManagementPage: React.FC = () => {
               value={newUser.lastName}
               onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
               placeholder="Last Name"
-              className="search-bar-input"
+              className="form-input"
             />
-            <label className="form-label">Roles</label>
-            <div className="role-checkboxes">
-              {roles.map((role) => (
-                <label key={role} className="role-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={newUser.roles.includes(role)}
-                    onChange={(e) => {
-                      const updatedRoles = e.target.checked
-                        ? [...newUser.roles, role]
-                        : newUser.roles.filter((r) => r !== role);
-                      setNewUser({ ...newUser, roles: updatedRoles });
-                    }}
-                  />
-                  {role}
-                </label>
-              ))}
-            </div>
-            <button className="dashboard-button" onClick={handleAddUser}>
+            <button className="user-action-button add-button" onClick={handleAddUser}>
               Add User
+            </button>
+          </div>
+        </section>
+        <section className="user-management-card pin-code-card">
+          <h2 className="section-title">Manage Registration PIN</h2>
+          {pinError && <p className="error-text">{pinError}</p>}
+          <div className="pin-code-form">
+            <label className="form-label">Current PIN Code</label>
+            <input
+              type="text"
+              value={pinCode}
+              onChange={(e) => setPinCode(e.target.value)}
+              placeholder="Enter 6-digit PIN"
+              className="form-input"
+              maxLength={6}
+            />
+            <button className="user-action-button save-button" onClick={handleUpdatePinCode}>
+              Save PIN
             </button>
           </div>
         </section>
@@ -273,7 +329,7 @@ const UserManagementPage: React.FC = () => {
                 value={editUser.userName}
                 onChange={(e) => setEditUser({ ...editUser, userName: e.target.value })}
                 placeholder="Phone Number"
-                className="search-bar-input"
+                className="form-input"
               />
               <label className="form-label">Password (leave blank to keep current)</label>
               <input
@@ -281,7 +337,7 @@ const UserManagementPage: React.FC = () => {
                 value={editUser.password || ""}
                 onChange={(e) => setEditUser({ ...editUser, password: e.target.value })}
                 placeholder="New Password (optional)"
-                className="search-bar-input"
+                className="form-input"
               />
               <label className="form-label">First Name</label>
               <input
@@ -289,7 +345,7 @@ const UserManagementPage: React.FC = () => {
                 value={editUser.firstName}
                 onChange={(e) => setEditUser({ ...editUser, firstName: e.target.value })}
                 placeholder="First Name"
-                className="search-bar-input"
+                className="form-input"
               />
               <label className="form-label">Last Name</label>
               <input
@@ -297,7 +353,7 @@ const UserManagementPage: React.FC = () => {
                 value={editUser.lastName}
                 onChange={(e) => setEditUser({ ...editUser, lastName: e.target.value })}
                 placeholder="Last Name"
-                className="search-bar-input"
+                className="form-input"
               />
               <label className="form-label">Roles</label>
               <div className="role-checkboxes">
@@ -318,17 +374,17 @@ const UserManagementPage: React.FC = () => {
                 ))}
               </div>
               <div className="modal-buttons">
-                <button className="dashboard-button" onClick={handleUpdateUser}>
+                <button className="user-action-button update-button" onClick={handleUpdateUser}>
                   Update
                 </button>
                 <button
-                  className="dashboard-button reject-button"
+                  className="user-action-button delete-button"
                   onClick={() => handleDeleteUser(editUser.id)}
                 >
                   Delete
                 </button>
                 <button
-                  className="dashboard-button"
+                  className="user-action-button cancel-button"
                   onClick={() => setEditUser(null)}
                 >
                   Cancel

@@ -18,6 +18,8 @@ namespace BNKaraoke.Api.Data
         public DbSet<EventQueue> EventQueues { get; set; }
         public DbSet<EventAttendance> EventAttendances { get; set; }
         public DbSet<EventAttendanceHistory> EventAttendanceHistories { get; set; }
+        public DbSet<RegistrationSettings> RegistrationSettings { get; set; }
+        public DbSet<PinChangeHistory> PinChangeHistory { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

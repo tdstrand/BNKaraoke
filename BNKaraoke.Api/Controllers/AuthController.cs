@@ -12,6 +12,9 @@ using System.Linq;
 using Newtonsoft.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Identity;
+using System;
+using Microsoft.EntityFrameworkCore;
+using BNKaraoke.Api.Data;
 
 namespace BNKaraoke.Api.Controllers
 {
@@ -24,19 +27,22 @@ namespace BNKaraoke.Api.Controllers
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
         private readonly ILogger<AuthController> _logger;
+        private readonly ApplicationDbContext _context;
 
         public AuthController(
             UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager,
             RoleManager<IdentityRole> roleManager,
             IConfiguration configuration,
-            ILogger<AuthController> logger)
+            ILogger<AuthController> logger,
+            ApplicationDbContext context)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _roleManager = roleManager;
             _configuration = configuration;
             _logger = logger;
+            _context = context;
         }
 
         [HttpGet("test")]
@@ -63,6 +69,23 @@ namespace BNKaraoke.Api.Controllers
                 return BadRequest(new { error = "PhoneNumber is required" });
             }
 
+            // Validate PIN code for non-admin registration
+            if (!User.IsInRole("User Manager"))
+            {
+                if (string.IsNullOrEmpty(model.PinCode))
+                {
+                    _logger.LogWarning("Register: PinCode is required for non-admin registration");
+                    return BadRequest(new { error = "PinCode is required" });
+                }
+
+                var registrationSettings = await _context.RegistrationSettings.FirstOrDefaultAsync();
+                if (registrationSettings == null || registrationSettings.CurrentPin != model.PinCode)
+                {
+                    _logger.LogWarning("Register: Invalid PinCode provided");
+                    return BadRequest(new { error = "Invalid PIN code" });
+                }
+            }
+
             var user = new ApplicationUser
             {
                 UserName = model.PhoneNumber,
@@ -70,9 +93,10 @@ namespace BNKaraoke.Api.Controllers
                 NormalizedUserName = _userManager.NormalizeName(model.PhoneNumber),
                 FirstName = model.FirstName,
                 LastName = model.LastName,
-                EmailConfirmed = true
+                EmailConfirmed = true,
+                MustChangePassword = model.MustChangePassword ?? false
             };
-            _logger.LogInformation("Register: Creating user - UserName: {UserName}, PhoneNumber: {PhoneNumber}", user.UserName, user.PhoneNumber);
+            _logger.LogInformation("Register: Creating user - UserName: {UserName}, PhoneNumber: {PhoneNumber}, MustChangePassword: {MustChangePassword}", user.UserName, user.PhoneNumber, user.MustChangePassword);
 
             var result = await _userManager.CreateAsync(user, model.Password);
             if (!result.Succeeded)
@@ -119,7 +143,16 @@ namespace BNKaraoke.Api.Controllers
             var token = GenerateJwtToken(user, roles);
 
             _logger.LogInformation("Login successful for UserName={UserName}", model.UserName);
-            return Ok(new { message = "Success", token, firstName = user.FirstName, lastName = user.LastName, roles });
+            return Ok(new
+            {
+                message = "Success",
+                token,
+                userId = user.Id, // Added userId to response
+                firstName = user.FirstName,
+                lastName = user.LastName,
+                roles,
+                mustChangePassword = user.MustChangePassword
+            });
         }
 
         [HttpGet("users")]
@@ -138,7 +171,8 @@ namespace BNKaraoke.Api.Controllers
                     email = user.Email ?? "N/A",
                     firstName = user.FirstName,
                     lastName = user.LastName,
-                    roles = roles.ToArray()
+                    roles = roles.ToArray(),
+                    mustChangePassword = user.MustChangePassword
                 });
             }
             _logger.LogInformation("Returning {UserCount} users", userList.Count);
@@ -288,6 +322,218 @@ namespace BNKaraoke.Api.Controllers
             return Ok(new { message = "User updated successfully" });
         }
 
+        [HttpPost("add-user")]
+        [Authorize(Policy = "UserManager")]
+        public async Task<IActionResult> AddUser([FromBody] AddUserDto model)
+        {
+            _logger.LogInformation("AddUser: Received payload - {Payload}", JsonConvert.SerializeObject(model));
+            if (model == null || string.IsNullOrEmpty(model.PhoneNumber))
+            {
+                _logger.LogWarning("AddUser: Model or PhoneNumber is null");
+                return BadRequest(new { error = "PhoneNumber is required" });
+            }
+
+            var user = new ApplicationUser
+            {
+                UserName = model.PhoneNumber,
+                PhoneNumber = model.PhoneNumber,
+                NormalizedUserName = _userManager.NormalizeName(model.PhoneNumber),
+                FirstName = model.FirstName,
+                LastName = model.LastName,
+                EmailConfirmed = true,
+                MustChangePassword = true
+            };
+            _logger.LogInformation("AddUser: Creating user - UserName: {UserName}, PhoneNumber: {PhoneNumber}, MustChangePassword: true", user.UserName, user.PhoneNumber);
+
+            var result = await _userManager.CreateAsync(user, "Pwd1234.");
+            if (!result.Succeeded)
+            {
+                _logger.LogError("AddUser: Failed to create user - Errors: {Errors}", string.Join(", ", result.Errors.Select(e => e.Description)));
+                return BadRequest(new { error = "User creation failed", details = result.Errors });
+            }
+
+            var createdUser = await _userManager.FindByNameAsync(model.PhoneNumber);
+            if (createdUser == null)
+            {
+                _logger.LogError("AddUser: Failed to find newly created user - UserName: {UserName}", model.PhoneNumber);
+                return StatusCode(500, new { error = "Failed to find created user" });
+            }
+
+            // Assign "Singer" role by default
+            var roles = new List<string> { "Singer" };
+            var addResult = await _userManager.AddToRolesAsync(createdUser, roles);
+            if (!addResult.Succeeded)
+            {
+                _logger.LogError("AddUser: Failed to add roles for UserId={UserId} - Errors: {Errors}", createdUser.Id, string.Join(", ", addResult.Errors.Select(e => e.Description)));
+                return BadRequest(new { error = "Failed to add roles", details = addResult.Errors });
+            }
+
+            _logger.LogInformation("AddUser: User {UserName} created with role: Singer", createdUser.UserName);
+            return Ok(new { message = "User added successfully" });
+        }
+
+        [HttpPatch("users/{userId}/force-password-change")]
+        [Authorize(Policy = "UserManager")]
+        public async Task<IActionResult> ForcePasswordChange(string userId, [FromBody] ForcePasswordChangeDto model)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("ForcePasswordChange: User not found - UserId={UserId}", userId);
+                return NotFound(new { error = "User not found" });
+            }
+
+            user.MustChangePassword = model.MustChangePassword;
+            var updateResult = await _userManager.UpdateAsync(user);
+            if (!updateResult.Succeeded)
+            {
+                _logger.LogError("ForcePasswordChange: Failed to update user UserId={UserId} - Errors: {Errors}", userId, string.Join(", ", updateResult.Errors.Select(e => e.Description)));
+                return BadRequest(new { error = "Failed to update user", details = updateResult.Errors });
+            }
+
+            _logger.LogInformation("ForcePasswordChange: Updated MustChangePassword to {MustChangePassword} for user: {UserName}", model.MustChangePassword, user.UserName);
+            return Ok(new { message = "User updated successfully" });
+        }
+
+        [HttpGet("user-details")]
+        [Authorize]
+        public async Task<IActionResult> GetUserDetails()
+        {
+            var userName = User.Identity?.Name;
+            if (string.IsNullOrEmpty(userName))
+            {
+                _logger.LogWarning("GetUserDetails: User identity not found");
+                return Unauthorized(new { error = "User identity not found" });
+            }
+
+            var user = await _userManager.FindByNameAsync(userName);
+            if (user == null)
+            {
+                _logger.LogWarning("GetUserDetails: User not found - UserName={UserName}", userName);
+                return NotFound(new { error = "User not found" });
+            }
+
+            var roles = await _userManager.GetRolesAsync(user);
+            return Ok(new
+            {
+                id = user.Id,
+                userName = user.UserName,
+                firstName = user.FirstName,
+                lastName = user.LastName,
+                mustChangePassword = user.MustChangePassword,
+                roles
+            });
+        }
+
+        [HttpPost("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto model)
+        {
+            var userName = User.Identity?.Name;
+            if (string.IsNullOrEmpty(userName))
+            {
+                _logger.LogWarning("ChangePassword: User identity not found");
+                return Unauthorized(new { error = "User identity not found" });
+            }
+
+            var user = await _userManager.FindByNameAsync(userName);
+            if (user == null)
+            {
+                _logger.LogWarning("ChangePassword: User not found - UserName={UserName}", userName);
+                return NotFound(new { error = "User not found" });
+            }
+
+            // If MustChangePassword is true, don't require current password (forced change)
+            if (!user.MustChangePassword)
+            {
+                if (string.IsNullOrEmpty(model.CurrentPassword))
+                {
+                    _logger.LogWarning("ChangePassword: Current password required for user {UserName}", user.UserName);
+                    return BadRequest(new { error = "Current password is required" });
+                }
+
+                var isPasswordValid = await _userManager.CheckPasswordAsync(user, model.CurrentPassword);
+                if (!isPasswordValid)
+                {
+                    _logger.LogWarning("ChangePassword: Invalid current password for user {UserName}", user.UserName);
+                    return BadRequest(new { error = "Invalid current password" });
+                }
+            }
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await _userManager.ResetPasswordAsync(user, token, model.NewPassword);
+            if (!result.Succeeded)
+            {
+                _logger.LogError("ChangePassword: Failed to change password for user {UserName} - Errors: {Errors}", user.UserName, string.Join(", ", result.Errors.Select(e => e.Description)));
+                return BadRequest(new { error = "Failed to change password", details = result.Errors });
+            }
+
+            // Reset MustChangePassword after successful change
+            if (user.MustChangePassword)
+            {
+                user.MustChangePassword = false;
+                var updateResult = await _userManager.UpdateAsync(user);
+                if (!updateResult.Succeeded)
+                {
+                    _logger.LogError("ChangePassword: Failed to reset MustChangePassword for user {UserName} - Errors: {Errors}", user.UserName, string.Join(", ", updateResult.Errors.Select(e => e.Description)));
+                    return BadRequest(new { error = "Failed to update user", details = updateResult.Errors });
+                }
+            }
+
+            _logger.LogInformation("ChangePassword: Password changed successfully for user: {UserName}", user.UserName);
+            return Ok(new { message = "Password changed successfully" });
+        }
+
+        [HttpGet("registration-settings")]
+        [Authorize(Policy = "UserManager")]
+        public async Task<IActionResult> GetRegistrationSettings()
+        {
+            var settings = await _context.RegistrationSettings.FirstOrDefaultAsync();
+            if (settings == null)
+            {
+                _logger.LogWarning("GetRegistrationSettings: No settings found");
+                return NotFound(new { error = "Registration settings not found" });
+            }
+
+            return Ok(new { pinCode = settings.CurrentPin });
+        }
+
+        [HttpPatch("registration-settings")]
+        [Authorize(Policy = "UserManager")]
+        public async Task<IActionResult> UpdateRegistrationSettings([FromBody] UpdateRegistrationSettingsDto model)
+        {
+            if (string.IsNullOrEmpty(model.PinCode) || model.PinCode.Length != 6 || !model.PinCode.All(char.IsDigit))
+            {
+                _logger.LogWarning("UpdateRegistrationSettings: Invalid PinCode - {PinCode}", model.PinCode);
+                return BadRequest(new { error = "PIN code must be exactly 6 digits" });
+            }
+
+            var settings = await _context.RegistrationSettings.FirstOrDefaultAsync();
+            if (settings == null)
+            {
+                settings = new RegistrationSettings { Id = 1, CurrentPin = model.PinCode };
+                _context.RegistrationSettings.Add(settings);
+            }
+            else
+            {
+                settings.CurrentPin = model.PinCode;
+                _context.RegistrationSettings.Update(settings);
+            }
+
+            // Log the PIN change in PinChangeHistory
+            var pinChange = new PinChangeHistory
+            {
+                Pin = model.PinCode,
+                ChangedBy = User.Identity?.Name ?? "Unknown",
+                ChangedAt = DateTime.UtcNow
+            };
+            _context.PinChangeHistory.Add(pinChange);
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("UpdateRegistrationSettings: PIN code updated to {PinCode} by {UserName}", model.PinCode, User.Identity?.Name ?? "Unknown");
+            return Ok(new { message = "PIN code updated successfully" });
+        }
+
         private string GenerateJwtToken(ApplicationUser user, IList<string> roles)
         {
             var issuer = _configuration["JwtSettings:Issuer"];
@@ -300,11 +546,17 @@ namespace BNKaraoke.Api.Controllers
                 throw new InvalidOperationException("JWT configuration is missing.");
             }
 
+            if (string.IsNullOrEmpty(user.UserName))
+            {
+                _logger.LogError("GenerateJwtToken: UserName is null for user");
+                throw new InvalidOperationException("UserName cannot be null");
+            }
+
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
             var claims = new List<Claim>
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.UserName ?? throw new InvalidOperationException("UserName cannot be null")),
+                new Claim(JwtRegisteredClaimNames.Sub, user.UserName),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
                 new Claim("firstName", user.FirstName ?? string.Empty),
                 new Claim("lastName", user.LastName ?? string.Empty)
@@ -351,5 +603,28 @@ namespace BNKaraoke.Api.Controllers
         public required string FirstName { get; set; }
         public required string LastName { get; set; }
         public required string[] Roles { get; set; }
+    }
+
+    public class AddUserDto
+    {
+        public required string PhoneNumber { get; set; }
+        public required string FirstName { get; set; }
+        public required string LastName { get; set; }
+    }
+
+    public class ForcePasswordChangeDto
+    {
+        public required bool MustChangePassword { get; set; }
+    }
+
+    public class ChangePasswordDto
+    {
+        public string? CurrentPassword { get; set; }
+        public required string NewPassword { get; set; }
+    }
+
+    public class UpdateRegistrationSettingsDto
+    {
+        public required string PinCode { get; set; }
     }
 }

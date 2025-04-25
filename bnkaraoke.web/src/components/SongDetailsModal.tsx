@@ -10,7 +10,10 @@ interface SongDetailsModalProps {
   isInQueue: boolean;
   onClose: () => void;
   onToggleFavorite: (song: Song) => Promise<void>;
-  onAddToQueue: (song: Song, eventId: number) => Promise<void>;
+  onAddToQueue?: (song: Song, eventId: number) => Promise<void>;
+  onDeleteFromQueue?: (eventId: number, queueId: number) => Promise<void>; // New prop for deleting
+  eventId?: number; // Optional eventId for deleting
+  queueId?: number; // Optional queueId for deleting
 }
 
 const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
@@ -20,13 +23,17 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   onClose,
   onToggleFavorite,
   onAddToQueue,
+  onDeleteFromQueue,
+  eventId,
+  queueId,
 }) => {
   const navigate = useNavigate();
   const [events, setEvents] = useState<any[]>([]);
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showEventSelectionModal, setShowEventSelectionModal] = useState(false);
-  const [userName, setUserName] = useState<string | null>(localStorage.getItem("userName")); // Use userName instead of userId
+  const [userName, setUserName] = useState<string | null>(localStorage.getItem("userName"));
 
   // Fetch events on component mount
   useEffect(() => {
@@ -58,6 +65,11 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   }, [navigate]);
 
   const handleAddToQueue = async (eventId: number) => {
+    if (!onAddToQueue) {
+      setError("Cannot add to queue: Functionality not available.");
+      return;
+    }
+
     setIsAddingToQueue(true);
     setError(null);
 
@@ -75,6 +87,31 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
       }
     } finally {
       setIsAddingToQueue(false);
+    }
+  };
+
+  const handleDeleteFromQueue = async () => {
+    if (!onDeleteFromQueue || !eventId || !queueId) {
+      setError("Cannot delete from queue: Missing information.");
+      return;
+    }
+
+    setIsDeleting(true);
+    setError(null);
+
+    try {
+      await onDeleteFromQueue(eventId, queueId);
+      onClose();
+    } catch (err) {
+      console.error("SongDetailsModal - Delete from queue error:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to delete song from queue. Please try again.";
+      setError(errorMessage);
+      if (errorMessage.includes("User not found")) {
+        localStorage.clear();
+        navigate("/");
+      }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -111,13 +148,23 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
             >
               {isFavorite ? "Remove from Favorites" : "Add to Favorites"}
             </button>
-            <button
-              onClick={handleOpenEventSelection}
-              className="action-button"
-              disabled={isAddingToQueue || events.length === 0 || !userName}
-            >
-              {isAddingToQueue ? "Adding..." : "Add to Queue"}
-            </button>
+            {isInQueue && onDeleteFromQueue && eventId && queueId ? (
+              <button
+                onClick={handleDeleteFromQueue}
+                className="action-button"
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Deleting..." : "Remove from Queue"}
+              </button>
+            ) : (
+              <button
+                onClick={handleOpenEventSelection}
+                className="action-button"
+                disabled={isAddingToQueue || events.length === 0 || !userName || !onAddToQueue || isInQueue}
+              >
+                {isAddingToQueue ? "Adding..." : "Add to Queue"}
+              </button>
+            )}
           </div>
           <div className="modal-footer">
             <button onClick={onClose} className="action-button">

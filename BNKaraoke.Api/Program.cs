@@ -13,6 +13,9 @@ using Microsoft.AspNetCore.Diagnostics;
 using BNKaraoke.Api.Controllers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc;
+using System.Threading.Tasks;
+using System.Linq;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,6 +47,7 @@ builder.Services.AddLogging(logging =>
     logging.SetMinimumLevel(LogLevel.Debug);
     logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Debug);
     logging.AddFilter("Microsoft.AspNetCore", LogLevel.Debug);
+    logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.Debug);
 });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -76,7 +80,7 @@ builder.Services.AddAuthentication(options =>
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
-.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+.AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
     {
@@ -87,7 +91,59 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
         ValidAudience = builder.Configuration["JwtSettings:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString)),
-        NameClaimType = "sub"
+        NameClaimType = ClaimTypes.Name, // Map to standard Name claim
+        RoleClaimType = ClaimTypes.Role
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogDebug("OnTokenValidated event fired.");
+
+            var claims = context.Principal?.Claims;
+            if (claims != null)
+            {
+                logger.LogDebug("Token validated. Claims: {Claims}", string.Join(", ", claims.Select(c => $"{c.Type}: {c.Value}")));
+
+                // Try different variations of the "sub" claim
+                var subClaim = claims.FirstOrDefault(c => c.Type == "sub")?.Value
+                            ?? claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value
+                            ?? claims.FirstOrDefault(c => c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+                if (!string.IsNullOrEmpty(subClaim))
+                {
+                    logger.LogDebug("Sub claim found: {SubClaim}", subClaim);
+                    var identity = context.Principal?.Identity as ClaimsIdentity;
+                    if (identity != null && !identity.HasClaim(c => c.Type == ClaimTypes.Name))
+                    {
+                        identity.AddClaim(new Claim(ClaimTypes.Name, subClaim));
+                        logger.LogDebug("Added Name claim with value: {SubClaim}", subClaim);
+                    }
+                }
+                else
+                {
+                    logger.LogWarning("Sub claim not found in token");
+                }
+            }
+            else
+            {
+                logger.LogWarning("No claims found in token");
+            }
+            return Task.CompletedTask;
+        },
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogError("Authentication failed: {Exception}", context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnMessageReceived = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogDebug("OnMessageReceived event fired. Token: {Token}", context.Token);
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -122,10 +178,10 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Add controllers and ensure discovery
+// Add controllers without LowercaseUrls and LowercaseQueryStrings
 builder.Services.AddControllers()
-    .AddApplicationPart(typeof(EventController).Assembly)
-    .AddControllersAsServices();
+.AddApplicationPart(typeof(EventController).Assembly)
+.AddControllersAsServices();
 
 // Explicitly register EventController
 builder.Services.AddTransient<EventController>();
@@ -255,6 +311,19 @@ app.UseCors("AllowNetwork");
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Add middleware for case-insensitive routing (for older ASP.NET Core versions)
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    // Safely handle null Path.Value and QueryString.Value
+    var pathValue = context.Request.Path.Value ?? "";
+    var queryValue = context.Request.QueryString.Value ?? "";
+    context.Request.Path = pathValue.ToLower();
+    context.Request.QueryString = new QueryString(queryValue.ToLower());
+    logger.LogDebug("Normalized request path to lowercase: {Path}, Query: {Query}", context.Request.Path, context.Request.QueryString);
+    await next.Invoke();
+});
+
 // Add logging middleware for request/response lifecycle
 app.Use(async (context, next) =>
 {
@@ -272,6 +341,9 @@ using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+    await context.Database.MigrateAsync();
 
     var roles = new[] { "Singer", "Karaoke DJ", "User Manager", "Queue Manager", "Song Manager", "Event Manager", "Application Manager" };
     foreach (var role in roles)
@@ -284,8 +356,8 @@ using (var scope = app.Services.CreateScope())
 
     var users = new[]
     {
-        new { PhoneNumber = "12345678901", Roles = new[] {"Singer"}, FirstName = "Singer", LastName = "One" },
-        new { PhoneNumber = "12345678905", Roles = new[] {"Song Manager"}, FirstName = "Song", LastName = "Five" }
+        new { PhoneNumber = "1234567891", Roles = new[] {"Singer"}, FirstName = "Singer", LastName = "One" },
+        new { PhoneNumber = "1234567895", Roles = new[] {"Song Manager"}, FirstName = "Song", LastName = "Five" }
     };
 
     foreach (var user in users)

@@ -1,0 +1,228 @@
+.user-management-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: #f5f5f5;
+    padding: 20px;
+  }
+  
+  .user-management-title {
+    font-size: 28px;
+    color: #333;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  
+  .card-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+  }
+  
+  .user-management-card {
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 500px;
+  }
+  
+  .section-title {
+    font-size: 20px;
+    color: #333;
+    margin-bottom: 15px;
+    text-align: center;
+  }
+  
+  .user-management-text {
+    color: #555;
+    text-align: center;
+  }
+  
+  .error-text {
+    color: #e74c3c;
+    margin-bottom: 15px;
+    text-align: center;
+  }
+  
+  .user-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  
+  .user-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+  }
+  
+  .user-item:last-child {
+    border-bottom: none;
+  }
+  
+  .user-name {
+    color: #333;
+  }
+  
+  .user-action-button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+  }
+  
+  .edit-button {
+    background-color: #3498db;
+    color: white;
+  }
+  
+  .edit-button:hover {
+    background-color: #2980b9;
+  }
+  
+  .enable-button {
+    background-color: #2ecc71;
+    color: white;
+  }
+  
+  .enable-button:hover {
+    background-color: #27ae60;
+  }
+  
+  .disable-button {
+    background-color: #e74c3c;
+    color: white;
+  }
+  
+  .disable-button:hover {
+    background-color: #c0392b;
+  }
+  
+  .add-user-card, .pin-code-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .add-user-form, .pin-code-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .form-label {
+    font-size: 16px;
+    color: #333;
+    margin-bottom: 5px;
+  }
+  
+  .form-input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+  
+  .role-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .role-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #333;
+  }
+  
+  .add-button {
+    background-color: #2ecc71;
+    color: white;
+  }
+  
+  .add-button:hover {
+    background-color: #27ae60;
+  }
+  
+  .save-button {
+    background-color: #3498db;
+    color: white;
+  }
+  
+  .save-button:hover {
+    background-color: #2980b9;
+  }
+  
+  .update-button {
+    background-color: #3498db;
+    color: white;
+  }
+  
+  .update-button:hover {
+    background-color: #2980b9;
+  }
+  
+  .delete-button {
+    background-color: #e74c3c;
+    color: white;
+  }
+  
+  .delete-button:hover {
+    background-color: #c0392b;
+  }
+  
+  .cancel-button {
+    background-color: #ccc;
+    color: #333;
+  }
+  
+  .cancel-button:hover {
+    background-color: #bbb;
+  }
+  
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+  
+  .modal-content {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  
+  .modal-title {
+    font-size: 20px;
+    color: #333;
+    margin-bottom: 15px;
+    text-align: center;
+  }
+  
+  .modal-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 20px;
+  }

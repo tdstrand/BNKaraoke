@@ -2,7 +2,8 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: #f5f5f5;
+  background: linear-gradient(to bottom, #1e3a8a, #3b82f6); /* Gradient background from Login */
+  color: white; /* White text for contrast */
 }
 
 .dashboard-content {
@@ -24,9 +25,16 @@
 .search-bar {
   flex: 1;
   padding: 10px;
-  border: 1px solid #ccc;
+  border: none;
   border-radius: 4px;
   font-size: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 0 5px rgba(34, 211, 238, 0.3); /* Glowing shadow */
+}
+
+.search-bar:focus {
+  outline: none;
+  box-shadow: 0 0 10px #22d3ee; /* Cyan glow on focus */
 }
 
 .search-button, .reset-button {
@@ -38,35 +46,36 @@
 }
 
 .search-button {
-  background-color: #3498db;
-  color: white;
+  background-color: #22d3ee; /* Cyan */
+  color: black;
 }
 
 .search-button:hover {
-  background-color: #2980b9;
+  background-color: #06b6d4; /* Darker cyan */
 }
 
 .reset-button {
-  background-color: #e74c3c;
+  background-color: #f97316; /* Orange from Login */
   color: white;
 }
 
 .reset-button:hover {
-  background-color: #c0392b;
+  background-color: #e06614; /* Darker orange */
 }
 
 .browse-songs-button {
   padding: 10px 15px;
-  background-color: #2ecc71;
+  background-color: #2ecc71; /* Green */
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 16px;
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.5); /* Glowing shadow */
 }
 
 .browse-songs-button:hover {
-  background-color: #27ae60;
+  background-color: #27ae60; /* Darker green */
 }
 
 .main-content {
@@ -75,18 +84,28 @@
   flex: 1;
 }
 
-.favorites-section {
-  flex: 1;
-  background-color: #ffffff;
+.favorites-section, .queue-panel, .global-queue-panel {
+  background: rgba(0, 0, 0, 0.3); /* Semi-transparent black background */
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.5); /* Glowing shadow */
+  color: white; /* White text */
 }
 
-.favorites-section h2 {
+.main-content:has(.global-queue-panel) > * {
+  flex: 1 1 33.33%;
+}
+
+.main-content:not(:has(.global-queue-panel)) > * {
+  flex: 1 1 50%;
+}
+
+/* Remove fixed width to allow flex to control the size */
+.favorites-section h2, .queue-panel h2, .global-queue-panel h2 {
   margin-top: 0;
   font-size: 20px;
-  color: #333;
+  color: #22d3ee; /* Cyan text */
+  text-shadow: 0 0 10px #22d3ee; /* Glowing text shadow */
 }
 
 .favorites-list {
@@ -97,7 +116,7 @@
 
 .favorite-song {
   padding: 10px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2); /* Light border */
   cursor: pointer;
 }
 
@@ -106,21 +125,14 @@
 }
 
 .favorite-song:hover {
-  background-color: #f9f9f9;
-}
-
-.queue-panel {
-  width: 300px;
-  background-color: #ffffff;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background-color: rgba(255, 255, 255, 0.1); /* Light hover effect */
 }
 
 .event-queue h3 {
   margin-top: 0;
   font-size: 18px;
-  color: #333;
+  color: #22d3ee; /* Cyan text */
+  text-shadow: 0 0 5px #22d3ee; /* Subtle glow */
 }
 
 .queue-song {
@@ -128,15 +140,20 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer; /* Indicate clickable */
 }
 
 .queue-song:last-child {
   border-bottom: none;
 }
 
+.queue-song:hover {
+  background-color: rgba(255, 255, 255, 0.1); /* Hover effect */
+}
+
 .request-badge {
-  background-color: #e74c3c;
+  background-color: #f97316; /* Orange */
   color: white;
   padding: 2px 8px;
   border-radius: 12px;
@@ -154,14 +171,15 @@
   border: none;
   cursor: pointer;
   font-size: 16px;
+  color: white;
 }
 
 .actions-dropdown {
   position: absolute;
-  background-color: white;
-  border: 1px solid #ccc;
+  background: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+  border: 1px solid #22d3ee;
   border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
   padding: 5px 0;
   z-index: 10;
 }
@@ -174,33 +192,34 @@
   border: none;
   text-align: left;
   cursor: pointer;
+  color: white;
 }
 
 .actions-dropdown button:hover {
-  background-color: #f0f0f0;
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 .menu-bar {
   display: flex;
   justify-content: space-around;
-  background-color: #2c3e50;
+  background: linear-gradient(to right, #1e3a8a, #2c3e50); /* Gradient background */
   padding: 10px 0;
   position: fixed;
   bottom: 0;
   width: 100%;
-  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 -2px 10px rgba(34, 211, 238, 0.5); /* Glowing shadow */
 }
 
 .menu-bar button {
   background: none;
   border: none;
-  color: white;
+  color: #22d3ee; /* Cyan */
   font-size: 24px;
   cursor: pointer;
 }
 
 .menu-bar button:hover {
-  color: #3498db;
+  color: #06b6d4; /* Darker cyan */
 }
 
 .modal-overlay {
@@ -217,28 +236,31 @@
 }
 
 .modal-content {
-  background-color: white;
+  background: rgba(0, 0, 0, 0.3); /* Match the card style */
   padding: 20px;
   border-radius: 8px;
   max-width: 500px;
   width: 90%;
   max-height: 80vh;
   overflow-y: auto;
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.5); /* Glowing shadow */
+  color: white;
 }
 
 .modal-title {
   margin-top: 0;
   font-size: 20px;
-  color: #333;
+  color: #22d3ee; /* Cyan */
+  text-shadow: 0 0 5px #22d3ee;
 }
 
 .modal-text {
   margin: 10px 0;
-  color: #555;
+  color: #ddd; /* Lighter grey for readability */
 }
 
 .modal-text.error-text {
-  color: #e74c3c;
+  color: #f97316; /* Orange for errors */
 }
 
 .song-details {
@@ -253,7 +275,7 @@
 
 .song-card {
   padding: 10px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   cursor: pointer;
 }
 
@@ -262,11 +284,11 @@
 }
 
 .song-card:hover {
-  background-color: #f9f9f9;
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .song-text {
-  color: #333;
+  color: #ddd;
 }
 
 .song-actions {
@@ -281,10 +303,16 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
+  background: #22d3ee; /* Cyan */
+  color: black;
+}
+
+.action-button:hover {
+  background: #06b6d4; /* Darker cyan */
 }
 
 .action-button:disabled {
-  background-color: #ccc;
+  background-color: #666;
   cursor: not-allowed;
 }
 
@@ -292,13 +320,13 @@
   display: block;
   margin: 0 auto;
   padding: 10px 20px;
-  background-color: #3498db;
-  color: white;
+  background-color: #22d3ee;
+  color: black;
   border: none;
   border-radius: 4px;
   cursor: pointer;
 }
 
 .modal-cancel:hover {
-  background-color: #2980b9;
+  background-color: #06b6d4;
 }

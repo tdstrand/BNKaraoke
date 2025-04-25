@@ -5,20 +5,21 @@ export interface Song {
     artist: string;
     genre?: string;
     youTubeUrl?: string;
-    status: string;
+    status?: string;
     approvedBy?: string;
-    bpm: number;
-    popularity: number;
+    bpm?: number;
+    popularity?: number;
     requestDate: string;
     requestedBy: string;
-    spotifyId: string;
+    spotifyId?: string;
     valence?: number;
     decade?: string;
     musicBrainzId?: string;
     mood?: string;
     lastFmPlaycount?: number;
-    danceability?: string;
-    energy?: string;
+    danceability?: number;
+    energy?: number;
+  
   }
   
   export interface SpotifySong {
@@ -63,7 +64,7 @@ export interface Song {
     queueId: number;
     eventId: number;
     songId: number;
-    singerId: string;
+    requestorId: string; // Matches backend EventQueue.RequestorId;
     position: number;
     status: string;
     isActive: boolean;

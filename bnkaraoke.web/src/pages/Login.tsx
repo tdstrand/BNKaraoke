@@ -33,7 +33,8 @@ const Login: React.FC = () => {
       setError("Please enter both phone number and password");
       return;
     }
-    const cleanPhone = userName.replace(/\D/g, ""); // Ensure 12345678901
+    const cleanPhone = userName.replace(/\D/g, "");
+    console.log("Logging in with cleanPhone:", cleanPhone);
     try {
       console.log(`Attempting login fetch to: ${API_ROUTES.LOGIN}`);
       const response = await fetch(API_ROUTES.LOGIN, {
@@ -53,12 +54,15 @@ const Login: React.FC = () => {
         throw new Error(errorData.message || `Login failed: ${response.status}`);
       }
       const data = JSON.parse(responseText);
+      console.log("userId from response:", data.userId);
       localStorage.setItem("token", data.token);
+      localStorage.setItem("userId", data.userId); // Store userId
       localStorage.setItem("roles", JSON.stringify(data.roles));
       localStorage.setItem("firstName", data.firstName);
       localStorage.setItem("lastName", data.lastName);
-      localStorage.setItem("userName", cleanPhone); // Store UserName (phone number) in localStorage
-      navigate("/dashboard");
+      localStorage.setItem("userName", cleanPhone);
+      localStorage.setItem("mustChangePassword", data.mustChangePassword.toString());
+      navigate(data.mustChangePassword ? "/change-password" : "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       console.error("Login Error:", err);
@@ -111,6 +115,9 @@ const Login: React.FC = () => {
           />
           <button onClick={handleLogin} className="login-button">
             Log in
+          </button>
+          <button onClick={() => navigate("/register")} className="login-button secondary-button">
+            Register as a New Singer
           </button>
         </div>
         <p className="backlink">

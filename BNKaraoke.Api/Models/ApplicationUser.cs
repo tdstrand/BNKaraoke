@@ -17,4 +17,7 @@ public class ApplicationUser : IdentityUser
     [Required]
     [Column(TypeName = "nvarchar(100)")]
     public string LastName { get; set; } = string.Empty;
+    
+    [Column(TypeName = "boolean")]
+    public bool MustChangePassword { get; set; } = false; // Added to match database column
 }
