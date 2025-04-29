@@ -12,8 +12,8 @@ const getFrontendHost = () => {
 
 // Set the base URL based on environment
 const API_BASE_URL = process.env.NODE_ENV === "production"
-    ? "https://api.bnkaraoke.com" // Unchanged for production
-    : process.env.REACT_APP_API_URL || `http://${getFrontendHost()}:7290`; // Dynamic in dev
+    ? "https://api.bnkaraoke.com"
+    : process.env.REACT_APP_API_URL || `http://${getFrontendHost()}:7290`;
 
 console.log(`API_BASE_URL set to: ${API_BASE_URL}`);
 
@@ -26,6 +26,7 @@ export const API_ROUTES = {
   APPROVE_SONGS: `${API_BASE_URL}/api/songs/approve`,
   REJECT_SONG: `${API_BASE_URL}/api/songs/reject`,
   SONGS_SEARCH: `${API_BASE_URL}/api/songs/search`,
+  SONG_BY_ID: `${API_BASE_URL}/api/songs`, // Added for fetching song by ID
   SPOTIFY_SEARCH: `${API_BASE_URL}/api/songs/spotify-search`,
   REQUEST_SONG: `${API_BASE_URL}/api/songs/request`,
   USERS: `${API_BASE_URL}/api/auth/users`,
@@ -37,7 +38,6 @@ export const API_ROUTES = {
   ARTISTS: `${API_BASE_URL}/api/songs/artists`,
   GENRES: `${API_BASE_URL}/api/songs/genres`,
   EVENTS: `${API_BASE_URL}/api/events`,
-  // New routes for user management
   ADD_USER: `${API_BASE_URL}/api/auth/add-user`,
   FORCE_PASSWORD_CHANGE: `${API_BASE_URL}/api/auth/users`,
   USER_DETAILS: `${API_BASE_URL}/api/auth/user-details`,

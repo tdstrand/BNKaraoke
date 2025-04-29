@@ -25,5 +25,7 @@
 
 		<!-- Logging -->
 		<PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+		
+		<PackageReference Include="Microsoft.AspNetCore.SpaServices.Extensions" Version="8.0.0" />
 	</ItemGroup>
 </Project>

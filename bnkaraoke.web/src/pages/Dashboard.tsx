@@ -40,7 +40,7 @@ const SortableQueueItem: React.FC<SortableQueueItemProps> = ({ queueItem, eventI
         {songDetails ? (
           `${songDetails.title} - ${songDetails.artist}`
         ) : (
-          "Loading..." // Improved fallback instead of showing raw songId
+          `Loading Song ${queueItem.songId}...`
         )}
       </span>
     </div>
@@ -67,6 +67,8 @@ const Dashboard: React.FC = () => {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
+  const [reorderError, setReorderError] = useState<string | null>(null);
+  const [showReorderErrorModal, setShowReorderErrorModal] = useState<boolean>(false);
 
   // Fetch queue on mount to sync with backend
   useEffect(() => {
@@ -80,7 +82,6 @@ const Dashboard: React.FC = () => {
 
     const fetchAllQueues = async () => {
       try {
-        // Fetch all events to get their IDs
         const eventsResponse = await fetch(API_ROUTES.EVENTS, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -104,24 +105,33 @@ const Dashboard: React.FC = () => {
               throw new Error(`Fetch queue failed for event ${event.eventId}: ${queueResponse.status}`);
             }
             const queueData: EventQueueItemResponse[] = await queueResponse.json();
-            // Parse the singers field for each queue item
             const parsedQueueData: EventQueueItem[] = queueData.map(item => ({
               ...item,
               singers: item.singers ? JSON.parse(item.singers) : [],
             }));
-            const userQueue = parsedQueueData.filter(item => item.requestorUserName === userName);
-            console.log(`Fetched queue for event ${event.eventId} - total items: ${parsedQueueData.length}, user items: ${userQueue.length}, userName: ${userName}`, userQueue);
+
+            // Deduplicate queue items by songId and requestorUserName
+            const uniqueQueueData = Array.from(
+              new Map(
+                parsedQueueData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
+              ).values()
+            );
+            const userQueue = uniqueQueueData.filter(item => item.requestorUserName === userName);
+            console.log(`Fetched queue for event ${event.eventId} - total items: ${uniqueQueueData.length}, user items: ${userQueue.length}, userName: ${userName}`, userQueue);
             newQueues[event.eventId] = userQueue;
 
-            // Fetch song details for each queue item
             const songDetails: { [songId: number]: Song } = {};
-            for (const item of parsedQueueData) {
+            for (const item of uniqueQueueData) {
               if (!songDetails[item.songId]) {
                 try {
-                  const songResponse = await fetch(`/api/songs/${item.songId}`, {
+                  const songResponse = await fetch(`${API_ROUTES.SONG_BY_ID}/${item.songId}`, {
                     headers: { Authorization: `Bearer ${token}` },
                   });
-                  if (!songResponse.ok) throw new Error(`Fetch song details failed for song ${item.songId}: ${songResponse.status}`);
+                  if (!songResponse.ok) {
+                    const errorText = await songResponse.text();
+                    console.error(`Fetch song details failed for song ${item.songId}: ${songResponse.status} - ${errorText}`);
+                    throw new Error(`Fetch song details failed for song ${item.songId}: ${songResponse.status}`);
+                  }
                   const songData = await songResponse.json();
                   songDetails[item.songId] = songData;
                 } catch (err) {
@@ -159,7 +169,7 @@ const Dashboard: React.FC = () => {
     };
 
     fetchAllQueues();
-  }, []);
+  }, []); // Run once on mount
 
   // Fetch queues and song details when currentEvent changes
   useEffect(() => {
@@ -189,36 +199,43 @@ const Dashboard: React.FC = () => {
           throw new Error(`Fetch queue failed for event ${currentEvent.eventId}: ${queueResponse.status}`);
         }
         const data: EventQueueItemResponse[] = await queueResponse.json();
-        // Parse the singers field for each queue item
         const parsedData: EventQueueItem[] = data.map(item => ({
           ...item,
           singers: item.singers ? JSON.parse(item.singers) : [],
         }));
-        const userQueue = parsedData.filter(item => item.requestorUserName === userName);
-        console.log(`Fetched queue for event ${currentEvent.eventId} - total items: ${parsedData.length}, user items: ${userQueue.length}, userName: ${userName}`, userQueue);
 
-        // Update the queue for the current event
+        // Deduplicate queue items by songId and requestorUserName
+        const uniqueQueueData = Array.from(
+          new Map(
+            parsedData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
+          ).values()
+        );
+        const userQueue = uniqueQueueData.filter(item => item.requestorUserName === userName);
+        console.log(`Fetched queue for event ${currentEvent.eventId} - total items: ${uniqueQueueData.length}, user items: ${userQueue.length}, userName: ${userName}`, userQueue);
+
         setMyQueues(prev => ({
           ...prev,
           [currentEvent.eventId]: userQueue,
         }));
 
-        // Set global queue if checked into a live event
         if (checkedIn && isCurrentEventLive) {
-          setGlobalQueue(parsedData);
+          setGlobalQueue(uniqueQueueData);
         } else {
           setGlobalQueue([]);
         }
 
-        // Fetch song details for each queue item
         const songDetails: { [songId: number]: Song } = {};
-        for (const item of parsedData) {
+        for (const item of uniqueQueueData) {
           if (!songDetails[item.songId]) {
             try {
-              const songResponse = await fetch(`/api/songs/${item.songId}`, {
+              const songResponse = await fetch(`${API_ROUTES.SONG_BY_ID}/${item.songId}`, {
                 headers: { Authorization: `Bearer ${token}` },
               });
-              if (!songResponse.ok) throw new Error(`Fetch song details failed for song ${item.songId}: ${songResponse.status}`);
+              if (!songResponse.ok) {
+                const errorText = await songResponse.text();
+                console.error(`Fetch song details failed for song ${item.songId}: ${songResponse.status} - ${errorText}`);
+                throw new Error(`Fetch song details failed for song ${item.songId}: ${songResponse.status}`);
+              }
               const songData = await songResponse.json();
               songDetails[item.songId] = songData;
             } catch (err) {
@@ -436,6 +453,8 @@ const Dashboard: React.FC = () => {
     setSelectedSong(null);
     setSelectedQueueId(undefined);
     setSearchError(null);
+    setReorderError(null);
+    setShowReorderErrorModal(false);
   };
 
   const toggleFavorite = async (song: Song) => {
@@ -541,14 +560,12 @@ const Dashboard: React.FC = () => {
       }
 
       const newQueueItem: EventQueueItemResponse = JSON.parse(responseText);
-      // Parse the singers field for the new queue item
       const parsedQueueItem: EventQueueItem = {
         ...newQueueItem,
         singers: newQueueItem.singers ? JSON.parse(newQueueItem.singers) : [],
       };
       console.log(`Added to queue for event ${eventId}:`, parsedQueueItem);
 
-      // Re-fetch the queue to sync with the backend
       const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${eventId}/queue`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -558,7 +575,12 @@ const Dashboard: React.FC = () => {
         ...item,
         singers: item.singers ? JSON.parse(item.singers) : [],
       }));
-      const userQueue = parsedData.filter(item => item.requestorUserName === requestorUserName);
+      const uniqueQueueData = Array.from(
+        new Map(
+          parsedData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
+        ).values()
+      );
+      const userQueue = uniqueQueueData.filter(item => item.requestorUserName === requestorUserName);
       console.log(`Re-fetched queue for event ${eventId} after adding song:`, userQueue);
 
       setMyQueues(prev => ({
@@ -566,9 +588,8 @@ const Dashboard: React.FC = () => {
         [eventId]: userQueue,
       }));
 
-      // Fetch song details for the new queue item
       try {
-        const songResponse = await fetch(`/api/songs/${song.id}`, {
+        const songResponse = await fetch(`${API_ROUTES.SONG_BY_ID}/${song.id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!songResponse.ok) throw new Error(`Fetch song details failed for song ${song.id}: ${songResponse.status}`);
@@ -625,7 +646,6 @@ const Dashboard: React.FC = () => {
         throw new Error(`Skip song failed: ${response.status}`);
       }
 
-      // Re-fetch the queue to sync with the backend
       const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${eventId}/queue`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -635,8 +655,13 @@ const Dashboard: React.FC = () => {
         ...item,
         singers: item.singers ? JSON.parse(item.singers) : [],
       }));
+      const uniqueQueueData = Array.from(
+        new Map(
+          parsedData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
+        ).values()
+      );
       const userName = localStorage.getItem("userName");
-      const userQueue = parsedData.filter(item => item.requestorUserName === userName);
+      const userQueue = uniqueQueueData.filter(item => item.requestorUserName === userName);
       console.log(`Re-fetched queue for event ${eventId} after deleting song:`, userQueue);
 
       setMyQueues(prev => ({
@@ -671,6 +696,8 @@ const Dashboard: React.FC = () => {
 
     if (!currentEvent) {
       console.error("Drag-and-drop: No current event selected");
+      setReorderError("No event selected. Please select an event and try again.");
+      setShowReorderErrorModal(true);
       return;
     }
 
@@ -681,15 +708,13 @@ const Dashboard: React.FC = () => {
     const newIndex = currentQueue.findIndex(item => item.queueId === over.id);
     console.log(`Drag-and-drop: Moving item from index ${oldIndex} to ${newIndex}`);
 
-    // Reorder the local queue for the current event
     const newQueue = [...currentQueue];
     const [movedItem] = newQueue.splice(oldIndex, 1);
     newQueue.splice(newIndex, 0, movedItem);
 
-    // Update positions to reflect the new order (1, 2, 3, ...)
     const updatedQueue = newQueue.map((item, index) => ({
       ...item,
-      position: index + 1, // Positions start at 1
+      position: index + 1,
     }));
 
     console.log("Drag-and-drop: Updated queue with new positions:", updatedQueue);
@@ -699,7 +724,6 @@ const Dashboard: React.FC = () => {
       [currentEvent.eventId]: updatedQueue,
     }));
 
-    // Prepare the new order for the backend
     const newOrder = updatedQueue.map(item => ({
       QueueId: item.queueId,
       Position: item.position,
@@ -707,10 +731,11 @@ const Dashboard: React.FC = () => {
 
     console.log("Drag-and-drop: Sending new order to backend:", newOrder);
 
-    // Send the new order to the backend
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("Drag-and-drop: No token");
+      setReorderError("Authentication token missing. Please log in again.");
+      setShowReorderErrorModal(true);
       return;
     }
 
@@ -727,10 +752,9 @@ const Dashboard: React.FC = () => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Drag-and-drop: Reorder failed: ${response.status} - ${errorText}`);
-        throw new Error(`Reorder failed: ${response.status}`);
+        throw new Error(`Reorder failed: ${response.status} - ${errorText}`);
       }
 
-      // Re-fetch the queue to reflect the updated order
       const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.eventId}/queue`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -740,8 +764,13 @@ const Dashboard: React.FC = () => {
         ...item,
         singers: item.singers ? JSON.parse(item.singers) : [],
       }));
+      const uniqueQueueData = Array.from(
+        new Map(
+          parsedData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
+        ).values()
+      );
       const userName = localStorage.getItem("userName");
-      const userQueue = parsedData.filter(item => item.requestorUserName === userName);
+      const userQueue = uniqueQueueData.filter(item => item.requestorUserName === userName);
       console.log("Drag-and-drop: Re-fetched queue after reorder:", userQueue);
 
       setMyQueues(prev => ({
@@ -749,11 +778,14 @@ const Dashboard: React.FC = () => {
         [currentEvent.eventId]: userQueue,
       }));
       if (checkedIn && isCurrentEventLive) {
-        setGlobalQueue(parsedData);
+        setGlobalQueue(uniqueQueueData);
       }
+      setReorderError(null);
+      setShowReorderErrorModal(false);
     } catch (err) {
       console.error("Drag-and-drop: Reorder error:", err);
-      // Revert the queue on error
+      setReorderError("Failed to reorder queue. Please try again or contact support.");
+      setShowReorderErrorModal(true);
       setMyQueues(prev => ({
         ...prev,
         [currentEvent.eventId]: currentQueue,
@@ -761,7 +793,6 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Set up sensors for drag-and-drop
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -769,7 +800,6 @@ const Dashboard: React.FC = () => {
     })
   );
 
-  // Fetch favorites on component mount
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -796,7 +826,7 @@ const Dashboard: React.FC = () => {
         console.error("Fetch favorites error:", err);
         setFavorites([]);
       });
-  }, []);
+  }, []); // Run once on mount
 
   return (
     <div className="dashboard">
@@ -852,6 +882,7 @@ const Dashboard: React.FC = () => {
 
           <aside className="queue-panel">
             <h2>My Song Queue</h2>
+            {reorderError && !showReorderErrorModal && <p className="error-text">{reorderError}</p>}
             {!currentEvent ? (
               <p>Please select an event to view your queue.</p>
             ) : !myQueues[currentEvent.eventId] || myQueues[currentEvent.eventId].length === 0 ? (
@@ -892,7 +923,7 @@ const Dashboard: React.FC = () => {
                         {songDetailsMap[queueItem.songId] ? (
                           `${songDetailsMap[queueItem.songId].title} - ${songDetailsMap[queueItem.songId].artist}`
                         ) : (
-                          "Loading..." // Improved fallback instead of showing raw songId
+                          `Loading Song ${queueItem.songId}...`
                         )}
                       </span>
                     </div>
@@ -935,7 +966,7 @@ const Dashboard: React.FC = () => {
               <div className="song-list">
                 {songs.map(song => (
                   <div key={song.id} className="song-card" onClick={() => setSelectedSong(song)}>
-                    <span className="song-text">{song.title} - ${song.artist}</span>
+                    <span className="song-text">{song.title} - {song.artist}</span>
                   </div>
                 ))}
               </div>
@@ -957,7 +988,7 @@ const Dashboard: React.FC = () => {
               <div className="song-list">
                 {spotifySongs.map(song => (
                   <div key={song.id} className="song-card" onClick={() => handleSpotifySongSelect(song)}>
-                    <span className="song-text">{song.title} - ${song.artist}</span>
+                    <span className="song-text">{song.title} - {song.artist}</span>
                   </div>
                 ))}
               </div>
@@ -1013,6 +1044,16 @@ const Dashboard: React.FC = () => {
               A request has been made on your behalf to find a Karaoke version of "{requestedSong.title}" by {requestedSong.artist}.
             </p>
             <button onClick={resetSearch} className="modal-cancel">Done</button>
+          </div>
+        </div>
+      )}
+
+      {showReorderErrorModal && reorderError && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 className="modal-title">Reorder Failed</h3>
+            <p className="modal-text error-text">{reorderError}</p>
+            <button onClick={() => setShowReorderErrorModal(false)} className="modal-cancel">Close</button>
           </div>
         </div>
       )}

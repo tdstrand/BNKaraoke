@@ -1,17 +1,18 @@
-﻿namespace BNKaraoke.Api.Controllers
-{
-    using Microsoft.AspNetCore.Authorization;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.EntityFrameworkCore;
-    using Microsoft.Extensions.Logging;
-    using System.Threading.Tasks;
-    using BNKaraoke.Api.Data;
-    using BNKaraoke.Api.Models;
-    using BNKaraoke.Api.Dtos;
-    using System.Linq;
-    using System.Security.Claims;
-    using System.Text.Json;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using System.Text.Json;
+using System.Threading.Tasks;
+using BNKaraoke.Api.Data;
+using BNKaraoke.Api.Dtos;
+using BNKaraoke.Api.Models;
+using System.Linq;
+using System.Security.Claims;
+using System.Collections.Generic;
 
+namespace BNKaraoke.Api.Controllers
+{
     [Route("api/events")]
     [ApiController]
     public class EventController : ControllerBase
@@ -307,7 +308,6 @@
                     return BadRequest("RequestorUserName cannot be null or empty");
                 }
 
-                // Explicitly query as ApplicationUser to avoid type inference issues
                 var requestor = await _context.Users
                     .OfType<ApplicationUser>()
                     .FirstOrDefaultAsync(u => u.UserName == queueDto.RequestorUserName);
@@ -317,9 +317,20 @@
                     return BadRequest("Requestor not found with UserName: " + queueDto.RequestorUserName);
                 }
 
+                // Check for duplicate song in queue
+                var exists = await _context.EventQueues.AnyAsync(q =>
+                    q.EventId == eventId &&
+                    q.RequestorUserName == queueDto.RequestorUserName &&
+                    q.SongId == queueDto.SongId);
+                if (exists)
+                {
+                    _logger.LogWarning("Song {SongId} already in queue for EventId {EventId} by RequestorUserName {UserName}", queueDto.SongId, eventId, queueDto.RequestorUserName);
+                    return BadRequest("Song already in queue.");
+                }
+
                 // Check the event's request limit (excluding co-sung songs)
                 var requestedCount = await _context.EventQueues
-                    .CountAsync(eq => eq.EventId == eventId && eq.RequestorUserName == requestor.UserName);
+                    .CountAsync(eq => eq.EventId == eventId && eq.RequestorUserName == queueDto.RequestorUserName);
                 if (requestedCount >= eventEntity.RequestLimit)
                 {
                     _logger.LogWarning("Requestor with UserName {UserName} has reached the request limit of {RequestLimit} for EventId {EventId}", queueDto.RequestorUserName, eventEntity.RequestLimit, eventId);
@@ -389,7 +400,7 @@
                     IsActive = newQueueEntry.IsActive,
                     WasSkipped = newQueueEntry.WasSkipped,
                     IsCurrentlyPlaying = newQueueEntry.IsCurrentlyPlaying,
-                    SungAt = newQueueEntry.SungAt, // Directly use DateTime? value
+                    SungAt = newQueueEntry.SungAt,
                     IsOnBreak = newQueueEntry.IsOnBreak
                 };
 
@@ -529,8 +540,8 @@
                         IsActive = eq.IsActive,
                         WasSkipped = eq.WasSkipped,
                         IsCurrentlyPlaying = eq.IsCurrentlyPlaying,
-                        SungAt = eq.SungAt, // Directly use DateTime? value
-                        IsOnBreak = attendance != null ? attendance.IsOnBreak : false // Reflects the requestor's break status
+                        SungAt = eq.SungAt,
+                        IsOnBreak = attendance != null ? attendance.IsOnBreak : false
                     };
 
                     queueDtos.Add(queueDto);
@@ -686,7 +697,7 @@
                     RequestorId = requestor.Id,
                     Action = "CheckIn",
                     ActionTimestamp = DateTime.UtcNow,
-                    AttendanceId = attendance.AttendanceId // Now guaranteed to have a valid value
+                    AttendanceId = attendance.AttendanceId
                 };
                 _context.EventAttendanceHistories.Add(attendanceHistory);
 
@@ -1039,9 +1050,14 @@
                     return Unauthorized("User identity not found in token");
                 }
 
-                // Fetch the user's queue playlist entries for this event
+                // Fetch the user's queue playlist entries for this event using @> for Singers
                 var userQueueEntries = await _context.EventQueues
-                    .Where(eq => eq.EventId == eventId && (eq.RequestorUserName == userName || eq.Singers!.Contains(userName)))
+                    .FromSqlRaw(
+                        @"SELECT ""QueueId"", ""CreatedAt"", ""EventId"", ""IsActive"", ""IsCurrentlyPlaying"", ""IsOnBreak"", ""Position"", ""RequestorUserName"", ""Singers"", ""SongId"", ""Status"", ""SungAt"", ""UpdatedAt"", ""WasSkipped""
+                          FROM public.""EventQueues""
+                          WHERE ""EventId"" = {0} AND (""RequestorUserName"" = {1} OR ""Singers"" @> {2}::jsonb)",
+                        eventId, userName, $"[{userName}]"
+                    )
                     .ToListAsync();
 
                 // Validate the request
@@ -1171,8 +1187,7 @@
                         if (singerUser == null)
                         {
                             _logger.LogWarning("Singer not found with UserName: {UserName} for QueueId: {QueueId}", singer, queueId);
-                            string errorMessage = $"Singer not found: {singer}";
-                            return BadRequest(errorMessage);
+                            return BadRequest($"Singer not found: {singer}");
                         }
                     }
                 }

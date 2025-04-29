@@ -37,10 +37,9 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   const [showEventSelectionModal, setShowEventSelectionModal] = useState(false);
   const [userName, setUserName] = useState<string | null>(localStorage.getItem("userName"));
 
-  // Fetch events on component mount (only if needed)
+  // Fetch events only if currentEvent is unset and events are needed
   useEffect(() => {
-    // Skip fetching events if currentEvent is already set
-    if (currentEvent) return;
+    if (currentEvent || isInQueue || !onAddToQueue) return; // Skip if currentEvent exists or not adding to queue
 
     const token = localStorage.getItem("token");
     if (!token) {
@@ -67,13 +66,19 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
         setEvents([]);
         setError("Failed to load events. Please try again.");
       });
-  }, [navigate, currentEvent]);
+  }, [navigate, currentEvent, isInQueue, onAddToQueue]);
 
   const handleAddToQueue = async (eventId: number) => {
     console.log("handleAddToQueue called with eventId:", eventId, "song:", song, "onAddToQueue:", !!onAddToQueue);
     if (!onAddToQueue) {
       console.error("onAddToQueue is not defined");
       setError("Cannot add to queue: Functionality not available.");
+      return;
+    }
+
+    if (!eventId) {
+      console.error("Event ID is missing");
+      setError("Please select an event to add the song to the queue.");
       return;
     }
 

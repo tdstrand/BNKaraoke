@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { LogoutOutlined } from '@ant-design/icons';
 import "./Header.css";
 import { API_ROUTES } from "../config/apiConfig";
@@ -10,7 +10,6 @@ const Header: React.FC = () => {
   console.log("Header component rendering");
 
   const navigate = useNavigate();
-  const location = useLocation();
   const { currentEvent, setCurrentEvent, checkedIn, setCheckedIn, isCurrentEventLive, setIsCurrentEventLive, isOnBreak, setIsOnBreak } = useEventContext();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -61,15 +60,7 @@ const Header: React.FC = () => {
     };
 
     fetchUserDetails();
-  }, []);
-
-  // Close dropdowns on route change
-  useEffect(() => {
-    setIsEventDropdownOpen(false);
-    setIsPreselectDropdownOpen(false);
-    setIsDropdownOpen(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location]);
+  }, []); // Run once on mount
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -88,7 +79,7 @@ const Header: React.FC = () => {
     };
   }, []);
 
-  // Fetch events on component mount, and auto-select if only one upcoming event
+  // Fetch events on mount and auto-select if only one upcoming event
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -116,7 +107,6 @@ const Header: React.FC = () => {
         // Set the current event to a live event by default, if available
         const liveEvent = live[0];
         if (!currentEvent) {
-          // If there's only one upcoming event, auto-select it
           if (upcoming.length === 1) {
             setCurrentEvent(upcoming[0]);
             setIsCurrentEventLive(false);
@@ -131,8 +121,6 @@ const Header: React.FC = () => {
         } else if (upcoming[0]) {
           console.log("Selected upcoming event status:", upcoming[0].status);
         }
-
-        // EventContext fetches queue data to determine pending requests, check-in, and break status
       } catch (err) {
         console.error("Header - Fetch events error:", err);
         setLiveEvents([]);
@@ -141,7 +129,7 @@ const Header: React.FC = () => {
     };
 
     fetchEventsAndQueues();
-  }, []);
+  }, [currentEvent, setCurrentEvent]); // Run when currentEvent or setCurrentEvent changes
 
   const adminRoles = ["Song Manager", "User Manager", "Event Manager"];
   const hasAdminRole = roles.some(role => adminRoles.includes(role));
@@ -153,10 +141,8 @@ const Header: React.FC = () => {
 
   const handleLogout = () => {
     console.log("Logout button clicked");
-    if (window.confirm("Are you sure you want to log out?")) {
-      localStorage.clear();
-      navigate("/");
-    }
+    localStorage.clear();
+    navigate("/");
   };
 
   const handleCheckIn = async (event: any) => {
@@ -172,9 +158,9 @@ const Header: React.FC = () => {
     setCheckInError(null);
 
     try {
-      const requestorId = localStorage.getItem("userName") || "unknown";
-      console.log(`Checking into event: ${event.eventId}, status: ${event.status}, requestorId: ${requestorId}`);
-      const requestData: AttendanceAction = { requestorId };
+      const requestorUserName = localStorage.getItem("userName") || "unknown";
+      console.log(`Checking into event: ${event.eventId}, status: ${event.status}, requestorUserName: ${requestorUserName}`);
+      const requestData: AttendanceAction = { requestorUserName };
       const response = await fetch(`/api/events/${event.eventId}/attendance/check-in`, {
         method: 'POST',
         headers: {
@@ -216,47 +202,44 @@ const Header: React.FC = () => {
       return;
     }
 
-    if (window.confirm(`Leave ${currentEvent.eventCode}? Your queue will be ${currentEvent.status === "Live" ? "archived" : "cleared"}.`)) {
+    try {
       const token = localStorage.getItem("token");
       if (!token) {
         console.error("No token found");
         return;
       }
 
-      try {
-        const requestorId = localStorage.getItem("userName") || "unknown";
-        console.log(`Checking out of event: ${currentEvent.eventId}, requestorId: ${requestorId}`);
+      const requestorUserName = localStorage.getItem("userName") || "unknown";
+      console.log(`Checking out of event: ${currentEvent.eventId}, requestorUserName: ${requestorUserName}`);
 
-        // For live events, check out using the API
-        if (currentEvent.status === "Live") {
-          const requestData: AttendanceAction = { requestorId };
-          const response = await fetch(`/api/events/${currentEvent.eventId}/attendance/check-out`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestData),
-          });
+      if (currentEvent.status === "Live") {
+        const requestData: AttendanceAction = { requestorUserName };
+        const response = await fetch(`/api/events/${currentEvent.eventId}/attendance/check-out`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestData),
+        });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Check-out failed: ${response.status} - ${errorText}`);
-            throw new Error(`Check-out failed: ${response.status}`);
-          }
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Check-out failed: ${response.status} - ${errorText}`);
+          throw new Error(`Check-out failed: ${response.status}`);
         }
-
-        setCurrentEvent(null);
-        setIsCurrentEventLive(false);
-        setCheckedIn(false);
-        setIsOnBreak(false);
-      } catch (err) {
-        console.error("Check-out error:", err);
-        setCurrentEvent(null);
-        setIsCurrentEventLive(false);
-        setCheckedIn(false);
-        setIsOnBreak(false);
       }
+
+      setCurrentEvent(null);
+      setIsCurrentEventLive(false);
+      setCheckedIn(false);
+      setIsOnBreak(false);
+    } catch (err) {
+      console.error("Check-out error:", err);
+      setCurrentEvent(null);
+      setIsCurrentEventLive(false);
+      setCheckedIn(false);
+      setIsOnBreak(false);
     }
   };
 
@@ -273,8 +256,8 @@ const Header: React.FC = () => {
     }
 
     try {
-      const requestorId = localStorage.getItem("userName") || "unknown";
-      const requestData: AttendanceAction = { requestorId };
+      const requestorUserName = localStorage.getItem("userName") || "unknown";
+      const requestData: AttendanceAction = { requestorUserName };
       const endpoint = isOnBreak
         ? `/api/events/${currentEvent.eventId}/attendance/break/end`
         : `/api/events/${currentEvent.eventId}/attendance/break/start`;

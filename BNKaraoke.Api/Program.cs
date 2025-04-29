@@ -16,7 +16,6 @@ using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Security.Claims;
-using Microsoft.AspNetCore.SpaServices.ReactDevelopmentServer;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -233,12 +232,6 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddHttpClient();
 
-// Add SPA services
-builder.Services.AddSpaStaticFiles(configuration =>
-{
-    configuration.RootPath = "wwwroot"; // Adjust to ClientApp/build if needed
-});
-
 var app = builder.Build();
 
 // Early logging middleware
@@ -305,8 +298,7 @@ else
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles(); // Serve static files from wwwroot
-app.UseSpaStaticFiles(); // Enable SPA static file serving
+app.UseStaticFiles(); // Optional: for minimal assets, remove if not needed
 app.UseRouting();
 app.UseCors("AllowNetwork");
 app.UseAuthentication();
@@ -323,16 +315,6 @@ app.Use(async (context, next) =>
 });
 
 app.MapControllers();
-
-// SPA fallback for non-API routes
-app.UseSpa(spa =>
-{
-    spa.Options.SourcePath = "wwwroot"; // Adjust to ClientApp/build if needed
-    if (app.Environment.IsDevelopment())
-    {
-        spa.UseReactDevelopmentServer(npmScript: "start");
-    }
-});
 
 using (var scope = app.Services.CreateScope())
 {

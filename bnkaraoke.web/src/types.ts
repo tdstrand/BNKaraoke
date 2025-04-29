@@ -92,7 +92,7 @@ export interface EventQueueItem {
 }
 
 export interface AttendanceAction {
-  requestorId: string;
+  requestorUserName: string;
 }
 
 export interface User {

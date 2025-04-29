@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_ROUTES } from "../config/apiConfig";
-import "../pages/Dashboard.css";
+import "./SongManagerPage.css";
 
 const SongManagerPage: React.FC = () => {
   const navigate = useNavigate();
@@ -91,8 +91,8 @@ const SongManagerPage: React.FC = () => {
 
   const handleApproveSong = async (songId: number, YouTubeUrl: string, token: string) => {
     try {
-      console.log(`Approving song ${songId} at: ${API_ROUTES.APPROVE_SONGS}`); // Fixed typo: APPROVE_SONG -> APPROVE_SONGS
-      const response = await fetch(API_ROUTES.APPROVE_SONGS, { // Fixed typo: APPROVE_SONG -> APPROVE_SONGS
+      console.log(`Approving song ${songId} at: ${API_ROUTES.APPROVE_SONGS}`);
+      const response = await fetch(API_ROUTES.APPROVE_SONGS, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -153,42 +153,45 @@ const SongManagerPage: React.FC = () => {
   const token = localStorage.getItem("token") || "";
 
   return (
-    <div className="dashboard-container">
-      <div className="dashboard-navbar">
-        <span className="dashboard-user">Song Manager</span>
-        <button className="logout-button" onClick={() => { localStorage.clear(); navigate("/"); }}>
-          Logout
-        </button>
-      </div>
+    <div className="song-manager-container">
+      <header className="song-manager-header">
+        <h1 className="song-manager-title">Song Manager</h1>
+        <div className="header-buttons">
+          <button className="song-manager-button logout-button" onClick={() => { localStorage.clear(); navigate("/"); }}>
+            Logout
+          </button>
+          <button className="song-manager-button back-button" onClick={() => navigate("/dashboard")}>
+            Back to Dashboard
+          </button>
+        </div>
+      </header>
 
-      <h1 className="dashboard-title">Song Manager</h1>
-
-      <section className="dashboard-card">
+      <section className="song-manager-card">
         <h2 className="section-title">Pending Songs</h2>
         {error && <p className="error-text">{error}</p>}
         {pendingSongs.length > 0 ? (
           <ul className="song-list">
             {pendingSongs.map((song) => (
-              <li key={song.id} className="song-item song-manager-item">
+              <li key={song.id} className="song-item">
                 <div className="song-info">
                   <p className="song-title">{song.title} - {song.artist}</p>
-                  <p className="song-text">Genre: {song.genre} | Requested by: {song.requestedBy}</p>
+                  <p className="song-text">Genre: {song.genre} | Requested by: {song.firstName} {song.lastName}</p>
                 </div>
                 <div className="song-actions">
                   <button
-                    className="dashboard-button"
+                    className="song-manager-button find-button"
                     onClick={() => handleYoutubeSearch(song.id, song.title, song.artist, token)}
                   >
                     Find Karaoke Video
                   </button>
                   <button
-                    className="dashboard-button"
+                    className="song-manager-button manual-button"
                     onClick={() => toggleManualInput(song.id)}
                   >
                     Add Manual Link
                   </button>
                   <button
-                    className="dashboard-button reject-button"
+                    className="song-manager-button reject-button"
                     onClick={() => handleRejectSong(song.id, token)}
                   >
                     Reject
@@ -201,10 +204,10 @@ const SongManagerPage: React.FC = () => {
                       value={manualLinks[song.id] || ""}
                       onChange={(e) => handleManualLinkChange(song.id, e.target.value)}
                       placeholder="Enter YouTube URL"
-                      className="search-bar-input"
+                      className="song-manager-input"
                     />
                     <button
-                      className="dashboard-button approve-button"
+                      className="song-manager-button approve-button"
                       onClick={() => handleApproveSong(song.id, manualLinks[song.id] || "", token)}
                     >
                       Submit Manual Link
@@ -215,13 +218,13 @@ const SongManagerPage: React.FC = () => {
             ))}
           </ul>
         ) : (
-          <p className="dashboard-text">No pending songs to review.</p>
+          <p className="song-manager-text">No pending songs to review.</p>
         )}
       </section>
 
       {showYoutubeModal && selectedSongId && (
         <div className="modal-overlay">
-          <div className="modal-content edit-user-modal">
+          <div className="modal-content youtube-modal">
             <h2 className="modal-title">Select Karaoke Video for {pendingSongs.find(s => s.id === selectedSongId)?.title}</h2>
             {youtubeResults.length > 0 ? (
               <div className="youtube-results" style={{ maxHeight: "400px", overflowY: "auto" }}>
@@ -236,7 +239,7 @@ const SongManagerPage: React.FC = () => {
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                     />
-                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div className="youtube-actions">
                       <a
                         href={video.url}
                         target="_blank"
@@ -246,7 +249,7 @@ const SongManagerPage: React.FC = () => {
                         Watch on YouTube
                       </a>
                       <button
-                        className="dashboard-button approve-button"
+                        className="song-manager-button approve-button"
                         onClick={() => handleApproveSong(selectedSongId, video.url, token)}
                       >
                         Accept
@@ -259,7 +262,7 @@ const SongManagerPage: React.FC = () => {
               <p className="song-text">No karaoke videos found.</p>
             )}
             <div className="modal-buttons">
-              <button className="dashboard-button" onClick={() => setShowYoutubeModal(false)}>
+              <button className="song-manager-button close-button" onClick={() => setShowYoutubeModal(false)}>
                 Close
               </button>
             </div>

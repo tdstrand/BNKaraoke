@@ -10,8 +10,9 @@ const UserManagementPage: React.FC = () => {
   const [pinCode, setPinCode] = useState<string>("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [newUser, setNewUser] = useState({ userName: "", firstName: "", lastName: "", forcePasswordChange: true });
+  const [newUser, setNewUser] = useState({ userName: "", firstName: "", lastName: "", mustChangePassword: true });
   const [editUser, setEditUser] = useState<any | null>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -93,14 +94,15 @@ const UserManagementPage: React.FC = () => {
   const handleAddUser = async () => {
     const token = localStorage.getItem("token") || "";
     if (!newUser.userName) {
-      alert("Please enter a phone number for the new user");
+      setError("Please enter a phone number for the new user");
       return;
     }
     try {
       const payload = {
         phoneNumber: newUser.userName,
         firstName: newUser.firstName,
-        lastName: newUser.lastName
+        lastName: newUser.lastName,
+        mustChangePassword: newUser.mustChangePassword
       };
       console.log("Add User Payload:", JSON.stringify(payload));
       const response = await fetch(API_ROUTES.ADD_USER, {
@@ -115,8 +117,9 @@ const UserManagementPage: React.FC = () => {
       console.log("Add User Raw Response:", responseText);
       if (!response.ok) throw new Error(`Failed to add user: ${response.status} ${response.statusText} - ${responseText}`);
       alert("User added successfully! Temporary password: Pwd1234.");
-      setNewUser({ userName: "", firstName: "", lastName: "", forcePasswordChange: true });
+      setNewUser({ userName: "", firstName: "", lastName: "", mustChangePassword: true });
       fetchUsers(token);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       console.error("Add User Error:", err);
@@ -149,6 +152,7 @@ const UserManagementPage: React.FC = () => {
       alert("User updated successfully!");
       setEditUser(null);
       fetchUsers(token);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       console.error("Update User Error:", err);
@@ -174,6 +178,7 @@ const UserManagementPage: React.FC = () => {
       alert("User deleted successfully!");
       setEditUser(null);
       fetchUsers(token);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       console.error("Delete User Error:", err);
@@ -197,6 +202,7 @@ const UserManagementPage: React.FC = () => {
       if (!response.ok) throw new Error(`Failed to update password change requirement: ${response.status} ${response.statusText} - ${responseText}`);
       alert(`Password change requirement ${mustChangePassword ? "enabled" : "disabled"} successfully!`);
       fetchUsers(token);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       console.error("Force Password Change Error:", err);
@@ -223,6 +229,7 @@ const UserManagementPage: React.FC = () => {
       console.log("Update PIN Code Raw Response:", responseText);
       if (!response.ok) throw new Error(`Failed to update PIN code: ${response.status} ${response.statusText} - ${responseText}`);
       alert("PIN code updated successfully!");
+      setShowPinModal(false);
       setPinError(null);
       fetchPinCode(token);
     } catch (err) {
@@ -237,28 +244,26 @@ const UserManagementPage: React.FC = () => {
 
   return (
     <div className="user-management-container">
-      <h1 className="user-management-title">User Management</h1>
+      <header className="user-management-header">
+        <h1 className="user-management-title">User Management</h1>
+        <div className="header-buttons">
+          <button className="action-button pin-button" onClick={() => setShowPinModal(true)}>
+            Manage Registration PIN
+          </button>
+          <button className="action-button back-button" onClick={() => navigate("/dashboard")}>
+            Back to Dashboard
+          </button>
+        </div>
+      </header>
       <div className="card-container">
-        <section className="user-management-card">
+        <section className="user-management-card edit-users-card">
           <h2 className="section-title">Edit Users</h2>
           {error && <p className="error-text">{error}</p>}
           {users.length > 0 ? (
             <ul className="user-list">
               {users.map((user) => (
-                <li key={user.id} className="user-item">
-                  <span className="user-name">{`${user.userName} (${user.firstName} ${user.lastName})`}</span>
-                  <button
-                    className="user-action-button edit-button"
-                    onClick={() => openEditUser(user)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className={`user-action-button ${user.mustChangePassword ? "disable-button" : "enable-button"}`}
-                    onClick={() => handleForcePasswordChange(user.id, !user.mustChangePassword)}
-                  >
-                    {user.mustChangePassword ? "Disable Password Change" : "Force Password Change"}
-                  </button>
+                <li key={user.id} className="user-item" onClick={() => openEditUser(user)}>
+                  <span className="user-name">{`${user.firstName} ${user.lastName}`}</span>
                 </li>
               ))}
             </ul>
@@ -293,26 +298,16 @@ const UserManagementPage: React.FC = () => {
               placeholder="Last Name"
               className="form-input"
             />
-            <button className="user-action-button add-button" onClick={handleAddUser}>
+            <label className="form-checkbox">
+              <input
+                type="checkbox"
+                checked={newUser.mustChangePassword}
+                onChange={(e) => setNewUser({ ...newUser, mustChangePassword: e.target.checked })}
+              />
+              Force Password Reset
+            </label>
+            <button className="action-button add-button" onClick={handleAddUser}>
               Add User
-            </button>
-          </div>
-        </section>
-        <section className="user-management-card pin-code-card">
-          <h2 className="section-title">Manage Registration PIN</h2>
-          {pinError && <p className="error-text">{pinError}</p>}
-          <div className="pin-code-form">
-            <label className="form-label">Current PIN Code</label>
-            <input
-              type="text"
-              value={pinCode}
-              onChange={(e) => setPinCode(e.target.value)}
-              placeholder="Enter 6-digit PIN"
-              className="form-input"
-              maxLength={6}
-            />
-            <button className="user-action-button save-button" onClick={handleUpdatePinCode}>
-              Save PIN
             </button>
           </div>
         </section>
@@ -369,23 +364,60 @@ const UserManagementPage: React.FC = () => {
                         setEditUser({ ...editUser, roles: updatedRoles });
                       }}
                     />
-                    {role}
+                    <span>{role}</span>
                   </label>
                 ))}
               </div>
               <div className="modal-buttons">
-                <button className="user-action-button update-button" onClick={handleUpdateUser}>
+                <button
+                  className={`action-button ${editUser.mustChangePassword ? "disable-button" : "enable-button"}`}
+                  onClick={() => handleForcePasswordChange(editUser.id, !editUser.mustChangePassword)}
+                >
+                  {editUser.mustChangePassword ? "Don’t Force Password Change" : "Force Password Change"}
+                </button>
+                <button className="action-button update-button" onClick={handleUpdateUser}>
                   Update
                 </button>
                 <button
-                  className="user-action-button delete-button"
+                  className="action-button delete-button"
                   onClick={() => handleDeleteUser(editUser.id)}
                 >
                   Delete
                 </button>
                 <button
-                  className="user-action-button cancel-button"
+                  className="action-button cancel-button"
                   onClick={() => setEditUser(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPinModal && (
+        <div className="modal-overlay">
+          <div className="modal-content pin-modal">
+            <h2 className="modal-title">Manage Registration PIN</h2>
+            {pinError && <p className="error-text">{pinError}</p>}
+            <div className="pin-code-form">
+              <label className="form-label">PIN Code</label>
+              <input
+                type="text"
+                value={pinCode}
+                onChange={(e) => setPinCode(e.target.value)}
+                placeholder="Enter 6-digit PIN"
+                className="form-input"
+                maxLength={6}
+              />
+              <div className="modal-buttons">
+                <button className="action-button save-button" onClick={handleUpdatePinCode}>
+                  Save PIN
+                </button>
+                <button
+                  className="action-button cancel-button"
+                  onClick={() => setShowPinModal(false)}
                 >
                   Cancel
                 </button>

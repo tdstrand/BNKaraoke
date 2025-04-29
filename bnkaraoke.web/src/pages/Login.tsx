@@ -12,20 +12,18 @@ const Login: React.FC = () => {
   const userNameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
-  // Format phone number as (xxx) xxx-xxxx
   const formatPhoneNumber = (value: string): string => {
-    const digits = value.replace(/\D/g, "").slice(0, 10); // Keep only digits, max 10
+    const digits = value.replace(/\D/g, "").slice(0, 10);
     if (digits.length === 0) return "";
     if (digits.length <= 3) return `(${digits}`;
     if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   };
 
-  // Handle phone input change
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value.replace(/\D/g, ""); // Store raw digits
-    setUserName(rawValue); // Store raw for submission
-    e.target.value = formatPhoneNumber(rawValue); // Display formatted
+    const rawValue = e.target.value.replace(/\D/g, "");
+    setUserName(rawValue);
+    e.target.value = formatPhoneNumber(rawValue);
   };
 
   const handleLogin = async () => {
@@ -105,6 +103,7 @@ const Login: React.FC = () => {
             className="login-input"
             ref={userNameRef}
             maxLength={14}
+            autoComplete="tel"
           />
           <label htmlFor="password">Password</label>
           <input
@@ -117,6 +116,7 @@ const Login: React.FC = () => {
             aria-label="Password"
             className="login-input"
             ref={passwordRef}
+            autoComplete="current-password"
           />
           <button type="submit" className="login-button">
             Log in
