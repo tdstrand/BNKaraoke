@@ -135,6 +135,12 @@
   text-shadow: 0 0 5px #22d3ee; /* Subtle glow */
 }
 
+.event-queue .queue-info {
+  margin: 5px 0;
+  font-size: 14px;
+  color: #ddd; /* Light grey for readability */
+}
+
 .queue-song {
   display: flex;
   justify-content: space-between;

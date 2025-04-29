@@ -15,6 +15,12 @@ import ChangePassword from "./pages/ChangePassword";
 import Profile from "./pages/Profile";
 import { EventContextProvider } from "./context/EventContext";
 
+// Configure Router with v7 flags
+const routerFutureConfig = {
+  v7_startTransition: true,
+  v7_relativeSplatPath: true
+};
+
 // Wrapper component to conditionally render the Header and handle MustChangePassword
 const HeaderWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
@@ -65,7 +71,7 @@ const HeaderWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
 const App = () => {
   return (
-    <Router>
+    <Router future={routerFutureConfig}>
       <EventContextProvider>
         <HeaderWrapper>
           <Routes>

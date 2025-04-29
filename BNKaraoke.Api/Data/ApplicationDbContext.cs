@@ -1,9 +1,9 @@
-﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore;
-using BNKaraoke.Api.Models;
-
-namespace BNKaraoke.Api.Data
+﻿namespace BNKaraoke.Api.Data
 {
+    using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+    using Microsoft.EntityFrameworkCore;
+    using BNKaraoke.Api.Models;
+
     public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     {
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
@@ -25,10 +25,9 @@ namespace BNKaraoke.Api.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Map tables with quoted identifiers to match the database
             // Event
             modelBuilder.Entity<Event>()
-                .ToTable(t =>
+                .ToTable("Events", "public", t =>
                 {
                     t.HasCheckConstraint("CK_Event_Status", "Status IN ('Upcoming', 'Live', 'Archived')");
                     t.HasCheckConstraint("CK_Event_Visibility", "Visibility IN ('Hidden', 'Visible')");
@@ -54,9 +53,9 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<Event>()
                 .Property(e => e.Description).HasColumnName("Description");
             modelBuilder.Entity<Event>()
-                .Property(e => e.Status).HasColumnName("Status").HasMaxLength(20);
+                .Property(e => e.Status).HasColumnName("Status").HasMaxLength(20).HasDefaultValue("Upcoming");
             modelBuilder.Entity<Event>()
-                .Property(e => e.Visibility).HasColumnName("Visibility").HasMaxLength(20);
+                .Property(e => e.Visibility).HasColumnName("Visibility").HasMaxLength(20).HasDefaultValue("Visible");
             modelBuilder.Entity<Event>()
                 .Property(e => e.Location).HasColumnName("Location");
             modelBuilder.Entity<Event>()
@@ -68,13 +67,13 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<Event>()
                 .Property(e => e.KaraokeDJName).HasColumnName("KaraokeDJName");
             modelBuilder.Entity<Event>()
-                .Property(e => e.IsCanceled).HasColumnName("IsCanceled");
+                .Property(e => e.IsCanceled).HasColumnName("IsCanceled").HasDefaultValue(false);
             modelBuilder.Entity<Event>()
-                .Property(e => e.RequestLimit).HasColumnName("RequestLimit");
+                .Property(e => e.RequestLimit).HasColumnName("RequestLimit").HasDefaultValue(15);
             modelBuilder.Entity<Event>()
-                .Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+                .Property(e => e.CreatedAt).HasColumnName("CreatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP");
             modelBuilder.Entity<Event>()
-                .Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+                .Property(e => e.UpdatedAt).HasColumnName("UpdatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             // Constraints for Event
             modelBuilder.Entity<Event>()
@@ -83,7 +82,7 @@ namespace BNKaraoke.Api.Data
 
             // EventQueue
             modelBuilder.Entity<EventQueue>()
-                .ToTable(t =>
+                .ToTable("EventQueues", "public", t =>
                 {
                     t.HasCheckConstraint("CK_EventQueue_Status", "Status IN ('Upcoming', 'Live', 'Archived')");
                 })
@@ -99,12 +98,13 @@ namespace BNKaraoke.Api.Data
                 .HasOne(eq => eq.Song)
                 .WithMany()
                 .HasForeignKey(eq => eq.SongId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<EventQueue>()
                 .HasOne(eq => eq.Requestor)
                 .WithMany()
-                .HasForeignKey(eq => eq.RequestorId)
+                .HasForeignKey(eq => eq.RequestorUserName)
+                .HasPrincipalKey(u => u.UserName)
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<EventQueue>()
@@ -114,29 +114,31 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<EventQueue>()
                 .Property(eq => eq.SongId).HasColumnName("SongId");
             modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.RequestorId).HasColumnName("RequestorId");
+                .Property(eq => eq.RequestorUserName).HasColumnName("RequestorUserName").IsRequired().HasMaxLength(20);
             modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.Singers).HasColumnType("text[]");
+                .Property(eq => eq.Singers).HasColumnName("Singers").HasColumnType("jsonb").IsRequired().HasDefaultValue("[]");
             modelBuilder.Entity<EventQueue>()
                 .Property(eq => eq.Position).HasColumnName("Position");
             modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.Status).HasColumnName("Status").HasMaxLength(20);
+                .Property(eq => eq.Status).HasColumnName("Status").IsRequired().HasMaxLength(20);
             modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.IsActive).HasColumnName("IsActive");
+                .Property(eq => eq.IsActive).HasColumnName("IsActive").IsRequired().HasDefaultValue(false);
             modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.WasSkipped).HasColumnName("WasSkipped");
+                .Property(eq => eq.WasSkipped).HasColumnName("WasSkipped").IsRequired().HasDefaultValue(false);
             modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.CreatedAt).HasColumnName("CreatedAt");
-            modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.UpdatedAt).HasColumnName("UpdatedAt");
-            modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.IsCurrentlyPlaying).HasColumnName("IsCurrentlyPlaying");
+                .Property(eq => eq.IsCurrentlyPlaying).HasColumnName("IsCurrentlyPlaying").IsRequired().HasDefaultValue(false);
             modelBuilder.Entity<EventQueue>()
                 .Property(eq => eq.SungAt).HasColumnName("SungAt");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.IsOnBreak).HasColumnName("IsOnBreak").IsRequired().HasDefaultValue(false);
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.CreatedAt).HasColumnName("CreatedAt").IsRequired().HasDefaultValueSql("CURRENT_TIMESTAMP");
+            modelBuilder.Entity<EventQueue>()
+                .Property(eq => eq.UpdatedAt).HasColumnName("UpdatedAt").IsRequired().HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             // EventAttendance
             modelBuilder.Entity<EventAttendance>()
-                .ToTable("EventAttendance")
+                .ToTable("EventAttendance", "public")
                 .HasKey(ea => ea.AttendanceId);
 
             modelBuilder.Entity<EventAttendance>()
@@ -179,7 +181,7 @@ namespace BNKaraoke.Api.Data
 
             // EventAttendanceHistory
             modelBuilder.Entity<EventAttendanceHistory>()
-                .ToTable(t =>
+                .ToTable("EventAttendanceHistories", "public", t =>
                 {
                     t.HasCheckConstraint("CK_EventAttendanceHistory_Action", "Action IN ('CheckIn', 'CheckOut')");
                 })
@@ -212,13 +214,13 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<EventAttendanceHistory>()
                 .Property(eah => eah.Action).HasColumnName("Action").HasMaxLength(20);
             modelBuilder.Entity<EventAttendanceHistory>()
-                .Property(eah => eah.ActionTimestamp).HasColumnName("ActionTimestamp");
+                .Property(eah => eah.ActionTimestamp).HasColumnName("ActionTimestamp").HasDefaultValueSql("CURRENT_TIMESTAMP");
             modelBuilder.Entity<EventAttendanceHistory>()
                 .Property(eah => eah.AttendanceId).HasColumnName("AttendanceId");
 
-            // Existing configurations for other entities
+            // Song
             modelBuilder.Entity<Song>()
-                .ToTable("Songs")
+                .ToTable("Songs", "public")
                 .HasKey(s => s.Id);
 
             modelBuilder.Entity<Song>()
@@ -236,17 +238,17 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<Song>()
                 .Property(s => s.ApprovedBy).HasColumnName("ApprovedBy");
             modelBuilder.Entity<Song>()
-                .Property(s => s.Bpm).HasColumnName("Bpm");
+                .Property(s => s.Bpm).HasColumnName("Bpm").HasDefaultValue(0f);
             modelBuilder.Entity<Song>()
-                .Property(s => s.Popularity).HasColumnName("Popularity");
+                .Property(s => s.Popularity).HasColumnName("Popularity").HasDefaultValue(0);
             modelBuilder.Entity<Song>()
-                .Property(s => s.RequestDate).HasColumnName("RequestDate");
+                .Property(s => s.RequestDate).HasColumnName("RequestDate").HasDefaultValueSql("'-infinity'::timestamp with time zone");
             modelBuilder.Entity<Song>()
-                .Property(s => s.RequestedBy).HasColumnName("RequestedBy");
+                .Property(s => s.RequestedBy).HasColumnName("RequestedBy").HasDefaultValue("");
             modelBuilder.Entity<Song>()
-                .Property(s => s.SpotifyId).HasColumnName("SpotifyId");
+                .Property(s => s.SpotifyId).HasColumnName("SpotifyId").HasDefaultValue("");
             modelBuilder.Entity<Song>()
-                .Property(s => s.Valence).HasColumnName("Valence");
+                .Property(s => s.Valence).HasColumnName("Valence").HasDefaultValue(0);
             modelBuilder.Entity<Song>()
                 .Property(s => s.Decade).HasColumnName("Decade");
             modelBuilder.Entity<Song>()
@@ -256,19 +258,21 @@ namespace BNKaraoke.Api.Data
             modelBuilder.Entity<Song>()
                 .Property(s => s.LastFmPlaycount).HasColumnName("LastFmPlaycount");
             modelBuilder.Entity<Song>()
-                .Property(s => s.Danceability).HasColumnName("Danceability");
+                .Property(s => s.Danceability).HasColumnName("Danceability"); // Fixed: Treat as string, no default value
             modelBuilder.Entity<Song>()
-                .Property(s => s.Energy).HasColumnName("Energy");
+                .Property(s => s.Energy).HasColumnName("Energy"); // Fixed: Treat as string, no default value
 
+            // QueueItem
             modelBuilder.Entity<QueueItem>()
-                .ToTable("QueueItems")
+                .ToTable("QueueItems", "public")
                 .HasKey(qi => qi.Id);
 
             modelBuilder.Entity<QueueItem>()
                 .Property(qi => qi.Id).HasColumnName("Id");
 
+            // FavoriteSong
             modelBuilder.Entity<FavoriteSong>()
-                .ToTable("FavoriteSongs")
+                .ToTable("FavoriteSongs", "public")
                 .HasKey(fs => fs.Id);
 
             modelBuilder.Entity<FavoriteSong>()
@@ -277,6 +281,16 @@ namespace BNKaraoke.Api.Data
                 .Property(fs => fs.SingerId).HasColumnName("SingerId");
             modelBuilder.Entity<FavoriteSong>()
                 .Property(fs => fs.SongId).HasColumnName("SongId");
+
+            // RegistrationSettings
+            modelBuilder.Entity<RegistrationSettings>()
+                .ToTable("RegistrationSettings", "public")
+                .HasKey(rs => rs.Id);
+
+            // PinChangeHistory
+            modelBuilder.Entity<PinChangeHistory>()
+                .ToTable("PinChangeHistories", "public")
+                .HasKey(pch => pch.Id);
         }
     }
 }

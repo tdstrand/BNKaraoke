@@ -4,13 +4,14 @@ import { LogoutOutlined } from '@ant-design/icons';
 import "./Header.css";
 import { API_ROUTES } from "../config/apiConfig";
 import useEventContext from "../context/EventContext";
+import { AttendanceAction } from "../types";
 
 const Header: React.FC = () => {
   console.log("Header component rendering");
 
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentEvent, setCurrentEvent, checkedIn, setCheckedIn, isCurrentEventLive, setIsCurrentEventLive } = useEventContext();
+  const { currentEvent, setCurrentEvent, checkedIn, setCheckedIn, isCurrentEventLive, setIsCurrentEventLive, isOnBreak, setIsOnBreak } = useEventContext();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [roles, setRoles] = useState<string[]>([]);
@@ -18,14 +19,12 @@ const Header: React.FC = () => {
   const [liveEvents, setLiveEvents] = useState<any[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [isEventDropdownOpen, setIsEventDropdownOpen] = useState(false);
-  const [isPreloadDropdownOpen, setIsPreloadDropdownOpen] = useState(false);
+  const [isPreselectDropdownOpen, setIsPreselectDropdownOpen] = useState(false);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkInError, setCheckInError] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState<number>(0);
-  const [queues, setQueues] = useState<{ [eventId: number]: any[] }>({});
-  const [isOnBreak, setIsOnBreak] = useState<boolean>(false);
   const eventDropdownRef = useRef<HTMLDivElement>(null);
-  const preloadDropdownRef = useRef<HTMLDivElement>(null);
+  const preselectDropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch user details on mount
   useEffect(() => {
@@ -67,8 +66,9 @@ const Header: React.FC = () => {
   // Close dropdowns on route change
   useEffect(() => {
     setIsEventDropdownOpen(false);
-    setIsPreloadDropdownOpen(false);
+    setIsPreselectDropdownOpen(false);
     setIsDropdownOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location]);
 
   // Close dropdowns on outside click
@@ -77,8 +77,8 @@ const Header: React.FC = () => {
       if (eventDropdownRef.current && !eventDropdownRef.current.contains(event.target as Node)) {
         setIsEventDropdownOpen(false);
       }
-      if (preloadDropdownRef.current && !preloadDropdownRef.current.contains(event.target as Node)) {
-        setIsPreloadDropdownOpen(false);
+      if (preselectDropdownRef.current && !preselectDropdownRef.current.contains(event.target as Node)) {
+        setIsPreselectDropdownOpen(false);
       }
     };
 
@@ -88,14 +88,13 @@ const Header: React.FC = () => {
     };
   }, []);
 
-  // Fetch events and queues on component mount
+  // Fetch events on component mount, and auto-select if only one upcoming event
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("No token found");
       setLiveEvents([]);
       setUpcomingEvents([]);
-      setQueues({});
       return;
     }
 
@@ -117,8 +116,15 @@ const Header: React.FC = () => {
         // Set the current event to a live event by default, if available
         const liveEvent = live[0];
         if (!currentEvent) {
-          setCurrentEvent(liveEvent || upcoming[0] || null);
-          setIsCurrentEventLive(liveEvent != null);
+          // If there's only one upcoming event, auto-select it
+          if (upcoming.length === 1) {
+            setCurrentEvent(upcoming[0]);
+            setIsCurrentEventLive(false);
+            console.log("Auto-selected the only upcoming event:", upcoming[0].eventId);
+          } else {
+            setCurrentEvent(liveEvent || upcoming[0] || null);
+            setIsCurrentEventLive(liveEvent != null);
+          }
         }
         if (liveEvent) {
           console.log("Selected live event status:", liveEvent.status);
@@ -126,65 +132,16 @@ const Header: React.FC = () => {
           console.log("Selected upcoming event status:", upcoming[0].status);
         }
 
-        const newQueues: { [eventId: number]: any[] } = {};
-        for (const event of eventsData) {
-          try {
-            const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${event.eventId}/queue`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!queueResponse.ok) throw new Error(`Fetch queue failed for event ${event.eventId}: ${queueResponse.status}`);
-            const queueData = await queueResponse.json();
-            newQueues[event.eventId] = queueData || [];
-          } catch (err) {
-            console.error(`Fetch queue error for event ${event.eventId}:`, err);
-            newQueues[event.eventId] = [];
-          }
-        }
-        setQueues(newQueues);
-
-        const totalPending = Object.values(newQueues).reduce(
-          (total, queue) => total + queue.filter(q => q.isCurrentlyPlaying).length,
-          0
-        );
-        setPendingRequests(totalPending);
+        // EventContext fetches queue data to determine pending requests, check-in, and break status
       } catch (err) {
         console.error("Header - Fetch events error:", err);
         setLiveEvents([]);
         setUpcomingEvents([]);
-        setQueues({});
       }
     };
 
     fetchEventsAndQueues();
   }, []);
-
-  // Fetch queue to determine check-in status when currentEvent changes
-  useEffect(() => {
-    if (!currentEvent) return;
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      console.error("No token found");
-      setCheckedIn(false);
-      return;
-    }
-
-    fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.eventId}/queue`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(res => {
-        if (!res.ok) throw new Error(`Fetch queue failed: ${res.status}`);
-        return res.json();
-      })
-      .then((data: any[]) => {
-        console.log("Header - Fetched queue:", data);
-        setCheckedIn(data && data.length > 0);
-      })
-      .catch(err => {
-        console.error("Header - Fetch queue error:", err);
-        setCheckedIn(false);
-      });
-  }, [currentEvent]);
 
   const adminRoles = ["Song Manager", "User Manager", "Event Manager"];
   const hasAdminRole = roles.some(role => adminRoles.includes(role));
@@ -217,15 +174,14 @@ const Header: React.FC = () => {
     try {
       const requestorId = localStorage.getItem("userName") || "unknown";
       console.log(`Checking into event: ${event.eventId}, status: ${event.status}, requestorId: ${requestorId}`);
-      const response = await fetch(`${API_ROUTES.EVENT_QUEUE}/${event.eventId}/attendance/check-in`, {
+      const requestData: AttendanceAction = { requestorId };
+      const response = await fetch(`/api/events/${event.eventId}/attendance/check-in`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          requestorId: requestorId,
-        }),
+        body: JSON.stringify(requestData),
       });
 
       if (!response.ok) {
@@ -247,11 +203,11 @@ const Header: React.FC = () => {
     }
   };
 
-  const handlePreloadSongs = (event: any) => {
+  const handlePreselectSongs = (event: any) => {
     setCurrentEvent(event);
     setIsCurrentEventLive(event.status === "Live");
-    setIsPreloadDropdownOpen(false);
-    // No navigation needed; Dashboard.tsx will handle preloading based on currentEvent
+    setCheckedIn(false);
+    setIsPreselectDropdownOpen(false);
   };
 
   const handleLeaveEvent = async () => {
@@ -270,21 +226,24 @@ const Header: React.FC = () => {
       try {
         const requestorId = localStorage.getItem("userName") || "unknown";
         console.log(`Checking out of event: ${currentEvent.eventId}, requestorId: ${requestorId}`);
-        const response = await fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.eventId}/attendance/check-out`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            requestorId: requestorId,
-          }),
-        });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Check-out failed: ${response.status} - ${errorText}`);
-          throw new Error(`Check-out failed: ${response.status}`);
+        // For live events, check out using the API
+        if (currentEvent.status === "Live") {
+          const requestData: AttendanceAction = { requestorId };
+          const response = await fetch(`/api/events/${currentEvent.eventId}/attendance/check-out`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestData),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Check-out failed: ${response.status} - ${errorText}`);
+            throw new Error(`Check-out failed: ${response.status}`);
+          }
         }
 
         setCurrentEvent(null);
@@ -301,9 +260,45 @@ const Header: React.FC = () => {
     }
   };
 
-  const handleBreakToggle = () => {
-    setIsOnBreak(!isOnBreak);
-    console.log(`User is now ${isOnBreak ? "off break" : "on break"}`);
+  const handleBreakToggle = async () => {
+    if (!currentEvent) {
+      console.error("No current event selected");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found");
+      return;
+    }
+
+    try {
+      const requestorId = localStorage.getItem("userName") || "unknown";
+      const requestData: AttendanceAction = { requestorId };
+      const endpoint = isOnBreak
+        ? `/api/events/${currentEvent.eventId}/attendance/break/end`
+        : `/api/events/${currentEvent.eventId}/attendance/break/start`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Break toggle failed: ${response.status} - ${errorText}`);
+        throw new Error(`Break toggle failed: ${response.status}`);
+      }
+
+      setIsOnBreak(!isOnBreak);
+      console.log(`User is now ${isOnBreak ? "off break" : "on break"}`);
+    } catch (err) {
+      console.error("Break toggle error:", err);
+    }
   };
 
   const fullName = firstName || lastName ? `${firstName} ${lastName}`.trim() : "User";
@@ -352,39 +347,44 @@ const Header: React.FC = () => {
         <span className="header-user" onClick={() => navigate("/profile")} style={{ cursor: "pointer" }}>
           Hello, {fullName}!
         </span>
-        {currentEvent && checkedIn ? (
+        {currentEvent && (
           <div className="event-status">
-            <span className="event-name">Checked into: {currentEvent.eventCode}</span>
-            {isCurrentEventLive && (
+            <span className="event-name">
+              {checkedIn ? `Checked into: ${currentEvent.eventCode}` : `Pre-Selecting for: ${currentEvent.eventCode}`}
+            </span>
+            {checkedIn && isCurrentEventLive && (
               <button className={isOnBreak ? "back-button" : "break-button"} onClick={handleBreakToggle}>
                 {isOnBreak ? "I'm Back" : "Go On Break"}
               </button>
             )}
-            <button className="leave-event-button" onClick={handleLeaveEvent}>
-              Leave Event
-            </button>
+            {checkedIn && (
+              <button className="leave-event-button" onClick={handleLeaveEvent}>
+                Leave Event
+              </button>
+            )}
           </div>
-        ) : (
+        )}
+        {!currentEvent && (
           <div className="event-actions">
             {!(checkedIn && isCurrentEventLive) && (
-              <div className="event-dropdown preload-dropdown" ref={preloadDropdownRef}>
+              <div className="event-dropdown preselect-dropdown" ref={preselectDropdownRef}>
                 <button
-                  className="preload-button"
-                  onClick={() => setIsPreloadDropdownOpen(!isPreloadDropdownOpen)}
+                  className="preselect-button"
+                  onClick={() => setIsPreselectDropdownOpen(!isPreselectDropdownOpen)}
                   disabled={upcomingEvents.length === 0}
-                  aria-label="Preload Songs for Upcoming Events"
+                  aria-label="Pre-Select Songs for Upcoming Events"
                 >
-                  Preload Songs
+                  Pre-Select
                 </button>
-                {isPreloadDropdownOpen && (
+                {isPreselectDropdownOpen && upcomingEvents.length > 1 && (
                   <ul className="event-dropdown-menu">
                     {upcomingEvents.map(event => (
                       <li
                         key={event.eventId}
                         className="event-dropdown-item"
-                        onClick={() => handlePreloadSongs(event)}
+                        onClick={() => handlePreselectSongs(event)}
                       >
-                        {event.status}: {event.eventCode} ({event.scheduledDate})
+                        {event.status}: ${event.eventCode} (${event.scheduledDate})
                       </li>
                     ))}
                   </ul>
@@ -413,7 +413,7 @@ const Header: React.FC = () => {
                       className="event-dropdown-item"
                       onClick={() => handleCheckIn(event)}
                     >
-                      {event.status}: {event.eventCode} ({event.scheduledDate})
+                      {event.status}: ${event.eventCode} (${event.scheduledDate})
                     </li>
                   ))}
                 </ul>

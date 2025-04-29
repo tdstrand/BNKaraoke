@@ -102,7 +102,7 @@
   cursor: not-allowed;
 }
 
-.preload-button {
+.preselect-button {
   background-color: #2ecc71; /* Green */
   color: white;
   border: none;
@@ -112,11 +112,11 @@
   box-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
 }
 
-.preload-button:hover {
+.preselect-button:hover {
   background-color: #27ae60; /* Darker green */
 }
 
-.preload-button:disabled {
+.preselect-button:disabled {
   background-color: #666; /* Muted grey */
   cursor: not-allowed;
 }

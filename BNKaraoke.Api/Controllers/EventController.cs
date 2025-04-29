@@ -10,6 +10,7 @@
     using BNKaraoke.Api.Dtos;
     using System.Linq;
     using System.Security.Claims;
+    using System.Text.Json;
 
     [Route("api/events")]
     [ApiController]
@@ -207,7 +208,8 @@
                     KaraokeDJName = existingEvent.KaraokeDJName,
                     IsCanceled = existingEvent.IsCanceled,
                     RequestLimit = existingEvent.RequestLimit,
-                    QueueCount = await _context.EventQueues.CountAsync(eq => eq.EventId == eventId)
+                    QueueCount = await _context.EventQueues
+                        .CountAsync(eq => eq.EventId == eventId)
                 };
 
                 _logger.LogInformation("Successfully updated event with EventId: {EventId}", eventId);
@@ -249,7 +251,8 @@
                     KaraokeDJName = eventEntity.KaraokeDJName,
                     IsCanceled = eventEntity.IsCanceled,
                     RequestLimit = eventEntity.RequestLimit,
-                    QueueCount = await _context.EventQueues.CountAsync(eq => eq.EventId == eventId)
+                    QueueCount = await _context.EventQueues
+                        .CountAsync(eq => eq.EventId == eventId)
                 };
 
                 _logger.LogInformation("Successfully fetched event with EventId: {EventId}", eventId);
@@ -269,7 +272,7 @@
         {
             try
             {
-                _logger.LogInformation("Adding song to queue for EventId: {EventId}, SongId: {SongId}, RequestorId: {RequestorId}", eventId, queueDto.SongId, queueDto.RequestorId);
+                _logger.LogInformation("Adding song to queue for EventId: {EventId}, SongId: {SongId}, RequestorUserName: {RequestorUserName}", eventId, queueDto.SongId, queueDto.RequestorUserName);
                 if (!ModelState.IsValid)
                 {
                     _logger.LogWarning("Invalid model state for AddToQueue: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
@@ -297,21 +300,29 @@
                     return BadRequest("Song not found");
                 }
 
-                // Verify the requestor exists by UserName instead of Id
+                // Verify the requestor exists by UserName
+                if (string.IsNullOrEmpty(queueDto.RequestorUserName))
+                {
+                    _logger.LogWarning("RequestorUserName is null or empty");
+                    return BadRequest("RequestorUserName cannot be null or empty");
+                }
+
+                // Explicitly query as ApplicationUser to avoid type inference issues
                 var requestor = await _context.Users
-                    .FirstOrDefaultAsync(u => u.UserName == queueDto.RequestorId);
+                    .OfType<ApplicationUser>()
+                    .FirstOrDefaultAsync(u => u.UserName == queueDto.RequestorUserName);
                 if (requestor == null)
                 {
-                    _logger.LogWarning("Requestor not found with UserName: {RequestorId}", queueDto.RequestorId);
-                    return BadRequest("Requestor not found");
+                    _logger.LogWarning("Requestor not found with UserName: {UserName}", queueDto.RequestorUserName);
+                    return BadRequest("Requestor not found with UserName: " + queueDto.RequestorUserName);
                 }
 
                 // Check the event's request limit (excluding co-sung songs)
                 var requestedCount = await _context.EventQueues
-                    .CountAsync(eq => eq.EventId == eventId && eq.RequestorId == requestor.Id);
+                    .CountAsync(eq => eq.EventId == eventId && eq.RequestorUserName == requestor.UserName);
                 if (requestedCount >= eventEntity.RequestLimit)
                 {
-                    _logger.LogWarning("Requestor with UserName {UserName} has reached the request limit of {RequestLimit} for EventId {EventId}", queueDto.RequestorId, eventEntity.RequestLimit, eventId);
+                    _logger.LogWarning("Requestor with UserName {UserName} has reached the request limit of {RequestLimit} for EventId {EventId}", queueDto.RequestorUserName, eventEntity.RequestLimit, eventId);
                     return BadRequest($"You have reached the event's request limit of {eventEntity.RequestLimit} songs.");
                 }
 
@@ -322,7 +333,7 @@
                         .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == requestor.Id);
                     if (attendance == null || !attendance.IsCheckedIn)
                     {
-                        _logger.LogWarning("Requestor with UserName {UserName} must be checked in to add to queue for EventId {EventId} with status {Status}", queueDto.RequestorId, eventId, eventEntity.Status);
+                        _logger.LogWarning("Requestor with UserName {UserName} must be checked in to add to queue for EventId {EventId} with status {Status}", queueDto.RequestorUserName, eventId, eventEntity.Status);
                         return BadRequest("Requestor must be checked in to add to the queue for a non-upcoming event");
                     }
                 }
@@ -336,33 +347,50 @@
                 {
                     EventId = eventId,
                     SongId = queueDto.SongId,
-                    RequestorId = requestor.Id,
-                    Singers = new List<string> { requestor.Id }, // Initialize with the requestor
+                    RequestorUserName = requestor.UserName,
+                    Singers = JsonSerializer.Serialize(new[] { requestor.UserName }), // Initialize with the requestor
                     Position = maxPosition + 1,
                     Status = eventEntity.Status,
                     IsActive = eventEntity.Status != "Upcoming", // Active only if the event is not Upcoming
+                    WasSkipped = false,
+                    IsCurrentlyPlaying = false,
                     CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    UpdatedAt = DateTime.UtcNow,
+                    IsOnBreak = false
                 };
 
                 _context.EventQueues.Add(newQueueEntry);
                 await _context.SaveChangesAsync();
 
                 // Map the new queue entry to a DTO to avoid circular references
+                var singersList = new List<string>();
+                try
+                {
+                    var singersArray = JsonSerializer.Deserialize<string[]>(newQueueEntry.Singers);
+                    if (singersArray != null)
+                    {
+                        singersList.AddRange(singersArray);
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning("Failed to deserialize Singers for QueueId {QueueId}: {Message}", newQueueEntry.QueueId, ex.Message);
+                }
+
                 var queueEntryDto = new EventQueueDto
                 {
                     QueueId = newQueueEntry.QueueId,
                     EventId = newQueueEntry.EventId,
                     SongId = newQueueEntry.SongId,
-                    RequestorId = newQueueEntry.RequestorId,
-                    Singers = newQueueEntry.Singers,
+                    RequestorUserName = newQueueEntry.RequestorUserName,
+                    Singers = singersList,
                     Position = newQueueEntry.Position,
-                    Status = ComputeSongStatus(newQueueEntry), // Compute status
+                    Status = ComputeSongStatus(newQueueEntry, false), // No singers on break for a new entry
                     IsActive = newQueueEntry.IsActive,
                     WasSkipped = newQueueEntry.WasSkipped,
                     IsCurrentlyPlaying = newQueueEntry.IsCurrentlyPlaying,
-                    SungAt = newQueueEntry.SungAt,
-                    IsOnBreak = false // Will be computed in GetEventQueue
+                    SungAt = newQueueEntry.SungAt, // Directly use DateTime? value
+                    IsOnBreak = newQueueEntry.IsOnBreak
                 };
 
                 _logger.LogInformation("Successfully added song to queue for EventId {EventId}, QueueId: {QueueId}", eventId, newQueueEntry.QueueId);
@@ -378,42 +406,111 @@
         // GET /api/events/{eventId}/queue: Retrieve the event queue (with break status and computed status)
         [HttpGet("{eventId}/queue")]
         [Authorize]
-        public IActionResult GetEventQueue(int eventId)
+        public async Task<IActionResult> GetEventQueue(int eventId)
         {
             try
             {
                 _logger.LogInformation("Fetching event queue for EventId: {EventId}", eventId);
-                var eventEntity = _context.Events.FirstOrDefault(e => e.EventId == eventId);
+                var eventEntity = await _context.Events.FirstOrDefaultAsync(e => e.EventId == eventId);
                 if (eventEntity == null)
                 {
                     _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
-                var queueEntries = (from queue in _context.EventQueues
-                                    join attendance in _context.EventAttendances
-                                    on new { queue.EventId, queue.RequestorId } equals new { attendance.EventId, attendance.RequestorId }
-                                    where queue.EventId == eventId
-                                    select new { QueueEntry = queue, Attendance = attendance }).ToList();
+                // Fetch all queue entries for the event
+                var queueEntries = await _context.EventQueues
+                    .Where(eq => eq.EventId == eventId)
+                    .ToListAsync();
+
+                // Fetch all users and attendances in bulk, performing filtering in memory
+                var requestorUserNames = queueEntries
+                    .Select(eq => eq.RequestorUserName)
+                    .Where(userName => userName != null)
+                    .Distinct()
+                    .ToList();
+                var allUsers = await _context.Users
+                    .OfType<ApplicationUser>()
+                    .ToListAsync();
+                var usersList = allUsers
+                    .Where(u => u.UserName != null && requestorUserNames.Contains(u.UserName))
+                    .ToList();
+                var users = usersList.ToDictionary(u => u.UserName!, u => u);
+
+                var singerUserNames = new HashSet<string>();
+                foreach (var eq in queueEntries)
+                {
+                    try
+                    {
+                        var singers = JsonSerializer.Deserialize<string[]>(eq.Singers) ?? Array.Empty<string>();
+                        foreach (var singer in singers)
+                        {
+                            if (singer != "AllSing" && singer != "TheBoys" && singer != "TheGirls" && singer != null)
+                            {
+                                singerUserNames.Add(singer);
+                            }
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning("Failed to deserialize Singers for QueueId {QueueId}: {Message}", eq.QueueId, ex.Message);
+                    }
+                }
+
+                var singerUserNamesList = singerUserNames.ToList();
+                var singerUsersList = allUsers
+                    .Where(u => u.UserName != null && singerUserNamesList.Contains(u.UserName))
+                    .ToList();
+                var singerUsers = singerUsersList.ToDictionary(u => u.UserName!, u => u);
+
+                var userIds = users.Values.Select(u => u.Id)
+                    .Concat(singerUsers.Values.Select(u => u.Id))
+                    .Distinct()
+                    .ToList();
+                var allAttendances = await _context.EventAttendances
+                    .Where(ea => ea.EventId == eventId)
+                    .ToListAsync();
+                var attendancesList = allAttendances
+                    .Where(ea => userIds.Contains(ea.RequestorId))
+                    .ToList();
+                var attendances = attendancesList.ToDictionary(ea => ea.RequestorId, ea => ea);
 
                 var queueDtos = new List<EventQueueDto>();
-                foreach (var entry in queueEntries)
+                foreach (var eq in queueEntries)
                 {
-                    var eq = entry.QueueEntry;
-                    var ea = entry.Attendance;
+                    // Look up the requestor
+                    if (string.IsNullOrEmpty(eq.RequestorUserName) || !users.TryGetValue(eq.RequestorUserName, out var requestor))
+                    {
+                        _logger.LogWarning("Requestor not found with UserName: {UserName} for QueueId {QueueId}", eq.RequestorUserName, eq.QueueId);
+                        continue; // Skip entries with invalid requestors
+                    }
+
+                    // Look up the requestor's attendance
+                    attendances.TryGetValue(requestor.Id, out var attendance);
+
+                    // Deserialize singers directly into a List<string>
+                    var singersList = new List<string>();
+                    try
+                    {
+                        singersList.AddRange(JsonSerializer.Deserialize<string[]>(eq.Singers) ?? Array.Empty<string>());
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning("Failed to deserialize Singers for QueueId {QueueId}: {Message}", eq.QueueId, ex.Message);
+                    }
 
                     // Check if any singer is on break
                     bool anySingerOnBreak = false;
-                    foreach (var singerId in eq.Singers)
+                    foreach (var singer in singersList)
                     {
-                        if (singerId == "AllSing" || singerId == "TheBoys" || singerId == "TheGirls")
+                        if (singer == "AllSing" || singer == "TheBoys" || singer == "TheGirls")
                         {
                             continue; // Special groups don't have break status
                         }
 
-                        var singerAttendance = _context.EventAttendances
-                            .FirstOrDefault(ea => ea.EventId == eventId && ea.RequestorId == singerId);
-                        if (singerAttendance != null && singerAttendance.IsOnBreak)
+                        if (singer != null && singerUsers.TryGetValue(singer, out var singerUser) &&
+                            attendances.TryGetValue(singerUser.Id, out var singerAttendance) &&
+                            singerAttendance.IsOnBreak)
                         {
                             anySingerOnBreak = true;
                             break;
@@ -425,25 +522,25 @@
                         QueueId = eq.QueueId,
                         EventId = eq.EventId,
                         SongId = eq.SongId,
-                        RequestorId = eq.RequestorId,
-                        Singers = eq.Singers,
+                        RequestorUserName = eq.RequestorUserName,
+                        Singers = singersList,
                         Position = eq.Position,
                         Status = ComputeSongStatus(eq, anySingerOnBreak),
                         IsActive = eq.IsActive,
                         WasSkipped = eq.WasSkipped,
                         IsCurrentlyPlaying = eq.IsCurrentlyPlaying,
-                        SungAt = eq.SungAt,
-                        IsOnBreak = ea.IsOnBreak // This reflects the requestor's break status
+                        SungAt = eq.SungAt, // Directly use DateTime? value
+                        IsOnBreak = attendance != null ? attendance.IsOnBreak : false // Reflects the requestor's break status
                     };
 
                     queueDtos.Add(queueDto);
                 }
 
-                // Sort by position
-                queueDtos = queueDtos.OrderBy(eq => eq.Position).ToList();
+                // Sort by position in memory
+                var sortedQueueDtos = queueDtos.OrderBy(eq => eq.Position).ToList();
 
-                _logger.LogInformation("Successfully fetched {Count} queue entries for EventId: {EventId}", queueDtos.Count, eventId);
-                return Ok(queueDtos);
+                _logger.LogInformation("Successfully fetched {Count} queue entries for EventId: {EventId}", sortedQueueDtos.Count, eventId);
+                return Ok(sortedQueueDtos);
             }
             catch (Exception ex)
             {
@@ -452,22 +549,60 @@
             }
         }
 
-        // Helper method to compute song status
-        private string ComputeSongStatus(EventQueue queueEntry, bool anySingerOnBreak = false)
+        // GET /api/events/{eventId}/attendance/status: Get the attendance status of the requestor
+        [HttpGet("{eventId}/attendance/status")]
+        [Authorize]
+        public async Task<IActionResult> GetAttendanceStatus(int eventId)
         {
-            if (queueEntry.SungAt != null)
+            try
             {
-                return "Completed";
+                _logger.LogInformation("Fetching attendance status for EventId: {EventId}", eventId);
+
+                var eventEntity = await _context.Events.FindAsync(eventId);
+                if (eventEntity == null)
+                {
+                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    return NotFound("Event not found");
+                }
+
+                // Get the user's UserName from the token
+                var userName = User.FindFirst(ClaimTypes.Name)?.Value;
+                if (string.IsNullOrEmpty(userName))
+                {
+                    _logger.LogWarning("User identity not found in token");
+                    return Unauthorized("User identity not found in token");
+                }
+
+                var requestor = await _context.Users
+                    .OfType<ApplicationUser>()
+                    .FirstOrDefaultAsync(u => u.UserName == userName);
+                if (requestor == null)
+                {
+                    _logger.LogWarning("Requestor not found with UserName: {UserName}", userName);
+                    return BadRequest("Requestor not found");
+                }
+
+                var attendance = await _context.EventAttendances
+                    .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == requestor.Id);
+
+                if (attendance == null)
+                {
+                    return Ok(new { isCheckedIn = false, isOnBreak = false });
+                }
+
+                return Ok(new
+                {
+                    isCheckedIn = attendance.IsCheckedIn,
+                    isOnBreak = attendance.IsOnBreak,
+                    breakStartAt = attendance.BreakStartAt,
+                    breakEndAt = attendance.BreakEndAt
+                });
             }
-            if (queueEntry.IsCurrentlyPlaying)
+            catch (Exception ex)
             {
-                return "Now Singing";
+                _logger.LogError(ex, "Error fetching attendance status for EventId {EventId}: {Message}", eventId, ex.Message);
+                return StatusCode(500, new { message = "An error occurred while fetching attendance status", details = ex.Message });
             }
-            if (anySingerOnBreak)
-            {
-                return "Waiting on singers";
-            }
-            return "Pending";
         }
 
         // POST /api/events/{eventId}/attendance/check-in: Requestor checks in
@@ -497,8 +632,15 @@
                     return BadRequest("Cannot check in to a canceled or hidden event");
                 }
 
-                // Look up requestor by UserName instead of Id
+                // Look up requestor by UserName
+                if (string.IsNullOrEmpty(actionDto.RequestorId))
+                {
+                    _logger.LogWarning("RequestorId is null or empty");
+                    return BadRequest("RequestorId cannot be null or empty");
+                }
+
                 var requestor = await _context.Users
+                    .OfType<ApplicationUser>()
                     .FirstOrDefaultAsync(u => u.UserName == actionDto.RequestorId);
                 if (requestor == null)
                 {
@@ -550,7 +692,7 @@
 
                 // Activate the requestor's queue entries
                 var queueEntries = await _context.EventQueues
-                    .Where(eq => eq.EventId == eventId && eq.RequestorId == requestor.Id)
+                    .Where(eq => eq.EventId == eventId && eq.RequestorUserName == requestor.UserName)
                     .ToListAsync();
 
                 foreach (var entry in queueEntries)
@@ -593,8 +735,15 @@
                     return NotFound("Event not found");
                 }
 
-                // Look up requestor by UserName instead of Id
+                // Look up requestor by UserName
+                if (string.IsNullOrEmpty(actionDto.RequestorId))
+                {
+                    _logger.LogWarning("RequestorId is null or empty");
+                    return BadRequest("RequestorId cannot be null or empty");
+                }
+
                 var requestor = await _context.Users
+                    .OfType<ApplicationUser>()
                     .FirstOrDefaultAsync(u => u.UserName == actionDto.RequestorId);
                 if (requestor == null)
                 {
@@ -631,7 +780,7 @@
 
                 // Deactivate the requestor's queue entries
                 var queueEntries = await _context.EventQueues
-                    .Where(eq => eq.EventId == eventId && eq.RequestorId == requestor.Id)
+                    .Where(eq => eq.EventId == eventId && eq.RequestorUserName == requestor.UserName)
                     .ToListAsync();
 
                 foreach (var entry in queueEntries)
@@ -674,8 +823,24 @@
                     return NotFound("Event not found");
                 }
 
+                // Look up requestor by UserName
+                if (string.IsNullOrEmpty(actionDto.RequestorId))
+                {
+                    _logger.LogWarning("RequestorId is null or empty");
+                    return BadRequest("RequestorId cannot be null or empty");
+                }
+
+                var requestor = await _context.Users
+                    .OfType<ApplicationUser>()
+                    .FirstOrDefaultAsync(u => u.UserName == actionDto.RequestorId);
+                if (requestor == null)
+                {
+                    _logger.LogWarning("Requestor not found with UserName: {UserName}", actionDto.RequestorId);
+                    return BadRequest("Requestor not found");
+                }
+
                 var attendance = await _context.EventAttendances
-                    .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == actionDto.RequestorId);
+                    .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == requestor.Id);
                 if (attendance == null || !attendance.IsCheckedIn)
                 {
                     _logger.LogWarning("Requestor with UserName {UserName} must be checked in to take a break for EventId {EventId}", actionDto.RequestorId, eventId);
@@ -724,8 +889,24 @@
                     return NotFound("Event not found");
                 }
 
+                // Look up requestor by UserName
+                if (string.IsNullOrEmpty(actionDto.RequestorId))
+                {
+                    _logger.LogWarning("RequestorId is null or empty");
+                    return BadRequest("RequestorId cannot be null or empty");
+                }
+
+                var requestor = await _context.Users
+                    .OfType<ApplicationUser>()
+                    .FirstOrDefaultAsync(u => u.UserName == actionDto.RequestorId);
+                if (requestor == null)
+                {
+                    _logger.LogWarning("Requestor not found with UserName: {UserName}", actionDto.RequestorId);
+                    return BadRequest("Requestor not found");
+                }
+
                 var attendance = await _context.EventAttendances
-                    .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == actionDto.RequestorId);
+                    .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == requestor.Id);
                 if (attendance == null || !attendance.IsCheckedIn || !attendance.IsOnBreak)
                 {
                     _logger.LogWarning("Requestor with UserName {UserName} must be checked in and on break to end break for EventId {EventId}", actionDto.RequestorId, eventId);
@@ -741,7 +922,7 @@
                     .MinAsync(eq => (int?)eq.Position) ?? 1;
 
                 var skippedEntries = await _context.EventQueues
-                    .Where(eq => eq.EventId == eventId && eq.RequestorId == actionDto.RequestorId && eq.WasSkipped)
+                    .Where(eq => eq.EventId == eventId && eq.RequestorUserName == requestor.UserName && eq.WasSkipped)
                     .OrderBy(eq => eq.QueueId)
                     .ToListAsync();
 
@@ -754,7 +935,7 @@
 
                 // Reorder the rest of the queue
                 var otherEntries = await _context.EventQueues
-                    .Where(eq => eq.EventId == eventId && (eq.RequestorId != actionDto.RequestorId || !eq.WasSkipped))
+                    .Where(eq => eq.EventId == eventId && (eq.RequestorUserName != requestor.UserName || !eq.WasSkipped))
                     .OrderBy(eq => eq.Position)
                     .ToListAsync();
 
@@ -798,11 +979,20 @@
                     return NotFound("Queue entry not found");
                 }
 
+                var requestor = await _context.Users
+                    .OfType<ApplicationUser>()
+                    .FirstOrDefaultAsync(u => u.UserName == queueEntry.RequestorUserName);
+                if (requestor == null)
+                {
+                    _logger.LogWarning("Requestor not found with UserName: {UserName}", queueEntry.RequestorUserName);
+                    return BadRequest("Requestor not found");
+                }
+
                 var attendance = await _context.EventAttendances
-                    .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == queueEntry.RequestorId);
+                    .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == requestor.Id);
                 if (attendance == null || !attendance.IsOnBreak)
                 {
-                    _logger.LogWarning("Requestor with RequestorId {RequestorId} must be on break to skip song for EventId {EventId}", queueEntry.RequestorId, eventId);
+                    _logger.LogWarning("Requestor with UserName {UserName} must be on break to skip song for EventId {EventId}", queueEntry.RequestorUserName, eventId);
                     return BadRequest("Requestor must be on break to skip their song");
                 }
 
@@ -815,7 +1005,7 @@
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error skipping song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, eventId, ex.Message);
+                _logger.LogError(ex, "Error skipping song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, ex.Message);
                 return StatusCode(500, new { message = "An error occurred while skipping the song", details = ex.Message });
             }
         }
@@ -841,9 +1031,9 @@
                     return NotFound("Event not found");
                 }
 
-                // Get the user's ID from the token
-                var userId = User.FindFirst(ClaimTypes.Name)?.Value;
-                if (string.IsNullOrEmpty(userId))
+                // Get the user's UserName from the token
+                var userName = User.FindFirst(ClaimTypes.Name)?.Value;
+                if (string.IsNullOrEmpty(userName))
                 {
                     _logger.LogWarning("User identity not found in token");
                     return Unauthorized("User identity not found in token");
@@ -851,7 +1041,7 @@
 
                 // Fetch the user's queue playlist entries for this event
                 var userQueueEntries = await _context.EventQueues
-                    .Where(eq => eq.EventId == eventId && (eq.RequestorId == userId || eq.Singers.Contains(userId)))
+                    .Where(eq => eq.EventId == eventId && (eq.RequestorUserName == userName || eq.Singers!.Contains(userName)))
                     .ToListAsync();
 
                 // Validate the request
@@ -966,19 +1156,28 @@
                         return BadRequest("Cannot have more than 7 individual singers");
                     }
 
-                    // Validate that all individual singers exist
-                    foreach (var singerId in individualSingers)
+                    // Validate that all individual singers exist (by UserName)
+                    foreach (var singer in individualSingers)
                     {
-                        var singer = await _context.Users.FindAsync(singerId);
-                        if (singer == null)
+                        if (string.IsNullOrEmpty(singer))
                         {
-                            _logger.LogWarning("Singer not found with SingerId: {SingerId} for QueueId {QueueId}", singerId, queueId);
-                            return BadRequest($"Singer not found: {singerId}");
+                            _logger.LogWarning("Singer UserName is null or empty for QueueId {QueueId}", queueId);
+                            return BadRequest("Singer UserName cannot be null or empty");
+                        }
+
+                        var singerUser = await _context.Users
+                            .OfType<ApplicationUser>()
+                            .FirstOrDefaultAsync(u => u.UserName == singer);
+                        if (singerUser == null)
+                        {
+                            _logger.LogWarning("Singer not found with UserName: {UserName} for QueueId: {QueueId}", singer, queueId);
+                            string errorMessage = $"Singer not found: {singer}";
+                            return BadRequest(errorMessage);
                         }
                     }
                 }
 
-                queueEntry.Singers = request.Singers;
+                queueEntry.Singers = JsonSerializer.Serialize(request.Singers);
                 queueEntry.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
@@ -991,10 +1190,55 @@
                 return StatusCode(500, new { message = "An error occurred while updating singers", details = ex.Message });
             }
         }
-    }
 
-    public class AttendanceActionDto
-    {
-        public required string RequestorId { get; set; }
+        // DELETE /api/events/queue/clear: Clear the user's queue entries across all events
+        [HttpDelete("queue/clear")]
+        [Authorize]
+        public async Task<IActionResult> ClearUserQueue()
+        {
+            try
+            {
+                var userName = User.FindFirst(ClaimTypes.Name)?.Value;
+                if (string.IsNullOrEmpty(userName))
+                {
+                    _logger.LogWarning("User identity not found in token");
+                    return Unauthorized("User identity not found in token");
+                }
+
+                _logger.LogInformation("Clearing queue for user with UserName: {UserName}", userName);
+                var userQueueItems = await _context.EventQueues
+                    .Where(eq => eq.RequestorUserName == userName)
+                    .ToListAsync();
+
+                _context.EventQueues.RemoveRange(userQueueItems);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Successfully cleared queue for user with UserName: {UserName}", userName);
+                return Ok(new { success = true, message = "User queue cleared successfully." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error clearing user queue for UserName {UserName}: {Message}", User.FindFirst(ClaimTypes.Name)?.Value, ex.Message);
+                return StatusCode(500, new { success = false, message = "An error occurred while clearing the queue." });
+            }
+        }
+
+        // Helper method to compute song status
+        private string ComputeSongStatus(EventQueue queueEntry, bool anySingerOnBreak)
+        {
+            if (queueEntry.SungAt != null)
+            {
+                return "Completed";
+            }
+            if (queueEntry.IsCurrentlyPlaying)
+            {
+                return "Now Singing";
+            }
+            if (anySingerOnBreak)
+            {
+                return "Waiting on singers";
+            }
+            return "Pending";
+        }
     }
 }

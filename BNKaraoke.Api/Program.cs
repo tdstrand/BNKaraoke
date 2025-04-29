@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Security.Claims;
+using Microsoft.AspNetCore.SpaServices.ReactDevelopmentServer;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -91,7 +92,7 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
         ValidAudience = builder.Configuration["JwtSettings:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString)),
-        NameClaimType = ClaimTypes.Name, // Map to standard Name claim
+        NameClaimType = ClaimTypes.Name,
         RoleClaimType = ClaimTypes.Role
     };
     options.Events = new JwtBearerEvents
@@ -100,17 +101,13 @@ builder.Services.AddAuthentication(options =>
         {
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
             logger.LogDebug("OnTokenValidated event fired.");
-
             var claims = context.Principal?.Claims;
             if (claims != null)
             {
                 logger.LogDebug("Token validated. Claims: {Claims}", string.Join(", ", claims.Select(c => $"{c.Type}: {c.Value}")));
-
-                // Try different variations of the "sub" claim
                 var subClaim = claims.FirstOrDefault(c => c.Type == "sub")?.Value
                             ?? claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value
                             ?? claims.FirstOrDefault(c => c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
-
                 if (!string.IsNullOrEmpty(subClaim))
                 {
                     logger.LogDebug("Sub claim found: {SubClaim}", subClaim);
@@ -178,15 +175,12 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Add controllers without LowercaseUrls and LowercaseQueryStrings
 builder.Services.AddControllers()
-.AddApplicationPart(typeof(EventController).Assembly)
-.AddControllersAsServices();
+    .AddApplicationPart(typeof(EventController).Assembly)
+    .AddControllersAsServices();
 
-// Explicitly register EventController
 builder.Services.AddTransient<EventController>();
 
-// Add diagnostic logging for controller discovery
 var loggerFactory = LoggerFactory.Create(logging =>
 {
     logging.AddConsole();
@@ -205,7 +199,6 @@ foreach (var controllerType in controllerTypes)
     logger.LogInformation("Discovered controller: {ControllerName}", controllerType.Name);
 }
 
-// Add Swagger
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
@@ -240,9 +233,15 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddHttpClient();
 
+// Add SPA services
+builder.Services.AddSpaStaticFiles(configuration =>
+{
+    configuration.RootPath = "wwwroot"; // Adjust to ClientApp/build if needed
+});
+
 var app = builder.Build();
 
-// Add logging middleware for incoming connections at the earliest stage
+// Early logging middleware
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
@@ -251,7 +250,7 @@ app.Use(async (context, next) =>
     await next.Invoke();
 });
 
-// Add DI failure logging middleware
+// DI failure logging
 app.Use(async (context, next) =>
 {
     try
@@ -263,11 +262,11 @@ app.Use(async (context, next) =>
         var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
         logger.LogError(ex, "Error processing request {Method} {Path}: {Message}",
             context.Request.Method, context.Request.Path, ex.Message);
-        throw; // Re-throw to ensure the error is handled by other middleware
+        throw;
     }
 });
 
-// Add logging middleware for incoming requests
+// Request logging
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
@@ -306,37 +305,35 @@ else
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles(); // Serve static files from wwwroot
+app.UseSpaStaticFiles(); // Enable SPA static file serving
 app.UseRouting();
 app.UseCors("AllowNetwork");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Add middleware for case-insensitive routing (for older ASP.NET Core versions)
+// Route logging middleware
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    // Safely handle null Path.Value and QueryString.Value
-    var pathValue = context.Request.Path.Value ?? "";
-    var queryValue = context.Request.QueryString.Value ?? "";
-    context.Request.Path = pathValue.ToLower();
-    context.Request.QueryString = new QueryString(queryValue.ToLower());
-    logger.LogDebug("Normalized request path to lowercase: {Path}, Query: {Query}", context.Request.Path, context.Request.QueryString);
+    logger.LogDebug("Before routing: {Method} {Path}", context.Request.Method, context.Request.Path);
     await next.Invoke();
-});
-
-// Add logging middleware for request/response lifecycle
-app.Use(async (context, next) =>
-{
-    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogDebug("Request Incoming: {Method} {Path} with Scheme: {Scheme}",
-        context.Request.Method, context.Request.Path, context.Request.Scheme);
-    await next.Invoke();
-    logger.LogDebug("Response Sent: {StatusCode}", context.Response.StatusCode);
+    logger.LogDebug("After routing: {Method} {Path} -> Status: {StatusCode}",
+        context.Request.Method, context.Request.Path, context.Response.StatusCode);
 });
 
 app.MapControllers();
 
-// Seed roles and users
+// SPA fallback for non-API routes
+app.UseSpa(spa =>
+{
+    spa.Options.SourcePath = "wwwroot"; // Adjust to ClientApp/build if needed
+    if (app.Environment.IsDevelopment())
+    {
+        spa.UseReactDevelopmentServer(npmScript: "start");
+    }
+});
+
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();

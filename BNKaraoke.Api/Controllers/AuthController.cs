@@ -1,23 +1,23 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using System.Threading.Tasks;
-using BNKaraoke.Api.DTOs;
-using BNKaraoke.Api.Models;
-using Microsoft.Extensions.Configuration;
-using System.Linq;
-using Newtonsoft.Json;
-using Microsoft.Extensions.Logging;
-using Microsoft.AspNetCore.Identity;
-using System;
-using Microsoft.EntityFrameworkCore;
-using BNKaraoke.Api.Data;
-
-namespace BNKaraoke.Api.Controllers
+﻿namespace BNKaraoke.Api.Controllers
 {
+    using Microsoft.AspNetCore.Authorization;
+    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.IdentityModel.Tokens;
+    using System.IdentityModel.Tokens.Jwt;
+    using System.Security.Claims;
+    using System.Text;
+    using System.Threading.Tasks;
+    using BNKaraoke.Api.DTOs;
+    using BNKaraoke.Api.Models;
+    using Microsoft.Extensions.Configuration;
+    using System.Linq;
+    using Newtonsoft.Json;
+    using Microsoft.Extensions.Logging;
+    using Microsoft.AspNetCore.Identity;
+    using System;
+    using Microsoft.EntityFrameworkCore;
+    using BNKaraoke.Api.Data;
+
     [Route("api/[controller]")]
     [ApiController]
     public class AuthController : ControllerBase
@@ -88,8 +88,8 @@ namespace BNKaraoke.Api.Controllers
 
             var user = new ApplicationUser
             {
-                UserName = model.PhoneNumber,
-                PhoneNumber = model.PhoneNumber,
+                UserName = model.PhoneNumber, // e.g., "1234567891"
+                PhoneNumber = model.PhoneNumber, // Set PhoneNumber to match UserName for future-proofing
                 NormalizedUserName = _userManager.NormalizeName(model.PhoneNumber),
                 FirstName = model.FirstName,
                 LastName = model.LastName,
@@ -278,7 +278,7 @@ namespace BNKaraoke.Api.Controllers
             }
 
             user.UserName = model.UserName;
-            user.PhoneNumber = model.UserName;
+            user.PhoneNumber = model.UserName; // Ensure PhoneNumber matches UserName for future-proofing
             user.FirstName = model.FirstName;
             user.LastName = model.LastName;
 
@@ -318,7 +318,7 @@ namespace BNKaraoke.Api.Controllers
                 return BadRequest(new { error = "Failed to add roles", details = addResult.Errors });
             }
 
-            _logger.LogInformation("Updated user: {UserName}", user.UserName);
+            _logger.LogInformation("Updated user: {UserName}, PhoneNumber: {PhoneNumber}", user.UserName, user.PhoneNumber);
             return Ok(new { message = "User updated successfully" });
         }
 
@@ -336,7 +336,7 @@ namespace BNKaraoke.Api.Controllers
             var user = new ApplicationUser
             {
                 UserName = model.PhoneNumber,
-                PhoneNumber = model.PhoneNumber,
+                PhoneNumber = model.PhoneNumber, // Set PhoneNumber to match UserName for future-proofing
                 NormalizedUserName = _userManager.NormalizeName(model.PhoneNumber),
                 FirstName = model.FirstName,
                 LastName = model.LastName,
@@ -480,7 +480,7 @@ namespace BNKaraoke.Api.Controllers
                 }
             }
 
-            _logger.LogInformation("ChangePassword: Password changed successfully for user: {UserName}", user.UserName);
+            _logger.LogInformation("    ChangePassword: Password changed successfully for user: {UserName}", user.UserName);
             return Ok(new { message = "Password changed successfully" });
         }
 

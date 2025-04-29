@@ -22,10 +22,10 @@
         public int QueueId { get; set; }
         public int EventId { get; set; }
         public int SongId { get; set; }
-        public string RequestorId { get; set; } = string.Empty;
-        public List<string> Singers { get; set; } = new List<string>();
+        public required string RequestorUserName { get; set; } // Username of the requestor
+        public required List<string> Singers { get; set; }
         public int Position { get; set; }
-        public string Status { get; set; } = string.Empty; // Computed: "Pending", "Now Singing", "Waiting on singers", "Completed"
+        public required string Status { get; set; }
         public bool IsActive { get; set; }
         public bool WasSkipped { get; set; }
         public bool IsCurrentlyPlaying { get; set; }
@@ -36,7 +36,7 @@
     public class EventQueueCreateDto
     {
         public int SongId { get; set; }
-        public string RequestorId { get; set; } = string.Empty; // Renamed from SingerId
+        public string RequestorUserName { get; set; } = string.Empty; // Renamed from RequestorId
     }
 
     public class AttendanceActionDto
@@ -59,6 +59,7 @@
     {
         public List<string> Singers { get; set; } = new List<string>();
     }
+
     public class EventCreateDto
     {
         public string EventCode { get; set; } = string.Empty;
@@ -73,6 +74,7 @@
         public bool? IsCanceled { get; set; }
         public int RequestLimit { get; set; } = 15; // Added field
     }
+
     public class EventUpdateDto
     {
         public string EventCode { get; set; } = string.Empty;

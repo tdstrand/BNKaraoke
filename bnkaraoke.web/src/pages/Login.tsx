@@ -56,7 +56,7 @@ const Login: React.FC = () => {
       const data = JSON.parse(responseText);
       console.log("userId from response:", data.userId);
       localStorage.setItem("token", data.token);
-      localStorage.setItem("userId", data.userId); // Store userId
+      localStorage.setItem("userId", data.userId);
       localStorage.setItem("roles", JSON.stringify(data.roles));
       localStorage.setItem("firstName", data.firstName);
       localStorage.setItem("lastName", data.lastName);
@@ -81,13 +81,18 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    handleLogin();
+  };
+
   return (
     <div className="login-container">
       <img src={LogoDuet} alt="BNKaraoke.com Logo" className="login-logo" />
       <div className="login-card">
         <h2 className="login-title">Welcome Back</h2>
         {error && <p className="login-error">{error}</p>}
-        <div className="login-form">
+        <form className="login-form" onSubmit={handleSubmit}>
           <label htmlFor="userName">Phone Number</label>
           <input
             type="text"
@@ -113,13 +118,13 @@ const Login: React.FC = () => {
             className="login-input"
             ref={passwordRef}
           />
-          <button onClick={handleLogin} className="login-button">
+          <button type="submit" className="login-button">
             Log in
           </button>
-          <button onClick={() => navigate("/register")} className="login-button secondary-button">
+          <button type="button" onClick={() => navigate("/register")} className="login-button secondary-button">
             Register as a New Singer
           </button>
-        </div>
+        </form>
         <p className="backlink">
           BPM data provided by <a href="https://getsongbpm.com" target="_blank" rel="noopener noreferrer">GetSongBPM</a>
         </p>

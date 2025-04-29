@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './SongDetailsModal.css';
 import { Song } from '../types';
 import { API_ROUTES } from '../config/apiConfig';
+import useEventContext from '../context/EventContext';
 
 interface SongDetailsModalProps {
   song: Song;
@@ -11,9 +12,9 @@ interface SongDetailsModalProps {
   onClose: () => void;
   onToggleFavorite: (song: Song) => Promise<void>;
   onAddToQueue?: (song: Song, eventId: number) => Promise<void>;
-  onDeleteFromQueue?: (eventId: number, queueId: number) => Promise<void>; // New prop for deleting
-  eventId?: number; // Optional eventId for deleting
-  queueId?: number; // Optional queueId for deleting
+  onDeleteFromQueue?: (eventId: number, queueId: number) => Promise<void>;
+  eventId?: number;
+  queueId?: number;
 }
 
 const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
@@ -28,6 +29,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   queueId,
 }) => {
   const navigate = useNavigate();
+  const { currentEvent, checkedIn, isCurrentEventLive } = useEventContext();
   const [events, setEvents] = useState<any[]>([]);
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -35,8 +37,11 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   const [showEventSelectionModal, setShowEventSelectionModal] = useState(false);
   const [userName, setUserName] = useState<string | null>(localStorage.getItem("userName"));
 
-  // Fetch events on component mount
+  // Fetch events on component mount (only if needed)
   useEffect(() => {
+    // Skip fetching events if currentEvent is already set
+    if (currentEvent) return;
+
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("No token found");
@@ -62,10 +67,12 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
         setEvents([]);
         setError("Failed to load events. Please try again.");
       });
-  }, [navigate]);
+  }, [navigate, currentEvent]);
 
   const handleAddToQueue = async (eventId: number) => {
+    console.log("handleAddToQueue called with eventId:", eventId, "song:", song, "onAddToQueue:", !!onAddToQueue);
     if (!onAddToQueue) {
+      console.error("onAddToQueue is not defined");
       setError("Cannot add to queue: Functionality not available.");
       return;
     }
@@ -75,6 +82,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
 
     try {
       await onAddToQueue(song, eventId);
+      console.log("Song successfully added to queue for eventId:", eventId);
       setShowEventSelectionModal(false);
       onClose();
     } catch (err) {
@@ -91,7 +99,9 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   };
 
   const handleDeleteFromQueue = async () => {
+    console.log("handleDeleteFromQueue called with eventId:", eventId, "queueId:", queueId, "onDeleteFromQueue:", !!onDeleteFromQueue);
     if (!onDeleteFromQueue || !eventId || !queueId) {
+      console.error("Cannot delete from queue: Missing onDeleteFromQueue, eventId, or queueId");
       setError("Cannot delete from queue: Missing information.");
       return;
     }
@@ -101,6 +111,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
 
     try {
       await onDeleteFromQueue(eventId, queueId);
+      console.log("Song successfully deleted from queue for eventId:", eventId, "queueId:", queueId);
       onClose();
     } catch (err) {
       console.error("SongDetailsModal - Delete from queue error:", err);
@@ -116,7 +127,9 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   };
 
   const handleOpenEventSelection = () => {
+    console.log("handleOpenEventSelection called with userName:", userName);
     if (!userName) {
+      console.error("UserName not found in localStorage");
       setError("User not found. Please log in again to add songs to the queue.");
       localStorage.clear();
       navigate("/");
@@ -124,6 +137,8 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
     }
     setShowEventSelectionModal(true);
   };
+
+  console.log("Rendering SongDetailsModal with song:", song, "isFavorite:", isFavorite, "isInQueue:", isInQueue, "eventId:", eventId, "queueId:", queueId);
 
   return (
     <>
@@ -143,14 +158,20 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
           {error && <p className="modal-error">{error}</p>}
           <div className="song-actions">
             <button
-              onClick={() => onToggleFavorite(song)}
+              onClick={() => {
+                console.log("Toggle favorite button clicked for song:", song);
+                onToggleFavorite(song);
+              }}
               className="action-button"
             >
               {isFavorite ? "Remove from Favorites" : "Add to Favorites"}
             </button>
             {isInQueue && onDeleteFromQueue && eventId && queueId ? (
               <button
-                onClick={handleDeleteFromQueue}
+                onClick={() => {
+                  console.log("Remove from Queue button clicked");
+                  handleDeleteFromQueue();
+                }}
                 className="action-button"
                 disabled={isDeleting}
               >
@@ -158,11 +179,14 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
               </button>
             ) : (
               <button
-                onClick={handleOpenEventSelection}
+                onClick={() => {
+                  console.log("Add to Queue button clicked with currentEvent:", currentEvent);
+                  currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
+                }}
                 className="action-button"
-                disabled={isAddingToQueue || events.length === 0 || !userName || !onAddToQueue || isInQueue}
+                disabled={isAddingToQueue || (!currentEvent && (events.length === 0 || !userName)) || !onAddToQueue || isInQueue}
               >
-                {isAddingToQueue ? "Adding..." : "Add to Queue"}
+                {isAddingToQueue ? "Adding..." : currentEvent ? `Add to Queue: ${currentEvent.eventCode}` : "Add to Queue"}
               </button>
             )}
           </div>
@@ -186,7 +210,10 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
                   <div
                     key={event.eventId}
                     className="event-item"
-                    onClick={() => handleAddToQueue(event.eventId)}
+                    onClick={() => {
+                      console.log("Event selected for adding to queue:", event);
+                      handleAddToQueue(event.eventId);
+                    }}
                   >
                     {event.status}: {event.eventCode} ({event.scheduledDate})
                   </div>
@@ -194,7 +221,10 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
             </div>
             <div className="modal-footer">
               <button
-                onClick={() => setShowEventSelectionModal(false)}
+                onClick={() => {
+                  console.log("Cancel event selection modal");
+                  setShowEventSelectionModal(false);
+                }}
                 className="action-button"
               >
                 Cancel
