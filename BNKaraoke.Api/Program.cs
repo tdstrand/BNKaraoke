@@ -25,16 +25,16 @@ builder.Configuration.AddEnvironmentVariables();
 // Configure Kestrel
 builder.WebHost.ConfigureKestrel(options =>
 {
+    // HTTP endpoint for network access
+    options.ListenAnyIP(7290, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+    });
+
+    // HTTPS endpoint for localhost (optional, for desktop testing)
     options.ListenLocalhost(7290, listenOptions =>
     {
-        if (builder.Environment.IsDevelopment())
-        {
-            listenOptions.UseHttps();
-        }
-        else
-        {
-            listenOptions.UseHttps();
-        }
+        listenOptions.UseHttps();
         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
     });
 });
@@ -91,7 +91,7 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
         ValidAudience = builder.Configuration["JwtSettings:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString)),
-        NameClaimType = ClaimTypes.Name, // Map to standard Name claim
+        NameClaimType = ClaimTypes.Name,
         RoleClaimType = ClaimTypes.Role
     };
     options.Events = new JwtBearerEvents
@@ -100,17 +100,13 @@ builder.Services.AddAuthentication(options =>
         {
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
             logger.LogDebug("OnTokenValidated event fired.");
-
             var claims = context.Principal?.Claims;
             if (claims != null)
             {
                 logger.LogDebug("Token validated. Claims: {Claims}", string.Join(", ", claims.Select(c => $"{c.Type}: {c.Value}")));
-
-                // Try different variations of the "sub" claim
                 var subClaim = claims.FirstOrDefault(c => c.Type == "sub")?.Value
                             ?? claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value
                             ?? claims.FirstOrDefault(c => c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
-
                 if (!string.IsNullOrEmpty(subClaim))
                 {
                     logger.LogDebug("Sub claim found: {SubClaim}", subClaim);
@@ -170,23 +166,26 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowNetwork", policy =>
     {
-        policy.WithOrigins("http://localhost:8080", "http://localhost:3000", "https://www.bnkaraoke.com", "https://bnkaraoke.com")
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
-        Console.WriteLine("CORS policy configured for origins: http://localhost:8080, http://localhost:3000, https://www.bnkaraoke.com, https://bnkaraoke.com");
+        policy.WithOrigins(
+            "http://localhost:8080",
+            "http://localhost:3000",
+            "http://172.16.1.221:8080", // Add network address
+            "https://www.bnkaraoke.com",
+            "https://bnkaraoke.com"
+        )
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .AllowCredentials();
+        Console.WriteLine("CORS policy configured for origins: http://localhost:8080, http://localhost:3000, http://172.16.1.221:8080, https://www.bnkaraoke.com, https://bnkaraoke.com");
     });
 });
 
-// Add controllers without LowercaseUrls and LowercaseQueryStrings
 builder.Services.AddControllers()
-.AddApplicationPart(typeof(EventController).Assembly)
-.AddControllersAsServices();
+    .AddApplicationPart(typeof(EventController).Assembly)
+    .AddControllersAsServices();
 
-// Explicitly register EventController
 builder.Services.AddTransient<EventController>();
 
-// Add diagnostic logging for controller discovery
 var loggerFactory = LoggerFactory.Create(logging =>
 {
     logging.AddConsole();
@@ -205,7 +204,6 @@ foreach (var controllerType in controllerTypes)
     logger.LogInformation("Discovered controller: {ControllerName}", controllerType.Name);
 }
 
-// Add Swagger
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
@@ -242,7 +240,7 @@ builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
-// Add logging middleware for incoming connections at the earliest stage
+// Early logging middleware
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
@@ -251,7 +249,7 @@ app.Use(async (context, next) =>
     await next.Invoke();
 });
 
-// Add DI failure logging middleware
+// DI failure logging
 app.Use(async (context, next) =>
 {
     try
@@ -263,11 +261,11 @@ app.Use(async (context, next) =>
         var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
         logger.LogError(ex, "Error processing request {Method} {Path}: {Message}",
             context.Request.Method, context.Request.Path, ex.Message);
-        throw; // Re-throw to ensure the error is handled by other middleware
+        throw;
     }
 });
 
-// Add logging middleware for incoming requests
+// Request logging
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
@@ -302,41 +300,34 @@ else
             await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred." });
         });
     });
-    app.UseHsts();
+    // Remove HSTS in development to prevent HTTPS enforcement
+    // app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// Remove HTTPS redirection in development
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
+app.UseStaticFiles(); // Optional: for minimal assets, remove if not needed
 app.UseRouting();
 app.UseCors("AllowNetwork");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Add middleware for case-insensitive routing (for older ASP.NET Core versions)
+// Route logging middleware
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    // Safely handle null Path.Value and QueryString.Value
-    var pathValue = context.Request.Path.Value ?? "";
-    var queryValue = context.Request.QueryString.Value ?? "";
-    context.Request.Path = pathValue.ToLower();
-    context.Request.QueryString = new QueryString(queryValue.ToLower());
-    logger.LogDebug("Normalized request path to lowercase: {Path}, Query: {Query}", context.Request.Path, context.Request.QueryString);
+    logger.LogDebug("Before routing: {Method} {Path}", context.Request.Method, context.Request.Path);
     await next.Invoke();
-});
-
-// Add logging middleware for request/response lifecycle
-app.Use(async (context, next) =>
-{
-    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogDebug("Request Incoming: {Method} {Path} with Scheme: {Scheme}",
-        context.Request.Method, context.Request.Path, context.Request.Scheme);
-    await next.Invoke();
-    logger.LogDebug("Response Sent: {StatusCode}", context.Response.StatusCode);
+    logger.LogDebug("After routing: {Method} {Path} -> Status: {StatusCode}",
+        context.Request.Method, context.Request.Path, context.Response.StatusCode);
 });
 
 app.MapControllers();
 
-// Seed roles and users
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();

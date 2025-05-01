@@ -25,5 +25,10 @@
 
 		<!-- Logging -->
 		<PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+		
+		<!-- YouTube API -->
+		<PackageReference Include="Google.Apis.YouTube.v3" Version="1.68.0.3570" />
+		
+		<PackageReference Include="Microsoft.AspNetCore.SpaServices.Extensions" Version="8.0.0" />
 	</ItemGroup>
 </Project>

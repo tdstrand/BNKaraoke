@@ -6,9 +6,14 @@ namespace BNKaraoke.Api.Models;
 
 public class ApplicationUser : IdentityUser
 {
+    // Shadow the PhoneNumber property to make it non-nullable
     [Required]
     [Phone]
-    public override string? PhoneNumber { get; set; } = string.Empty;
+    public new string PhoneNumber
+    {
+        get => base.PhoneNumber ?? string.Empty; // Safe because base.PhoneNumber is NOT NULL in DB
+        set => base.PhoneNumber = value;
+    }
 
     [Required]
     [Column(TypeName = "nvarchar(100)")]
@@ -17,7 +22,7 @@ public class ApplicationUser : IdentityUser
     [Required]
     [Column(TypeName = "nvarchar(100)")]
     public string LastName { get; set; } = string.Empty;
-    
+
     [Column(TypeName = "boolean")]
     public bool MustChangePassword { get; set; } = false; // Added to match database column
 }
