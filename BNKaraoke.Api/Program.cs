@@ -25,16 +25,16 @@ builder.Configuration.AddEnvironmentVariables();
 // Configure Kestrel
 builder.WebHost.ConfigureKestrel(options =>
 {
+    // HTTP endpoint for network access
+    options.ListenAnyIP(7290, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+    });
+
+    // HTTPS endpoint for localhost (optional, for desktop testing)
     options.ListenLocalhost(7290, listenOptions =>
     {
-        if (builder.Environment.IsDevelopment())
-        {
-            listenOptions.UseHttps();
-        }
-        else
-        {
-            listenOptions.UseHttps();
-        }
+        listenOptions.UseHttps();
         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
     });
 });
@@ -166,11 +166,17 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowNetwork", policy =>
     {
-        policy.WithOrigins("http://localhost:8080", "http://localhost:3000", "https://www.bnkaraoke.com", "https://bnkaraoke.com")
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
-        Console.WriteLine("CORS policy configured for origins: http://localhost:8080, http://localhost:3000, https://www.bnkaraoke.com, https://bnkaraoke.com");
+        policy.WithOrigins(
+            "http://localhost:8080",
+            "http://localhost:3000",
+            "http://172.16.1.221:8080", // Add network address
+            "https://www.bnkaraoke.com",
+            "https://bnkaraoke.com"
+        )
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .AllowCredentials();
+        Console.WriteLine("CORS policy configured for origins: http://localhost:8080, http://localhost:3000, http://172.16.1.221:8080, https://www.bnkaraoke.com, https://bnkaraoke.com");
     });
 });
 
@@ -294,10 +300,16 @@ else
             await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred." });
         });
     });
-    app.UseHsts();
+    // Remove HSTS in development to prevent HTTPS enforcement
+    // app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// Remove HTTPS redirection in development
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseStaticFiles(); // Optional: for minimal assets, remove if not needed
 app.UseRouting();
 app.UseCors("AllowNetwork");

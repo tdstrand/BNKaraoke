@@ -20,6 +20,7 @@
         public DbSet<EventAttendanceHistory> EventAttendanceHistories { get; set; }
         public DbSet<RegistrationSettings> RegistrationSettings { get; set; }
         public DbSet<PinChangeHistory> PinChangeHistory { get; set; }
+        public DbSet<KaraokeChannel> KaraokeChannels { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -75,7 +76,6 @@
             modelBuilder.Entity<Event>()
                 .Property(e => e.UpdatedAt).HasColumnName("UpdatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-            // Constraints for Event
             modelBuilder.Entity<Event>()
                 .HasIndex(e => e.EventCode)
                 .IsUnique();
@@ -174,7 +174,6 @@
             modelBuilder.Entity<EventAttendance>()
                 .Property(ea => ea.BreakEndAt).HasColumnName("BreakEndAt");
 
-            // Constraints for EventAttendance
             modelBuilder.Entity<EventAttendance>()
                 .HasIndex(ea => new { ea.EventId, ea.RequestorId })
                 .IsUnique();
@@ -258,9 +257,9 @@
             modelBuilder.Entity<Song>()
                 .Property(s => s.LastFmPlaycount).HasColumnName("LastFmPlaycount");
             modelBuilder.Entity<Song>()
-                .Property(s => s.Danceability).HasColumnName("Danceability"); // Fixed: Treat as string, no default value
+                .Property(s => s.Danceability).HasColumnName("Danceability");
             modelBuilder.Entity<Song>()
-                .Property(s => s.Energy).HasColumnName("Energy"); // Fixed: Treat as string, no default value
+                .Property(s => s.Energy).HasColumnName("Energy");
 
             // QueueItem
             modelBuilder.Entity<QueueItem>()
@@ -291,6 +290,22 @@
             modelBuilder.Entity<PinChangeHistory>()
                 .ToTable("PinChangeHistories", "public")
                 .HasKey(pch => pch.Id);
+
+            // KaraokeChannel
+            modelBuilder.Entity<KaraokeChannel>()
+                .ToTable("KaraokeChannels", "public")
+                .HasKey(kc => kc.Id);
+
+            modelBuilder.Entity<KaraokeChannel>()
+                .Property(kc => kc.Id).HasColumnName("Id");
+            modelBuilder.Entity<KaraokeChannel>()
+                .Property(kc => kc.ChannelName).HasColumnName("ChannelName").IsRequired().HasMaxLength(100);
+            modelBuilder.Entity<KaraokeChannel>()
+                .Property(kc => kc.ChannelId).HasColumnName("ChannelId").HasMaxLength(100);
+            modelBuilder.Entity<KaraokeChannel>()
+                .Property(kc => kc.SortOrder).HasColumnName("SortOrder").IsRequired();
+            modelBuilder.Entity<KaraokeChannel>()
+                .Property(kc => kc.IsActive).HasColumnName("IsActive").IsRequired().HasDefaultValue(true);
         }
     }
 }

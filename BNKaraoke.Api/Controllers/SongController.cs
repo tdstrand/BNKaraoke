@@ -178,13 +178,17 @@ namespace BNKaraoke.Api.Controllers
                     s.Bpm,
                     s.Danceability,
                     s.Energy,
-                    s.Valence,
+                    s.Mood,
                     s.Popularity,
                     s.Genre,
                     s.Decade,
                     s.RequestDate,
                     s.RequestedBy,
-                    s.SpotifyId
+                    s.SpotifyId,
+                    s.YouTubeUrl,
+                    s.MusicBrainzId,
+                    s.LastFmPlaycount,
+                    s.Valence
                 })
                 .ToListAsync();
 
@@ -316,7 +320,7 @@ namespace BNKaraoke.Api.Controllers
                             LastName = user.LastName
                         }
                     )
-                    .OrderBy(s => s.RequestDate) // Sort by oldest first
+                    .OrderBy(s => s.RequestDate)
                     .ToListAsync();
 
                 _logger.LogInformation("GetPending: Found {SongCount} pending songs", songs.Count);
@@ -326,6 +330,159 @@ namespace BNKaraoke.Api.Controllers
             {
                 _logger.LogError(ex, "GetPending: Exception occurred");
                 return StatusCode(500, new { error = "Failed to retrieve pending songs" });
+            }
+        }
+
+        [HttpGet("manage")]
+        [Authorize(Policy = "SongManager")]
+        public async Task<IActionResult> GetManageableSongs(string? query = "", string? artist = "", string? status = "", int page = 1, int pageSize = 50)
+        {
+            _logger.LogInformation("GetManageableSongs: Query={Query}, Artist={Artist}, Status={Status}, Page={Page}, PageSize={PageSize}",
+                query, artist, status, page, pageSize);
+
+            try
+            {
+                if (pageSize > 100)
+                {
+                    _logger.LogWarning("GetManageableSongs: PageSize {PageSize} exceeds maximum limit of 100", pageSize);
+                    return BadRequest(new { error = "PageSize cannot exceed 100" });
+                }
+
+                var songsQuery = _context.Songs
+                    .Where(s => s.Status == "active" || s.Status == "pending");
+
+                if (!string.IsNullOrEmpty(query))
+                {
+                    songsQuery = songsQuery.Where(s => EF.Functions.ILike(s.Title, $"%{query}%") ||
+                                                      EF.Functions.ILike(s.Artist, $"%{query}%"));
+                }
+
+                if (!string.IsNullOrEmpty(artist))
+                {
+                    songsQuery = songsQuery.Where(s => EF.Functions.ILike(s.Artist, $"%{artist}%"));
+                }
+
+                if (!string.IsNullOrEmpty(status))
+                {
+                    songsQuery = songsQuery.Where(s => s.Status == status);
+                }
+
+                var totalSongs = await songsQuery.CountAsync();
+                var songs = await songsQuery
+                    .OrderBy(s => s.Title)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(s => new
+                    {
+                        s.Id,
+                        s.Title,
+                        s.Artist,
+                        s.Genre,
+                        s.Status,
+                        s.Bpm,
+                        s.Danceability,
+                        s.Energy,
+                        s.Mood,
+                        s.Popularity,
+                        s.Decade,
+                        s.SpotifyId,
+                        s.YouTubeUrl,
+                        s.MusicBrainzId,
+                        s.LastFmPlaycount,
+                        s.Valence
+                    })
+                    .ToListAsync();
+
+                _logger.LogInformation("GetManageableSongs: Found {TotalSongs} songs, returning {SongCount} for page {Page}", totalSongs, songs.Count, page);
+
+                return Ok(new
+                {
+                    totalSongs,
+                    songs,
+                    currentPage = page,
+                    pageSize,
+                    totalPages = (int)Math.Ceiling(totalSongs / (double)pageSize)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "GetManageableSongs: Exception occurred");
+                return StatusCode(500, new { error = "Failed to retrieve manageable songs" });
+            }
+        }
+
+        [HttpPut("{id}")]
+        [Authorize(Policy = "SongManager")]
+        public async Task<IActionResult> UpdateSong(int id, [FromBody] SongUpdateRequest request)
+        {
+            _logger.LogInformation("UpdateSong: Updating song with Id {SongId}", id);
+
+            try
+            {
+                if (id != request.Id)
+                {
+                    _logger.LogWarning("UpdateSong: Id mismatch between route {RouteId} and body {BodyId}", id, request.Id);
+                    return BadRequest(new { error = "Id mismatch" });
+                }
+
+                var song = await _context.Songs.FindAsync(id);
+                if (song == null)
+                {
+                    _logger.LogWarning("UpdateSong: Song not found with Id {SongId}", id);
+                    return NotFound(new { error = "Song not found" });
+                }
+
+                song.Title = request.Title ?? song.Title;
+                song.Artist = request.Artist ?? song.Artist;
+                song.Genre = request.Genre;
+                song.Decade = request.Decade;
+                song.Bpm = request.Bpm;
+                song.Danceability = request.Danceability;
+                song.Energy = request.Energy;
+                song.Mood = request.Mood;
+                song.Popularity = request.Popularity;
+                song.SpotifyId = request.SpotifyId;
+                song.YouTubeUrl = request.YouTubeUrl;
+                song.Status = request.Status ?? song.Status;
+                song.MusicBrainzId = request.MusicBrainzId;
+                song.LastFmPlaycount = request.LastFmPlaycount;
+                song.Valence = request.Valence;
+
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("UpdateSong: Successfully updated song with Id {SongId}", id);
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "UpdateSong: Exception occurred while updating song with Id {SongId}", id);
+                return StatusCode(500, new { error = "Failed to update song" });
+            }
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize(Policy = "SongManager")]
+        public async Task<IActionResult> DeleteSong(int id)
+        {
+            _logger.LogInformation("DeleteSong: Deleting song with Id {SongId}", id);
+
+            try
+            {
+                var song = await _context.Songs.FindAsync(id);
+                if (song == null)
+                {
+                    _logger.LogWarning("DeleteSong: Song not found with Id {SongId}", id);
+                    return NotFound(new { error = "Song not found" });
+                }
+
+                _context.Songs.Remove(song);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("DeleteSong: Successfully deleted song with Id {SongId}", id);
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "DeleteSong: Exception occurred while deleting song with Id {SongId}", id);
+                return StatusCode(500, new { error = "Failed to delete song" });
             }
         }
 
@@ -345,224 +502,92 @@ namespace BNKaraoke.Api.Controllers
                     return BadRequest(new { error = "YouTube API key is missing" });
                 }
 
-                var response = await client.GetAsync(
+                // Step 1: Perform search to get video IDs and basic info
+                var searchResponse = await client.GetAsync(
                     $"https://www.googleapis.com/youtube/v3/search?part=snippet&q={Uri.EscapeDataString(query)}&type=video&key={apiKey}&maxResults=10"
                 );
 
-                _logger.LogInformation("YouTubeSearch: Status for query '{Query}': {StatusCode}", query, response.StatusCode);
+                _logger.LogInformation("YouTubeSearch: Search status for query '{Query}': {StatusCode}", query, searchResponse.StatusCode);
 
-                if (!response.IsSuccessStatusCode)
+                if (!searchResponse.IsSuccessStatusCode)
                 {
-                    var errorText = await response.Content.ReadAsStringAsync();
-                    _logger.LogWarning("YouTubeSearch: Error response: {ErrorText}", errorText);
+                    var errorText = await searchResponse.Content.ReadAsStringAsync();
+                    _logger.LogWarning("YouTubeSearch: Search error response: {ErrorText}", errorText);
                     return BadRequest(new { error = $"YouTube search failed: {errorText}" });
                 }
 
-                var json = await response.Content.ReadAsStringAsync();
-                var data = JsonSerializer.Deserialize<YouTubeSearchResponse>(json);
+                var searchJson = await searchResponse.Content.ReadAsStringAsync();
+                var searchData = JsonSerializer.Deserialize<YouTubeSearchResponse>(searchJson);
 
-                if (data?.Items == null)
+                if (searchData == null || searchData.Items == null || !searchData.Items.Any())
                 {
                     _logger.LogWarning("YouTubeSearch: No valid response found for query '{Query}'", query);
                     return Ok(new List<object>());
                 }
 
-                var videos = data.Items
-                    .Where(v => v != null)
-                    .Select(v => new
+                // Step 2: Fetch video details for duration and view count
+                var videoIds = string.Join(",", searchData.Items
+                    .Where(v => v.Id?.VideoId != null)
+                    .Select(v => v.Id.VideoId));
+                if (string.IsNullOrEmpty(videoIds))
+                {
+                    _logger.LogWarning("YouTubeSearch: No valid video IDs found for query '{Query}'", query);
+                    return Ok(new List<object>());
+                }
+
+                var videosResponse = await client.GetAsync(
+                    $"https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id={videoIds}&key={apiKey}"
+                );
+
+                _logger.LogInformation("YouTubeSearch: Videos details status for query '{Query}': {StatusCode}", query, videosResponse.StatusCode);
+
+                if (!videosResponse.IsSuccessStatusCode)
+                {
+                    var errorText = await videosResponse.Content.ReadAsStringAsync();
+                    _logger.LogWarning("YouTubeSearch: Videos details error response: {ErrorText}", errorText);
+                    return BadRequest(new { error = $"YouTube video details fetch failed: {errorText}" });
+                }
+
+                var videosJson = await videosResponse.Content.ReadAsStringAsync();
+                _logger.LogDebug("YouTubeSearch: Raw videos JSON for query '{Query}': {VideosJson}", query, videosJson);
+                var videosData = JsonSerializer.Deserialize<YouTubeVideosResponse>(videosJson);
+
+                // Step 3: Combine search and video details
+                var videos = searchData.Items
+                    .Where(v => v.Id?.VideoId != null && v.Snippet != null)
+                    .Select(v =>
                     {
-                        videoId = v.Id?.VideoId ?? "unknown",
-                        title = v.Snippet?.Title ?? "Untitled",
-                        url = v.Id?.VideoId != null ? $"https://www.youtube.com/watch?v={v.Id.VideoId}" : "unknown"
-                    }).ToList();
+                        var videoDetails = videosData?.Items?.FirstOrDefault(vd => vd.Id == v.Id!.VideoId);
+                        long viewCount = 0;
+                        if (videoDetails?.Statistics?.ViewCount != null && long.TryParse(videoDetails.Statistics.ViewCount, out var parsedViewCount))
+                        {
+                            viewCount = parsedViewCount;
+                        }
+                        return new
+                        {
+                            videoId = v.Id!.VideoId,
+                            title = v.Snippet!.Title ?? "Untitled",
+                            url = $"https://www.youtube.com/watch?v={v.Id.VideoId}",
+                            channelTitle = v.Snippet!.ChannelTitle ?? "Unknown",
+                            duration = videoDetails?.ContentDetails?.Duration ?? "PT0S",
+                            uploadDate = v.Snippet!.PublishedAt?.ToString("o") ?? DateTime.UtcNow.ToString("o"),
+                            viewCount
+                        };
+                    })
+                    .ToList();
 
                 _logger.LogInformation("YouTubeSearch: Found {VideoCount} videos for query '{Query}'", videos.Count, query);
                 return Ok(videos);
             }
-            catch (Exception ex)
+            catch (JsonException ex)
             {
-                _logger.LogError(ex, "YouTubeSearch: Exception for query '{Query}'", query);
-                return StatusCode(500, new { error = "Failed to search YouTube" });
-            }
-        }
-
-        [HttpGet("spotify-search")]
-        [Authorize(Policy = "Singer")]
-        public async Task<IActionResult> SpotifySearch(string query)
-        {
-            _logger.LogInformation("SpotifySearch: Query={Query}", query);
-
-            try
-            {
-                if (string.IsNullOrEmpty(query))
-                {
-                    _logger.LogWarning("SpotifySearch: Query parameter is missing");
-                    return BadRequest(new { error = "Query parameter is required" });
-                }
-
-                var client = _httpClientFactory.CreateClient();
-                var token = await GetSpotifyToken(client);
-                client.DefaultRequestHeaders.Clear();
-                client.DefaultRequestHeaders.Add("Authorization", $"Bearer ${token}");
-
-                var response = await client.GetAsync($"https://api.spotify.com/v1/search?q=${Uri.EscapeDataString(query)}&type=track&limit=10");
-                _logger.LogInformation("SpotifySearch: Search status: ${response.StatusCode}");
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var errorText = await response.Content.ReadAsStringAsync();
-                    _logger.LogWarning("SpotifySearch: Search error response: ${errorText}");
-                    return BadRequest(new { error = $"Spotify search failed: ${errorText}" });
-                }
-
-                var json = await response.Content.ReadAsStringAsync();
-                var data = JsonSerializer.Deserialize<SpotifySearchResponse>(json);
-
-                if (data?.Tracks == null)
-                {
-                    _logger.LogWarning("SpotifySearch: Tracks object is null for query '${Query}'", query);
-                    return BadRequest(new { error = "No tracks found in Spotify response" });
-                }
-
-                var songs = new List<object>();
-                foreach (var track in data.Tracks.Items)
-                {
-                    var song = new
-                    {
-                        id = track.Id,
-                        title = track.Name,
-                        artist = string.Join(", ", track.Artists.Select(a => a.Name)),
-                        popularity = 0,
-                        genre = "Unknown",
-                        bpm = 0,
-                        danceability = 0,
-                        energy = 0,
-                        decade = "Unknown" // Default value, updated later
-                    };
-
-                    string decade = "Unknown";
-                    string genre = "Unknown";
-                    var trackResponse = await client.GetAsync($"https://api.spotify.com/v1/tracks/${track.Id}");
-                    if (trackResponse.IsSuccessStatusCode)
-                    {
-                        var trackJson = await trackResponse.Content.ReadAsStringAsync();
-                        var trackDetails = JsonSerializer.Deserialize<SpotifyTrackDetails>(trackJson);
-                        if (trackDetails != null)
-                        {
-                            // Try track-level release_date first
-                            string? releaseDate = null;
-                            if (!string.IsNullOrEmpty(trackDetails.ReleaseDate))
-                            {
-                                releaseDate = trackDetails.ReleaseDate;
-                            }
-                            // Fall back to album-level release_date
-                            else if (trackDetails.Album != null && !string.IsNullOrEmpty(trackDetails.Album.ReleaseDate))
-                            {
-                                releaseDate = trackDetails.Album.ReleaseDate;
-                            }
-
-                            if (!string.IsNullOrEmpty(releaseDate))
-                            {
-                                var yearStr = releaseDate.Split('-')[0];
-                                if (int.TryParse(yearStr, out int year))
-                                {
-                                    decade = $"{year - (year % 10)}s";
-                                }
-                            }
-
-                            // Update song with decade and track-level data
-                            song = new
-                            {
-                                id = song.id,
-                                title = song.title,
-                                artist = song.artist,
-                                popularity = trackDetails.Popularity,
-                                genre = song.genre,
-                                bpm = song.bpm,
-                                danceability = song.danceability,
-                                energy = song.energy,
-                                decade = decade
-                            };
-
-                            // Fetch genre from track's primary artist
-                            if (trackDetails.Artists != null && trackDetails.Artists.Any())
-                            {
-                                var artistId = trackDetails.Artists[0].Id;
-                                var artistResponse = await client.GetAsync($"https://api.spotify.com/v1/artists/${artistId}");
-                                if (artistResponse.IsSuccessStatusCode)
-                                {
-                                    var artistJson = await artistResponse.Content.ReadAsStringAsync();
-                                    var artistDetails = JsonSerializer.Deserialize<SpotifyArtistDetails>(artistJson);
-                                    if (artistDetails?.Genres.Any() == true)
-                                    {
-                                        genre = CapitalizeGenre(artistDetails.Genres.First());
-                                        _logger.LogDebug("SpotifySearch: Found genre '${Genre}' from track's primary artist for track '${TrackId}'", genre, track.Id);
-                                    }
-                                    else
-                                    {
-                                        _logger.LogDebug("SpotifySearch: No genres found for track's primary artist for track '${TrackId}'", track.Id);
-                                    }
-                                }
-                            }
-
-                            // If genre is still "Unknown", try the album's artists
-                            if (genre == "Unknown" && trackDetails.Album != null && trackDetails.Album.Id != null)
-                            {
-                                var albumResponse = await client.GetAsync($"https://api.spotify.com/v1/albums/${trackDetails.Album.Id}");
-                                if (albumResponse.IsSuccessStatusCode)
-                                {
-                                    var albumJson = await albumResponse.Content.ReadAsStringAsync();
-                                    var albumDetails = JsonSerializer.Deserialize<SpotifyAlbumDetails>(albumJson);
-                                    if (albumDetails != null && albumDetails.Artists != null && albumDetails.Artists.Any())
-                                    {
-                                        foreach (var albumArtist in albumDetails.Artists)
-                                        {
-                                            var artistResponse = await client.GetAsync($"https://api.spotify.com/v1/artists/${albumArtist.Id}");
-                                            if (artistResponse.IsSuccessStatusCode)
-                                            {
-                                                var artistJson = await artistResponse.Content.ReadAsStringAsync();
-                                                var artistDetails = JsonSerializer.Deserialize<SpotifyArtistDetails>(artistJson);
-                                                if (artistDetails?.Genres.Any() == true)
-                                                {
-                                                    genre = CapitalizeGenre(artistDetails.Genres.First());
-                                                    _logger.LogDebug("SpotifySearch: Found genre '${Genre}' from album's artist '${ArtistId}' for track '${TrackId}'", genre, albumArtist.Id, track.Id);
-                                                    break; // Use the first genre found
-                                                }
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        _logger.LogDebug("SpotifySearch: No artists found for album '${AlbumId}' for track '${TrackId}'", trackDetails.Album.Id, track.Id);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Update song with the final genre
-                    song = new
-                    {
-                        id = song.id,
-                        title = song.title,
-                        artist = song.artist,
-                        popularity = song.popularity,
-                        genre = genre,
-                        bpm = song.bpm,
-                        danceability = song.danceability,
-                        energy = song.energy,
-                        decade = song.decade
-                    };
-                    songs.Add(song);
-                }
-
-                _logger.LogInformation("SpotifySearch: Found {SongCount} songs for query '{Query}'", songs.Count, query);
-                return Ok(new { songs });
+                _logger.LogError(ex, "YouTubeSearch: JSON deserialization error for query '{Query}': {Message}", query, ex.Message);
+                return StatusCode(500, new { error = "Failed to parse YouTube response", details = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "SpotifySearch: Exception for query '{Query}'", query);
-                return StatusCode(500, new { error = "Failed to search Spotify" });
+                _logger.LogError(ex, "YouTubeSearch: Exception for query '{Query}': {Message}", query, ex.Message);
+                return StatusCode(500, new { error = "Failed to search YouTube", details = ex.Message });
             }
         }
 
@@ -587,7 +612,7 @@ namespace BNKaraoke.Api.Controllers
 
                 if (string.IsNullOrEmpty(song.ApprovedBy))
                 {
-                    _logger.LogWarning("ApproveSong: ApprovedBy is null. Claims: {Claims}", string.Join(", ", User.Claims.Select(c => $"{c.Type}: ${c.Value}")));
+                    _logger.LogWarning("ApproveSong: ApprovedBy is null. Claims: {Claims}", string.Join(", ", User.Claims.Select(c => $"{c.Type}: {c.Value}")));
                 }
 
                 await _context.SaveChangesAsync();
@@ -642,32 +667,35 @@ namespace BNKaraoke.Api.Controllers
 
                 if (string.IsNullOrEmpty(song.RequestedBy))
                 {
-                    _logger.LogWarning("RequestSong: RequestedBy is null. Claims: {Claims}", string.Join(", ", User.Claims.Select(c => $"{c.Type}: ${c.Value}")));
+                    _logger.LogWarning("RequestSong: RequestedBy is null. Claims: {Claims}", string.Join(", ", User.Claims.Select(c => $"{c.Type}: {c.Value}")));
                     return BadRequest(new { error = "User identity not found in token" });
                 }
 
-                // If SpotifyId is provided, fetch the decade and genre from Spotify
                 if (!string.IsNullOrEmpty(song.SpotifyId))
                 {
                     var client = _httpClientFactory.CreateClient();
                     var token = await GetSpotifyToken(client);
+                    if (string.IsNullOrEmpty(token))
+                    {
+                        _logger.LogWarning("RequestSong: Failed to retrieve Spotify token for SpotifyId={SpotifyId}", song.SpotifyId);
+                        return StatusCode(500, new { error = "Failed to retrieve Spotify token" });
+                    }
+
                     client.DefaultRequestHeaders.Clear();
                     client.DefaultRequestHeaders.Add("Authorization", $"Bearer ${token}");
 
-                    var trackResponse = await client.GetAsync($"https://api.spotify.com/v1/tracks/${song.SpotifyId}");
+                    var trackResponse = await client.GetAsync($"https://api.spotify.com/v1/tracks/{song.SpotifyId}");
                     if (trackResponse.IsSuccessStatusCode)
                     {
                         var trackJson = await trackResponse.Content.ReadAsStringAsync();
                         var trackDetails = JsonSerializer.Deserialize<SpotifyTrackDetails>(trackJson);
                         if (trackDetails != null)
                         {
-                            // Try track-level release_date first
                             string? releaseDate = null;
                             if (!string.IsNullOrEmpty(trackDetails.ReleaseDate))
                             {
                                 releaseDate = trackDetails.ReleaseDate;
                             }
-                            // Fall back to album-level release_date
                             else if (trackDetails.Album != null && !string.IsNullOrEmpty(trackDetails.Album.ReleaseDate))
                             {
                                 releaseDate = trackDetails.Album.ReleaseDate;
@@ -682,12 +710,11 @@ namespace BNKaraoke.Api.Controllers
                                 }
                             }
 
-                            // Fetch genre, starting with the track's primary artist
                             string genre = "Unknown";
                             if (trackDetails.Artists != null && trackDetails.Artists.Any())
                             {
                                 var artistId = trackDetails.Artists[0].Id;
-                                var artistResponse = await client.GetAsync($"https://api.spotify.com/v1/artists/${artistId}");
+                                var artistResponse = await client.GetAsync($"https://api.spotify.com/v1/artists/{artistId}");
                                 if (artistResponse.IsSuccessStatusCode)
                                 {
                                     var artistJson = await artistResponse.Content.ReadAsStringAsync();
@@ -695,15 +722,14 @@ namespace BNKaraoke.Api.Controllers
                                     if (artistDetails?.Genres.Any() == true)
                                     {
                                         genre = CapitalizeGenre(artistDetails.Genres.First());
-                                        _logger.LogDebug("RequestSong: Found genre '${Genre}' from track's primary artist for track '${TrackId}'", genre, song.SpotifyId);
+                                        _logger.LogDebug("RequestSong: Found genre '{Genre}' from track's primary artist for track '{TrackId}'", genre, song.SpotifyId);
                                     }
                                 }
                             }
 
-                            // If genre is still "Unknown", try the album's artists
                             if (genre == "Unknown" && trackDetails.Album != null && trackDetails.Album.Id != null)
                             {
-                                var albumResponse = await client.GetAsync($"https://api.spotify.com/v1/albums/${trackDetails.Album.Id}");
+                                var albumResponse = await client.GetAsync($"https://api.spotify.com/v1/albums/{trackDetails.Album.Id}");
                                 if (albumResponse.IsSuccessStatusCode)
                                 {
                                     var albumJson = await albumResponse.Content.ReadAsStringAsync();
@@ -712,7 +738,7 @@ namespace BNKaraoke.Api.Controllers
                                     {
                                         foreach (var albumArtist in albumDetails.Artists)
                                         {
-                                            var artistResponse = await client.GetAsync($"https://api.spotify.com/v1/artists/${albumArtist.Id}");
+                                            var artistResponse = await client.GetAsync($"https://api.spotify.com/v1/artists/{albumArtist.Id}");
                                             if (artistResponse.IsSuccessStatusCode)
                                             {
                                                 var artistJson = await artistResponse.Content.ReadAsStringAsync();
@@ -720,8 +746,8 @@ namespace BNKaraoke.Api.Controllers
                                                 if (artistDetails?.Genres.Any() == true)
                                                 {
                                                     genre = CapitalizeGenre(artistDetails.Genres.First());
-                                                    _logger.LogDebug("RequestSong: Found genre '${Genre}' from album's artist '${ArtistId}' for track '${TrackId}'", genre, albumArtist.Id, song.SpotifyId);
-                                                    break; // Use the first genre found
+                                                    _logger.LogDebug("RequestSong: Found genre '{Genre}' from album's artist '{ArtistId}' for track '{TrackId}'", genre, albumArtist.Id, song.SpotifyId);
+                                                    break;
                                                 }
                                             }
                                         }
@@ -849,13 +875,13 @@ namespace BNKaraoke.Api.Controllers
                 };
 
                 var response = await client.SendAsync(request);
-                _logger.LogInformation("GetSpotifyToken: Response status: ${response.StatusCode}");
+                _logger.LogInformation("GetSpotifyToken: Response status: {StatusCode}", response.StatusCode);
 
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorText = await response.Content.ReadAsStringAsync();
-                    _logger.LogWarning("GetSpotifyToken: Error response: ${errorText}");
-                    throw new InvalidOperationException($"Failed to get Spotify token: ${errorText}");
+                    _logger.LogWarning("GetSpotifyToken: Error response: {ErrorText}", errorText);
+                    throw new InvalidOperationException($"Failed to get Spotify token: {errorText}");
                 }
 
                 var json = await response.Content.ReadAsStringAsync();
@@ -877,7 +903,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // Helper method to capitalize the first letter of each word in a genre
         private string CapitalizeGenre(string genre)
         {
             if (string.IsNullOrEmpty(genre) || genre == "Unknown")
@@ -885,7 +910,6 @@ namespace BNKaraoke.Api.Controllers
                 return genre;
             }
 
-            // Use TextInfo.ToTitleCase to capitalize the first letter of each word
             TextInfo textInfo = CultureInfo.InvariantCulture.TextInfo;
             return textInfo.ToTitleCase(genre.ToLower());
         }
@@ -970,12 +994,28 @@ namespace BNKaraoke.Api.Controllers
             public required List<YouTubeItem> Items { get; set; }
         }
 
+        public class YouTubeVideosResponse
+        {
+            [JsonPropertyName("items")]
+            public required List<YouTubeVideoItem> Items { get; set; }
+        }
+
         public class YouTubeItem
         {
             [JsonPropertyName("id")]
             public YouTubeId? Id { get; set; }
             [JsonPropertyName("snippet")]
             public YouTubeSnippet? Snippet { get; set; }
+        }
+
+        public class YouTubeVideoItem
+        {
+            [JsonPropertyName("id")]
+            public string? Id { get; set; }
+            [JsonPropertyName("contentDetails")]
+            public YouTubeContentDetails? ContentDetails { get; set; }
+            [JsonPropertyName("statistics")]
+            public YouTubeStatistics? Statistics { get; set; }
         }
 
         public class YouTubeId
@@ -988,6 +1028,22 @@ namespace BNKaraoke.Api.Controllers
         {
             [JsonPropertyName("title")]
             public string? Title { get; set; }
+            [JsonPropertyName("channelTitle")]
+            public string? ChannelTitle { get; set; }
+            [JsonPropertyName("publishedAt")]
+            public DateTime? PublishedAt { get; set; }
+        }
+
+        public class YouTubeContentDetails
+        {
+            [JsonPropertyName("duration")]
+            public string? Duration { get; set; }
+        }
+
+        public class YouTubeStatistics
+        {
+            [JsonPropertyName("viewCount")]
+            public string? ViewCount { get; set; }
         }
 
         public class ApproveSongRequest
@@ -1004,6 +1060,26 @@ namespace BNKaraoke.Api.Controllers
         public class AddFavoriteRequest
         {
             public int SongId { get; set; }
+        }
+
+        public class SongUpdateRequest
+        {
+            public int Id { get; set; }
+            public string? Title { get; set; }
+            public string? Artist { get; set; }
+            public string? Genre { get; set; }
+            public string? Decade { get; set; }
+            public float? Bpm { get; set; }
+            public string? Danceability { get; set; }
+            public string? Energy { get; set; }
+            public string? Mood { get; set; }
+            public int? Popularity { get; set; }
+            public string? SpotifyId { get; set; }
+            public string? YouTubeUrl { get; set; }
+            public string? Status { get; set; }
+            public string? MusicBrainzId { get; set; }
+            public int? LastFmPlaycount { get; set; }
+            public int? Valence { get; set; }
         }
     }
 }

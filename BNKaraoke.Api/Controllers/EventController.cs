@@ -555,7 +555,7 @@ namespace BNKaraoke.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching event queue for EventId {EventId}: {Message}", eventId, ex.Message);
+                _logger.LogError(ex, "Error fetching event queue for EventId: {EventId}", eventId);
                 return StatusCode(500, new { message = "An error occurred while fetching the event queue", details = ex.Message });
             }
         }
