@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'; // Added explicit import
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
@@ -16,24 +16,20 @@ import ChangePassword from "./pages/ChangePassword";
 import Profile from "./pages/Profile";
 import { EventContextProvider } from "./context/EventContext";
 
-// Configure Router with v7 flags
 const routerFutureConfig = {
   v7_startTransition: true,
   v7_relativeSplatPath: true
 };
 
-// Error Boundary Props
 interface ErrorBoundaryProps {
   children: React.ReactNode;
 }
 
-// Error Boundary State
 interface ErrorBoundaryState {
   error: string | null;
   errorInfo: React.ErrorInfo | null;
 }
 
-// Error Boundary Component
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null, errorInfo: null };
 
@@ -60,7 +56,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-// HeaderWrapper Component
 const HeaderWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const [mustChangePassword, setMustChangePassword] = useState<boolean | null>(null);
@@ -123,27 +118,30 @@ const HeaderWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 const App = () => {
   console.log('App component initializing');
   const [consoleErrors, setConsoleErrors] = useState<string[]>([]);
+  const isDevelopment = process.env.NODE_ENV !== 'production';
 
   useEffect(() => {
-    console.log('App useEffect running');
-    const originalConsoleError = console.error;
-    console.error = (...args) => {
-      setConsoleErrors((prev) => [...prev, args.join(' ')]);
-      originalConsoleError(...args);
-    };
-    window.onerror = (message, source, lineno, colno, error) => {
-      setConsoleErrors((prev) => [...prev, `Error: ${message} at ${source}:${lineno}`]);
-      return true;
-    };
-    return () => {
-      console.error = originalConsoleError;
-      window.onerror = null;
-    };
+    if (isDevelopment) {
+      console.log('App useEffect running');
+      const originalConsoleError = console.error;
+      console.error = (...args) => {
+        setConsoleErrors((prev) => [...prev, args.join(' ')]);
+        originalConsoleError(...args);
+      };
+      window.onerror = (message, source, lineno, colno, error) => {
+        setConsoleErrors((prev) => [...prev, `Error: ${message} at ${source}:${lineno}`]);
+        return true;
+      };
+      return () => {
+        console.error = originalConsoleError;
+        window.onerror = null;
+      };
+    }
   }, []);
 
   return (
     <div>
-      {consoleErrors.length > 0 && (
+      {isDevelopment && consoleErrors.length > 0 && (
         <div style={{ color: 'red', margin: '10px', background: 'rgba(255, 255, 255, 0.1)', padding: '10px', borderRadius: '5px' }}>
           <h3>Console Errors:</h3>
           <ul>
