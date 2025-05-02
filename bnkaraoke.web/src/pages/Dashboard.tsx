@@ -35,6 +35,10 @@ const SortableQueueItem: React.FC<SortableQueueItemProps> = ({ queueItem, eventI
         console.log("SortableQueueItem clicked with songDetails:", songDetails, "queueId:", queueItem.queueId);
         songDetails && onClick(songDetails, queueItem.queueId);
       }}
+      onTouchStart={() => {
+        console.log("SortableQueueItem touched with songDetails:", songDetails, "queueId:", queueItem.queueId);
+        songDetails && onClick(songDetails, queueItem.queueId);
+      }}
     >
       <span>
         {songDetails ? (
@@ -842,15 +846,28 @@ const Dashboard: React.FC = () => {
               className="search-bar"
               aria-label="Search for karaoke songs"
             />
-            <button onClick={handleSearchClick} className="search-button" aria-label="Search">
+            <button
+              onClick={handleSearchClick}
+              onTouchStart={handleSearchClick}
+              className="search-button"
+              aria-label="Search"
+            >
               ▶
             </button>
-            <button onClick={resetSearch} className="reset-button" aria-label="Reset search">
+            <button
+              onClick={resetSearch}
+              onTouchStart={resetSearch}
+              className="reset-button"
+              aria-label="Reset search"
+            >
               ■
             </button>
+          </div>
+          <div className="explore-button-container">
             <button
               className="browse-songs-button"
               onClick={() => navigate('/explore-songs')}
+              onTouchStart={() => navigate('/explore-songs')}
             >
               Browse Karaoke Songs
             </button>
@@ -858,28 +875,6 @@ const Dashboard: React.FC = () => {
         </section>
 
         <div className="main-content">
-          <section className="favorites-section">
-            <h2>Your Favorites</h2>
-            {favorites.length === 0 ? (
-              <p>No favorites added yet.</p>
-            ) : (
-              <ul className="favorites-list">
-                {favorites.map(song => (
-                  <li
-                    key={song.id}
-                    className="favorite-song"
-                    onClick={() => {
-                      console.log("Favorite song clicked to open SongDetailsModal with song:", song);
-                      setSelectedSong(song);
-                    }}
-                  >
-                    <span>{song.title} - {song.artist}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
           <aside className="queue-panel">
             <h2>My Song Queue</h2>
             {reorderError && !showReorderErrorModal && <p className="error-text">{reorderError}</p>}
@@ -932,6 +927,28 @@ const Dashboard: React.FC = () => {
               )}
             </aside>
           )}
+
+          <section className="favorites-section">
+            <h2>Your Favorites</h2>
+            {favorites.length === 0 ? (
+              <p>No favorites added yet.</p>
+            ) : (
+              <ul className="favorites-list">
+                {favorites.map(song => (
+                  <li
+                    key={song.id}
+                    className="favorite-song"
+                    onClick={() => {
+                      console.log("Favorite song clicked to open SongDetailsModal with song:", song);
+                      setSelectedSong(song);
+                    }}
+                  >
+                    <span>{song.title} - {song.artist}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
 
         <nav className="menu-bar">

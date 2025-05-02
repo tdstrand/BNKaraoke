@@ -1,4 +1,4 @@
-.modal-overlay {
+.modal-overlay.song-details-modal {
   position: fixed;
   top: 0;
   left: 0;
@@ -11,11 +11,11 @@
   z-index: 1000;
 }
 
-.modal-overlay.secondary-modal {
+.modal-overlay.secondary-modal.song-details-modal {
   z-index: 1001; /* Ensure secondary modal is above the primary modal */
 }
 
-.modal-content {
+.modal-content.song-details-modal {
   background: white;
   padding: 20px;
   border-radius: 8px;
@@ -98,4 +98,36 @@
 .modal-footer {
   display: flex;
   justify-content: flex-end;
+}
+
+/* Mobile-specific styles */
+@media (max-width: 768px) {
+  .modal-overlay.song-details-modal,
+  .modal-overlay.secondary-modal.song-details-modal {
+    background: rgba(0, 0, 0, 0.3); /* Lighter overlay for mobile */
+  }
+
+  .modal-content.song-details-modal {
+    background: rgba(255, 255, 255, 0.95); /* Slightly transparent white for lighter feel */
+    padding: 15px;
+    width: 95vw;
+    max-height: 90vh;
+  }
+
+  .modal-title {
+    font-size: 1.4em;
+  }
+
+  .modal-text {
+    font-size: 0.95em;
+  }
+
+  .modal-error {
+    font-size: 0.85em;
+  }
+
+  .action-button {
+    padding: 12px 18px;
+    font-size: 0.95em;
+  }
 }

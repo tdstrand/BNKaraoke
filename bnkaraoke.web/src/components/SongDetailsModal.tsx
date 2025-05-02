@@ -147,8 +147,8 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
 
   return (
     <>
-      <div className="modal-overlay">
-        <div className="modal-content">
+      <div className="modal-overlay song-details-modal">
+        <div className="modal-content song-details-modal">
           <h3 className="modal-title">{song.title}</h3>
           <div className="song-details">
             <p className="modal-text"><strong>Artist:</strong> {song.artist}</p>
@@ -167,6 +167,10 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
                 console.log("Toggle favorite button clicked for song:", song);
                 onToggleFavorite(song);
               }}
+              onTouchStart={() => {
+                console.log("Toggle favorite button touched for song:", song);
+                onToggleFavorite(song);
+              }}
               className="action-button"
             >
               {isFavorite ? "Remove from Favorites" : "Add to Favorites"}
@@ -175,6 +179,10 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
               <button
                 onClick={() => {
                   console.log("Remove from Queue button clicked");
+                  handleDeleteFromQueue();
+                }}
+                onTouchStart={() => {
+                  console.log("Remove from Queue button touched");
                   handleDeleteFromQueue();
                 }}
                 className="action-button"
@@ -188,6 +196,10 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
                   console.log("Add to Queue button clicked with currentEvent:", currentEvent);
                   currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
                 }}
+                onTouchStart={() => {
+                  console.log("Add to Queue button touched with currentEvent:", currentEvent);
+                  currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
+                }}
                 className="action-button"
                 disabled={isAddingToQueue || (!currentEvent && (events.length === 0 || !userName)) || !onAddToQueue || isInQueue}
               >
@@ -196,7 +208,11 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
             )}
           </div>
           <div className="modal-footer">
-            <button onClick={onClose} className="action-button">
+            <button
+              onClick={onClose}
+              onTouchStart={onClose}
+              className="action-button"
+            >
               Done
             </button>
           </div>
@@ -204,8 +220,8 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
       </div>
 
       {showEventSelectionModal && (
-        <div className="modal-overlay secondary-modal">
-          <div className="modal-content">
+        <div className="modal-overlay secondary-modal song-details-modal">
+          <div className="modal-content song-details-modal">
             <h3 className="modal-title">Select Event Queue</h3>
             {error && <p className="modal-error">{error}</p>}
             <div className="event-list">
@@ -219,6 +235,10 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
                       console.log("Event selected for adding to queue:", event);
                       handleAddToQueue(event.eventId);
                     }}
+                    onTouchStart={() => {
+                      console.log("Event selected for adding to queue (touch):", event);
+                      handleAddToQueue(event.eventId);
+                    }}
                   >
                     {event.status}: {event.eventCode} ({event.scheduledDate})
                   </div>
@@ -228,6 +248,10 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
               <button
                 onClick={() => {
                   console.log("Cancel event selection modal");
+                  setShowEventSelectionModal(false);
+                }}
+                onTouchStart={() => {
+                  console.log("Cancel event selection modal (touch)");
                   setShowEventSelectionModal(false);
                 }}
                 className="action-button"
