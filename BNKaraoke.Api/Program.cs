@@ -22,16 +22,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddUserSecrets<Program>();
 builder.Configuration.AddEnvironmentVariables();
 
-// Configure Kestrel
-builder.WebHost.ConfigureKestrel(options =>
-{
-    // HTTP endpoint for network access
-    options.ListenAnyIP(7290, listenOptions =>
-    {
-        listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-    });
-});
-
 // Configure logging
 builder.Services.AddLogging(logging =>
 {
@@ -160,16 +150,12 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowNetwork", policy =>
     {
         policy.WithOrigins(
-            "http://localhost:8080",
-            "http://localhost:3000",
-            "http://172.16.1.221:8080",
-            "https://www.bnkaraoke.com",
-            "https://bnkaraoke.com"
+            builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
         )
         .AllowAnyMethod()
         .AllowAnyHeader()
         .AllowCredentials();
-        Console.WriteLine("CORS policy configured for origins: http://localhost:8080, http://localhost:3000, http://172.16.1.221:8080, https://www.bnkaraoke.com, https://bnkaraoke.com");
+        Console.WriteLine("CORS policy configured for origins: {0}", string.Join(", ", builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()));
     });
 });
 
@@ -293,8 +279,7 @@ else
             await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred." });
         });
     });
-    app.UseHsts();
-    app.UseHttpsRedirection();
+    // Disable HSTS and HTTPS redirection in production as Nginx handles SSL
 }
 
 app.UseStaticFiles();
