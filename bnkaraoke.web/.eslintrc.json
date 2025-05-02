@@ -23,17 +23,5 @@
     "react": {
       "version": "detect"
     }
-  },
-  "overrides": [
-    {
-      "files": ["**/*"],
-      "env": {
-        "NODE_ENV": "production"
-      },
-      "rules": {
-        "react-hooks/exhaustive-deps": "off",
-        "no-console": "off"
-      }
-    }
-  ]
+  }
 }
