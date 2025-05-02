@@ -4,24 +4,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
-
-// Conditionally load Eruda in development
-if (isDevelopment) {
-  import('eruda').then(eruda => {
-    eruda.default.init();
-  });
-}
-
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  isDevelopment ? (
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  ) : (
-    <App />
-  )
-);
+root.render(<App />);
 
 reportWebVitals();
