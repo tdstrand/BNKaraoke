@@ -1072,6 +1072,7 @@ const Dashboard: React.FC = () => {
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 className="modal-title">Request Submitted</h3>
+            {/* eslint-disable-next-line react/no-unescaped-entities */}
             <p className="modal-text">
               A request has been made on your behalf to find a Karaoke version of '{requestedSong.title}' by {requestedSong.artist}.
             </p>
