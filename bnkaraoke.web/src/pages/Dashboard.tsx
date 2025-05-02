@@ -966,16 +966,19 @@ const Dashboard: React.FC = () => {
           </section>
         </div>
 
-        <nav className="menu-bar">
-          <button title="Search" aria-label="Search">🔍</button>
-          <button title="Queue" aria-label="Queue">🎤</button>
-          <button title="Favorites" aria-label="Favorites">⭐</button>
-          <button title="Requests" aria-label="Requests">✉️</button>
-          {localStorage.getItem("role")?.includes("Manager") && <button title="Admin" aria-label="Admin">⚙️</button>}
-          <button title="Events" aria-label="Events">📅</button>
-          <button title="Profile" aria-label="Profile">👤</button>
-          <button title="Help" aria-label="Help">?</button>
-        </nav>
+        {/*
+          Commented out non-functional menu bar icons
+          <nav className="menu-bar">
+            <button title="Search" aria-label="Search">🔍</button>
+            <button title="Queue" aria-label="Queue">🎤</button>
+            <button title="Favorites" aria-label="Favorites">⭐</button>
+            <button title="Requests" aria-label="Requests">✉️</button>
+            {localStorage.getItem("role")?.includes("Manager") && <button title="Admin" aria-label="Admin">⚙️</button>}
+            <button title="Events" aria-label="Events">📅</button>
+            <button title="Profile" aria-label="Profile">👤</button>
+            <button title="Help" aria-label="Help">?</button>
+          </nav>
+        */}
       </div>
 
       {showSearchModal && (
