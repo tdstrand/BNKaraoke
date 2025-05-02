@@ -118,10 +118,12 @@ const Header: React.FC = () => {
           if (upcoming.length === 1) {
             setCurrentEvent(upcoming[0]);
             setIsCurrentEventLive(false);
+            setCheckedIn(false); // Ensure not checked in for upcoming event
             console.log("Auto-selected the only upcoming event:", upcoming[0].eventId);
           } else {
             setCurrentEvent(liveEvent || upcoming[0] || null);
             setIsCurrentEventLive(liveEvent != null);
+            setCheckedIn(liveEvent ? true : false); // Check in only for live event
           }
         }
         if (liveEvent) {
@@ -138,7 +140,12 @@ const Header: React.FC = () => {
     };
 
     fetchEvents();
-  }, [currentEvent, setCurrentEvent, setIsCurrentEventLive]);
+  }, [currentEvent, setCurrentEvent, setIsCurrentEventLive, setCheckedIn]);
+
+  // Log checkedIn state for debugging
+  useEffect(() => {
+    console.log("Header - checkedIn state:", checkedIn, "isCurrentEventLive:", isCurrentEventLive, "currentEvent:", currentEvent);
+  }, [checkedIn, isCurrentEventLive, currentEvent]);
 
   const adminRoles = ["Song Manager", "User Manager", "Event Manager"];
   const hasAdminRole = roles.some(role => adminRoles.includes(role));
@@ -363,7 +370,7 @@ const Header: React.FC = () => {
                   {isOnBreak ? "I'm Back" : "Go On Break"}
                 </button>
               )}
-              {checkedIn && (
+              {checkedIn && isCurrentEventLive && (
                 <button className="leave-event-button" onClick={handleLeaveEvent}>
                   Leave Event
                 </button>
@@ -382,7 +389,7 @@ const Header: React.FC = () => {
                   >
                     Pre-Select
                   </button>
-                  {isPreselectDropdownOpen && upcomingEvents.length > 1 && (
+                  {isPreselectDropdownOpen && upcomingEvents.length > 0 && (
                     <ul className="event-dropdown-menu">
                       {upcomingEvents.map(event => (
                         <li

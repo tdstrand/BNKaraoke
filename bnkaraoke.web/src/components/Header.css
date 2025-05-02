@@ -157,8 +157,8 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.logout-button {
-  background-color: #f97316; /* Orange */
+.header-main .logout-button {
+  background-color: #ff0000 !important; /* Bright red, high specificity */
   color: white;
   border: none;
   padding: 8px 16px;
@@ -169,11 +169,11 @@
   box-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
 }
 
-.logout-button:hover {
-  background-color: #e06614; /* Darker orange */
+.header-main .logout-button:hover {
+  background-color: #cc0000 !important; /* Darker red */
 }
 
-.logout-button .anticon {
+.header-main .logout-button .anticon {
   color: white !important; /* Override Ant Design icon color */
 }
 
@@ -222,34 +222,4 @@
 
 .dropdown-item:hover {
   background-color: rgba(255, 255, 255, 0.2);
-}
-
-.notification-bar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  background: #0056b3; /* Slightly darker blue */
-  padding: 5px 20px;
-  margin-top: 5px;
-  border-radius: 4px;
-  gap: 10px;
-  box-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
-}
-
-.notification-bar span {
-  font-size: 1em;
-  color: white;
-}
-
-.notification-bar button {
-  background-color: #f97316; /* Orange */
-  color: white;
-  border: none;
-  padding: 5px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.notification-bar button:hover {
-  background-color: #e06614; /* Darker orange */
 }
