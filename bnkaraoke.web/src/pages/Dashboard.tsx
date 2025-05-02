@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
 import { API_ROUTES } from '../config/apiConfig';
 import SongDetailsModal from '../components/SongDetailsModal';
-import { Song, SpotifySong, EventQueueItem, EventQueueItemResponse } from '../types';
+import { Song, SpotifySong, EventQueueItem, EventQueueItemResponse, Event } from '../types';
 import useEventContext from '../context/EventContext';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -13,7 +13,7 @@ interface SortableQueueItemProps {
   queueItem: EventQueueItem;
   eventId: number;
   songDetails: Song | null;
-  onClick: (song: Song, queueId: number) => void;
+  onClick: (song: Song, queueId: number, eventId: number) => void;
 }
 
 const SortableQueueItem: React.FC<SortableQueueItemProps> = ({ queueItem, eventId, songDetails, onClick }) => {
@@ -32,12 +32,12 @@ const SortableQueueItem: React.FC<SortableQueueItemProps> = ({ queueItem, eventI
       {...listeners}
       className="queue-song"
       onClick={() => {
-        console.log("SortableQueueItem clicked with songDetails:", songDetails, "queueId:", queueItem.queueId);
-        songDetails && onClick(songDetails, queueItem.queueId);
+        console.log("SortableQueueItem clicked with songDetails:", songDetails, "queueId:", queueItem.queueId, "eventId:", eventId);
+        songDetails && onClick(songDetails, queueItem.queueId, eventId);
       }}
       onTouchStart={() => {
-        console.log("SortableQueueItem touched with songDetails:", songDetails, "queueId:", queueItem.queueId);
-        songDetails && onClick(songDetails, queueItem.queueId);
+        console.log("SortableQueueItem touched with songDetails:", songDetails, "queueId:", queueItem.queueId, "eventId:", eventId);
+        songDetails && onClick(songDetails, queueItem.queueId, eventId);
       }}
     >
       <span>
@@ -94,7 +94,7 @@ const Dashboard: React.FC = () => {
           console.error(`Fetch events failed: ${eventsResponse.status} - ${errorText}`);
           throw new Error(`Fetch events failed: ${eventsResponse.status}`);
         }
-        const eventsData: any[] = await eventsResponse.json();
+        const eventsData: Event[] = await eventsResponse.json();
         console.log("Fetched events on mount:", eventsData);
 
         const newQueues: { [eventId: number]: EventQueueItem[] } = {};
@@ -154,7 +154,12 @@ const Dashboard: React.FC = () => {
                     decade: undefined,
                     requestDate: '',
                     requestedBy: '',
-                    spotifyId: undefined
+                    spotifyId: undefined,
+                    youTubeUrl: undefined,
+                    approvedBy: undefined,
+                    musicBrainzId: undefined,
+                    mood: undefined,
+                    lastFmPlaycount: undefined
                   };
                 }
               }
@@ -173,7 +178,7 @@ const Dashboard: React.FC = () => {
     };
 
     fetchAllQueues();
-  }, []); // Run once on mount
+  }, []);
 
   // Fetch queues and song details when currentEvent changes
   useEffect(() => {
@@ -258,7 +263,12 @@ const Dashboard: React.FC = () => {
                 decade: undefined,
                 requestDate: '',
                 requestedBy: '',
-                spotifyId: undefined
+                spotifyId: undefined,
+                youTubeUrl: undefined,
+                approvedBy: undefined,
+                musicBrainzId: undefined,
+                mood: undefined,
+                lastFmPlaycount: undefined
               };
             }
           }
@@ -310,7 +320,7 @@ const Dashboard: React.FC = () => {
       setSongs(activeSongs);
 
       if (activeSongs.length === 0) {
-        setSearchError("There are no Karaoke songs Available that match your search terms. Would you like to request a Karaoke Song be added?");
+        setSearchError("There are no Karaoke songs available that match your search terms. Would you like to request a Karaoke song be added?");
         setShowSearchModal(true);
       } else {
         setShowSearchModal(true);
@@ -620,7 +630,12 @@ const Dashboard: React.FC = () => {
             decade: song.decade || undefined,
             requestDate: song.requestDate || '',
             requestedBy: song.requestedBy || '',
-            spotifyId: song.spotifyId || undefined
+            spotifyId: song.spotifyId || undefined,
+            youTubeUrl: song.youTubeUrl || undefined,
+            approvedBy: song.approvedBy || undefined,
+            musicBrainzId: song.musicBrainzId || undefined,
+            mood: song.mood || undefined,
+            lastFmPlaycount: song.lastFmPlaycount || undefined
           },
         }));
       }
@@ -683,13 +698,13 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleQueueItemClick = (song: Song, queueId: number) => {
-    console.log("handleQueueItemClick called with song:", song, "queueId:", queueId);
+  const handleQueueItemClick = (song: Song, queueId: number, eventId: number) => {
+    console.log("handleQueueItemClick called with song:", song, "queueId:", queueId, "eventId:", eventId);
     setSelectedSong(song);
     setSelectedQueueId(queueId);
   };
 
-  const handleDragEnd = async (event: any) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     console.log("handleDragEnd called with event:", event);
     const { active, over } = event;
 
@@ -830,7 +845,7 @@ const Dashboard: React.FC = () => {
         console.error("Fetch favorites error:", err);
         setFavorites([]);
       });
-  }, []); // Run once on mount
+  }, []);
 
   return (
     <div className="dashboard">
@@ -1058,7 +1073,7 @@ const Dashboard: React.FC = () => {
           <div className="modal-content">
             <h3 className="modal-title">Request Submitted</h3>
             <p className="modal-text">
-              A request has been made on your behalf to find a Karaoke version of "{requestedSong.title}" by {requestedSong.artist}.
+              A request has been made on your behalf to find a Karaoke version of '{requestedSong.title}' by {requestedSong.artist}.
             </p>
             <button onClick={resetSearch} className="modal-cancel">Done</button>
           </div>

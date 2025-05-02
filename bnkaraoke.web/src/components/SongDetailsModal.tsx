@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './SongDetailsModal.css';
-import { Song } from '../types';
+import { Song, Event } from '../types';
 import { API_ROUTES } from '../config/apiConfig';
 import useEventContext from '../context/EventContext';
 
@@ -29,17 +29,16 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   queueId,
 }) => {
   const navigate = useNavigate();
-  const { currentEvent, checkedIn, isCurrentEventLive } = useEventContext();
-  const [events, setEvents] = useState<any[]>([]);
+  const { currentEvent } = useEventContext();
+  const [events, setEvents] = useState<Event[]>([]);
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showEventSelectionModal, setShowEventSelectionModal] = useState(false);
-  const [userName, setUserName] = useState<string | null>(localStorage.getItem("userName"));
 
   // Fetch events only if currentEvent is unset and events are needed
   useEffect(() => {
-    if (currentEvent || isInQueue || !onAddToQueue) return; // Skip if currentEvent exists or not adding to queue
+    if (currentEvent || isInQueue || !onAddToQueue) return;
 
     const token = localStorage.getItem("token");
     if (!token) {
@@ -57,7 +56,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
         if (!res.ok) throw new Error(`Fetch events failed: ${res.status}`);
         return res.json();
       })
-      .then((data: any[]) => {
+      .then((data: Event[]) => {
         console.log("SongDetailsModal - Fetched events:", data);
         setEvents(data || []);
       })
@@ -132,7 +131,8 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   };
 
   const handleOpenEventSelection = () => {
-    console.log("handleOpenEventSelection called with userName:", userName);
+    console.log("handleOpenEventSelection called");
+    const userName = localStorage.getItem("userName");
     if (!userName) {
       console.error("UserName not found in localStorage");
       setError("User not found. Please log in again to add songs to the queue.");
@@ -201,7 +201,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
                   currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
                 }}
                 className="action-button"
-                disabled={isAddingToQueue || (!currentEvent && (events.length === 0 || !userName)) || !onAddToQueue || isInQueue}
+                disabled={isAddingToQueue || (!currentEvent && events.length === 0) || !onAddToQueue || isInQueue}
               >
                 {isAddingToQueue ? "Adding..." : currentEvent ? `Add to Queue: ${currentEvent.eventCode}` : "Add to Queue"}
               </button>

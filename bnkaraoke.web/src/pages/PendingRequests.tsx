@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_ROUTES } from "../config/apiConfig";
 import '../components/Home.css';
+import { Song } from '../types';
 
 const PendingRequests: React.FC = () => {
   const navigate = useNavigate();
-  const [pendingSongs, setPendingSongs] = useState<any[]>([]);
+  const [pendingSongs, setPendingSongs] = useState<Song[]>([]);
   const [youtubeUrl, setYoutubeUrl] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
@@ -32,11 +33,11 @@ const PendingRequests: React.FC = () => {
         throw new Error(`Failed to fetch pending songs: ${response.status} - ${responseText}`);
       }
 
-      const data = JSON.parse(responseText);
+      const data: Song[] = JSON.parse(responseText);
       setPendingSongs(data);
       setError(null);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : "Unknown error");
       setPendingSongs([]);
     }
   };
@@ -49,13 +50,13 @@ const PendingRequests: React.FC = () => {
     }
 
     try {
-      const response = await fetch(API_ROUTES.APPROVE_SONGS, { // Fixed typo: APPROVE_SONG -> APPROVE_SONGS
+      const response = await fetch(API_ROUTES.APPROVE_SONGS, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ id: songId, youtubeUrl }), // Updated to send id and youtubeUrl in the body
+        body: JSON.stringify({ id: songId, youtubeUrl }),
       });
       const responseText = await response.text();
       console.log('Approve Song Response:', { status: response.status, body: responseText });
@@ -70,7 +71,7 @@ const PendingRequests: React.FC = () => {
       setYoutubeUrl('');
       setError(null);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : "Unknown error");
     }
   };
 
@@ -100,7 +101,7 @@ const PendingRequests: React.FC = () => {
       fetchPendingSongs(token);
       setError(null);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : "Unknown error");
     }
   };
 
@@ -121,8 +122,8 @@ const PendingRequests: React.FC = () => {
             >
               <div>
                 <p style={{ fontWeight: 'bold' }}>{song.title} - {song.artist}</p>
-                <p>Spotify ID: {song.spotifyId}</p>
-                <p>BPM: {song.bpm} | Danceability: {song.danceability} | Energy: {song.energy} | Popularity: {song.popularity}</p>
+                <p>Spotify ID: {song.spotifyId || "N/A"}</p>
+                <p>BPM: {song.bpm || "N/A"} | Danceability: {song.danceability || "N/A"} | Energy: {song.energy || "N/A"} | Popularity: {song.popularity || "N/A"}</p>
                 <p>Requested by: {song.requestedBy}</p>
               </div>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>

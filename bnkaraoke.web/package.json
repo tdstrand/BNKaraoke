@@ -49,6 +49,7 @@
     "@types/react-dom": "^19.1.2",
     "@types/react-input-mask": "^3.0.5",
     "cross-env": "^7.0.3",
+    "eruda": "^3.4.1",
     "eslint-plugin-react-hooks": "^4.6.2"
   }
 }

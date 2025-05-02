@@ -1,57 +1,62 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { API_ROUTES } from "../config/apiConfig"; // Only API_ROUTES
+import { API_ROUTES } from "../config/apiConfig";
 import "../pages/Dashboard.css";
+import { SpotifySong } from "../types";
 
 const RequestSongPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const initialQuery = location.state && location.state.searchQuery ? location.state.searchQuery : "";
   const [searchQuery, setSearchQuery] = useState<string>(initialQuery);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SpotifySong[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (searchQuery) {
-      handleSearch(localStorage.getItem("token") || "");
+  const handleSearch = useCallback(async (token: string) => {
+    if (!token) {
+      setError("Authentication token missing. Please log in again.");
+      return;
     }
-  }, [searchQuery]);
-
-  const handleSearch = async (token: string) => {
     try {
-      const response = await fetch(`${API_ROUTES.SPOTIFY_SEARCH}?query=${encodeURIComponent(searchQuery)}`, { // Updated
+      const response = await fetch(`${API_ROUTES.SPOTIFY_SEARCH}?query=${encodeURIComponent(searchQuery)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const responseText = await response.text();
       console.log("Request Song Search Raw Response:", responseText);
       if (!response.ok) throw new Error(`Failed to search: ${response.status} ${response.statusText} - ${responseText}`);
       const data = JSON.parse(responseText);
-      setSearchResults(data);
+      setSearchResults(data.songs || []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       setSearchResults([]);
     }
-  };
+  }, [searchQuery]);
 
-  const handleRequestSong = async (song: any) => {
+  useEffect(() => {
+    if (searchQuery) {
+      handleSearch(localStorage.getItem("token") || "");
+    }
+  }, [searchQuery, handleSearch]);
+
+  const handleRequestSong = async (song: SpotifySong) => {
     const token = localStorage.getItem("token") || "";
     const requestBody = {
       title: song.title,
       artist: song.artist,
-      spotifyId: song.spotifyId,
-      bpm: song.bpm,
-      danceability: song.danceability,
-      energy: song.energy,
-      popularity: song.popularity,
-      genre: song.genre,
+      spotifyId: song.id,
+      bpm: song.bpm || 0,
+      danceability: song.danceability || 0,
+      energy: song.energy || 0,
+      popularity: song.popularity || 0,
+      genre: song.genre || null,
       status: "pending",
       requestDate: new Date().toISOString(),
-      requestedBy: "12345678901",
+      requestedBy: localStorage.getItem("userName") || "12345678901",
     };
 
     try {
-      const response = await fetch(API_ROUTES.REQUEST_SONG, { // Updated
+      const response = await fetch(API_ROUTES.REQUEST_SONG, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -79,6 +84,7 @@ const RequestSongPage: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search for a song..."
+            className="form-input"
           />
           <button onClick={() => handleSearch(localStorage.getItem("token") || "")} className="dashboard-button">
             Search
@@ -88,10 +94,10 @@ const RequestSongPage: React.FC = () => {
         {searchResults.length > 0 ? (
           <ul className="song-list">
             {searchResults.map((song) => (
-              <li key={song.spotifyId} className="song-item">
+              <li key={song.id} className="song-item">
                 <div>
                   <p className="song-title">{song.title} - {song.artist}</p>
-                  <p className="song-text">Genre: {song.genre}</p>
+                  <p className="song-text">Genre: {song.genre || "Unknown"}</p>
                 </div>
                 <button
                   className="dashboard-button action-button"

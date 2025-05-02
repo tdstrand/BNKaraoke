@@ -2,16 +2,25 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_ROUTES } from "../config/apiConfig";
 import "./UserManagementPage.css";
+import { User } from "../types";
+
+interface ExtendedUser extends User {
+  id: string;
+  userName: string;
+  roles: string[];
+  password?: string;
+  mustChangePassword: boolean;
+}
 
 const UserManagementPage: React.FC = () => {
   const navigate = useNavigate();
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<ExtendedUser[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [pinCode, setPinCode] = useState<string>("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({ userName: "", firstName: "", lastName: "", mustChangePassword: true });
-  const [editUser, setEditUser] = useState<any | null>(null);
+  const [editUser, setEditUser] = useState<ExtendedUser | null>(null);
   const [showPinModal, setShowPinModal] = useState(false);
 
   useEffect(() => {
@@ -44,7 +53,7 @@ const UserManagementPage: React.FC = () => {
       const responseText = await response.text();
       console.log("Users Raw Response:", responseText);
       if (!response.ok) throw new Error(`Failed to fetch users: ${response.status} ${response.statusText} - ${responseText}`);
-      const data = JSON.parse(responseText);
+      const data: ExtendedUser[] = JSON.parse(responseText);
       setUsers(data);
       setError(null);
     } catch (err) {
@@ -63,7 +72,7 @@ const UserManagementPage: React.FC = () => {
       const responseText = await response.text();
       console.log("Roles Raw Response:", responseText);
       if (!response.ok) throw new Error(`Failed to fetch roles: ${response.status} ${response.statusText} - ${responseText}`);
-      const data = JSON.parse(responseText);
+      const data: string[] = JSON.parse(responseText);
       setRoles(data);
       setError(null);
     } catch (err) {
@@ -238,7 +247,7 @@ const UserManagementPage: React.FC = () => {
     }
   };
 
-  const openEditUser = (user: any) => {
+  const openEditUser = (user: ExtendedUser) => {
     setEditUser({ ...user, password: "" });
   };
 

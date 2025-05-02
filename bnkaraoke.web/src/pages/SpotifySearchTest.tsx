@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_ROUTES } from '../config/apiConfig';
 import '../components/Home.css';
+import { SpotifySong } from '../types';
 
 const SpotifySearchTest: React.FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<SpotifySong[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,15 +45,15 @@ const SpotifySearchTest: React.FC = () => {
       }
 
       const data = JSON.parse(responseText);
-      setResults(data);
+      setResults(data.songs || []);
       setError(null);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : "Unknown error");
       setResults([]);
     }
   };
 
-  const handleRequest = async (song: any) => {
+  const handleRequest = async (song: SpotifySong) => {
     const token = localStorage.getItem('token');
     if (!token) {
       navigate('/');
@@ -62,15 +63,15 @@ const SpotifySearchTest: React.FC = () => {
     const requestBody = {
       title: song.title,
       artist: song.artist,
-      spotifyId: song.spotifyId,
-      bpm: song.bpm,
-      danceability: song.danceability,
-      energy: song.energy,
-      popularity: song.popularity,
-      genre: song.genre, // Ensure Genre is included
+      spotifyId: song.id,
+      bpm: song.bpm || 0,
+      danceability: song.danceability || 0,
+      energy: song.energy || 0,
+      popularity: song.popularity || 0,
+      genre: song.genre || null,
       status: "pending",
       requestDate: new Date().toISOString(),
-      requestedBy: "12345678901" // Overridden by backend
+      requestedBy: localStorage.getItem("userName") || "12345678901"
     };
 
     try {
@@ -97,7 +98,7 @@ const SpotifySearchTest: React.FC = () => {
       setError(null);
       alert(data.message);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : "Unknown error");
     }
   };
 
@@ -137,13 +138,13 @@ const SpotifySearchTest: React.FC = () => {
         <ul style={{ listStyle: 'none', padding: 0 }}>
           {results.map((song) => (
             <li
-              key={song.spotifyId}
+              key={song.id}
               style={{ background: '#fff', color: '#000', padding: '15px', borderRadius: '8px', marginBottom: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
             >
               <div>
                 <p style={{ fontWeight: 'bold' }}>{song.title} - {song.artist}</p>
-                <p>Spotify ID: {song.spotifyId}</p>
-                <p>Genre: {song.genre} | Popularity: {song.popularity}</p>
+                <p>Spotify ID: {song.id}</p>
+                <p>Genre: {song.genre || "N/A"} | Popularity: {song.popularity || "N/A"}</p>
               </div>
               <button
                 className="menu-item"

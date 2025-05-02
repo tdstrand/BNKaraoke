@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_ROUTES } from "../config/apiConfig";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import "./KaraokeChannelsPage.css";
@@ -20,7 +20,6 @@ const KaraokeChannelsPage: React.FC = () => {
   const [newChannel, setNewChannel] = useState({ channelName: "", channelId: "", isActive: true });
   const [editChannel, setEditChannel] = useState<KaraokeChannel | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [roles, setRoles] = useState<string[]>([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -39,7 +38,6 @@ const KaraokeChannelsPage: React.FC = () => {
     }
     if (storedRoles) {
       const parsedRoles = JSON.parse(storedRoles);
-      setRoles(parsedRoles);
       if (!parsedRoles.includes("Song Manager")) {
         console.log("User lacks Song Manager role, redirecting to dashboard");
         navigate("/dashboard");
@@ -160,9 +158,9 @@ const KaraokeChannelsPage: React.FC = () => {
     }
   };
 
-  const handleDragEnd = async (event: any, token: string) => {
+  const handleDragEnd = async (event: DragEndEvent, token: string) => {
     const { active, over } = event;
-    if (active.id !== over.id) {
+    if (over && active.id !== over.id) {
       const oldIndex = channels.findIndex((channel) => channel.id === active.id);
       const newIndex = channels.findIndex((channel) => channel.id === over.id);
       const newChannels = arrayMove(channels, oldIndex, newIndex).map((channel, index) => ({

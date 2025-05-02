@@ -6,6 +6,13 @@ import reportWebVitals from './reportWebVitals';
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
+// Conditionally load Eruda in development
+if (isDevelopment) {
+  import('eruda').then(eruda => {
+    eruda.default.init();
+  });
+}
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   isDevelopment ? (

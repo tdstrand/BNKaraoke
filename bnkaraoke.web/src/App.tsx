@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, ReactNode, ErrorInfo } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
@@ -22,12 +22,12 @@ const routerFutureConfig = {
 };
 
 interface ErrorBoundaryProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 interface ErrorBoundaryState {
   error: string | null;
-  errorInfo: React.ErrorInfo | null;
+  errorInfo: ErrorInfo | null;
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -37,7 +37,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     return { error: error.message };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
+  componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('ErrorBoundary caught:', error, info);
     this.setState({ error: error.message, errorInfo: info });
   }
@@ -56,7 +56,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-const HeaderWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const HeaderWrapper: React.FC<{ children: ReactNode }> = ({ children }) => {
   const location = useLocation();
   const [mustChangePassword, setMustChangePassword] = useState<boolean | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -83,6 +83,7 @@ const HeaderWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     } catch (error) {
       console.error('HeaderWrapper useEffect error:', error);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location]);
 
   const showHeader = !["/", "/register", "/change-password"].includes(location.pathname);
@@ -128,7 +129,7 @@ const App = () => {
         setConsoleErrors((prev) => [...prev, args.join(' ')]);
         originalConsoleError(...args);
       };
-      window.onerror = (message, source, lineno, colno, error) => {
+      window.onerror = (message, source, lineno) => {
         setConsoleErrors((prev) => [...prev, `Error: ${message} at ${source}:${lineno}`]);
         return true;
       };
@@ -137,7 +138,7 @@ const App = () => {
         window.onerror = null;
       };
     }
-  }, []);
+  }, [isDevelopment]);
 
   return (
     <div>

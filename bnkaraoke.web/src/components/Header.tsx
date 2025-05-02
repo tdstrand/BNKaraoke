@@ -1,23 +1,23 @@
+
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogoutOutlined } from '@ant-design/icons';
 import "./Header.css";
 import { API_ROUTES } from "../config/apiConfig";
 import useEventContext from "../context/EventContext";
-import { AttendanceAction } from "../types";
+import { AttendanceAction, Event } from "../types";
 
 const Header: React.FC = () => {
   console.log("Header component rendering");
 
-  // Move all Hooks to top level
   const navigate = useNavigate();
   const { currentEvent, setCurrentEvent, checkedIn, setCheckedIn, isCurrentEventLive, setIsCurrentEventLive, isOnBreak, setIsOnBreak } = useEventContext();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [roles, setRoles] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [liveEvents, setLiveEvents] = useState<any[]>([]);
-  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
+  const [liveEvents, setLiveEvents] = useState<Event[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
   const [isEventDropdownOpen, setIsEventDropdownOpen] = useState(false);
   const [isPreselectDropdownOpen, setIsPreselectDropdownOpen] = useState(false);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
@@ -66,7 +66,7 @@ const Header: React.FC = () => {
     };
 
     fetchUserDetails();
-  }, []); // Run once on mount
+  }, []);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -105,7 +105,7 @@ const Header: React.FC = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!eventsResponse.ok) throw new Error(`Fetch events failed: ${eventsResponse.status}`);
-        const eventsData: any[] = await eventsResponse.json();
+        const eventsData: Event[] = await eventsResponse.json();
         console.log("Header - Fetched events:", eventsData);
 
         // Split events into live and upcoming
@@ -131,6 +131,9 @@ const Header: React.FC = () => {
         } else if (upcoming[0]) {
           console.log("Selected upcoming event status:", upcoming[0].status);
         }
+
+        // Use setPendingRequests
+        setPendingRequests(live.length > 0 ? live.length : upcoming.length);
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : "Unknown error";
         console.error("Header - Fetch events error:", errorMessage, err);
@@ -140,7 +143,7 @@ const Header: React.FC = () => {
     };
 
     fetchEventsAndQueues();
-  }, [currentEvent, setCurrentEvent]);
+  }, [currentEvent, setCurrentEvent, setIsCurrentEventLive]);
 
   const adminRoles = ["Song Manager", "User Manager", "Event Manager"];
   const hasAdminRole = roles.some(role => adminRoles.includes(role));
@@ -164,7 +167,7 @@ const Header: React.FC = () => {
     }
   };
 
-  const handleCheckIn = async (event: any) => {
+  const handleCheckIn = async (event: Event) => {
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("No token found");
@@ -209,7 +212,7 @@ const Header: React.FC = () => {
     }
   };
 
-  const handlePreselectSongs = (event: any) => {
+  const handlePreselectSongs = (event: Event) => {
     try {
       setCurrentEvent(event);
       setIsCurrentEventLive(event.status === "Live");
@@ -310,7 +313,6 @@ const Header: React.FC = () => {
 
   const fullName = firstName || lastName ? `${firstName} ${lastName}`.trim() : "User";
 
-  // Handle render errors gracefully
   try {
     return (
       <div className="header-container">
@@ -393,7 +395,7 @@ const Header: React.FC = () => {
                           className="event-dropdown-item"
                           onClick={() => handlePreselectSongs(event)}
                         >
-                          {event.status}: ${event.eventCode} (${event.scheduledDate})
+                          {event.status}: {event.eventCode} ({event.scheduledDate})
                         </li>
                       ))}
                     </ul>
@@ -422,7 +424,7 @@ const Header: React.FC = () => {
                         className="event-dropdown-item"
                         onClick={() => handleCheckIn(event)}
                       >
-                        {event.status}: ${event.eventCode} (${event.scheduledDate})
+                        {event.status}: {event.eventCode} ({event.scheduledDate})
                       </li>
                     ))}
                   </ul>
