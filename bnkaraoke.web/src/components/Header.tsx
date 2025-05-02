@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogoutOutlined } from '@ant-design/icons';
@@ -22,7 +21,6 @@ const Header: React.FC = () => {
   const [isPreselectDropdownOpen, setIsPreselectDropdownOpen] = useState(false);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkInError, setCheckInError] = useState<string | null>(null);
-  const [pendingRequests, setPendingRequests] = useState<number>(0);
   const eventDropdownRef = useRef<HTMLDivElement>(null);
   const preselectDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -99,7 +97,7 @@ const Header: React.FC = () => {
       return;
     }
 
-    const fetchEventsAndQueues = async () => {
+    const fetchEvents = async () => {
       try {
         const eventsResponse = await fetch(API_ROUTES.EVENTS, {
           headers: { Authorization: `Bearer ${token}` },
@@ -131,9 +129,6 @@ const Header: React.FC = () => {
         } else if (upcoming[0]) {
           console.log("Selected upcoming event status:", upcoming[0].status);
         }
-
-        // Use setPendingRequests
-        setPendingRequests(live.length > 0 ? live.length : upcoming.length);
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : "Unknown error";
         console.error("Header - Fetch events error:", errorMessage, err);
@@ -142,7 +137,7 @@ const Header: React.FC = () => {
       }
     };
 
-    fetchEventsAndQueues();
+    fetchEvents();
   }, [currentEvent, setCurrentEvent, setIsCurrentEventLive]);
 
   const adminRoles = ["Song Manager", "User Manager", "Event Manager"];
@@ -437,12 +432,6 @@ const Header: React.FC = () => {
             Logout
           </button>
         </div>
-        {pendingRequests > 0 && (
-          <div className="notification-bar">
-            <span>{pendingRequests} song(s) currently playing!</span>
-            <button onClick={() => console.log("View notifications")}>View</button>
-          </div>
-        )}
       </div>
     );
   } catch (error: unknown) {
