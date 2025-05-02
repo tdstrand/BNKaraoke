@@ -17,13 +17,7 @@
   ],
   "rules": {
     "react-hooks/rules-of-hooks": "error",
-    "react-hooks/exhaustive-deps": [
-      "warn",
-      {
-        "enableDangerousAutofixThisMayCauseInfiniteLoops": false,
-        "disableInProduction": true
-      }
-    ]
+    "react-hooks/exhaustive-deps": "warn"
   },
   "settings": {
     "react": {
@@ -37,7 +31,8 @@
         "NODE_ENV": "production"
       },
       "rules": {
-        "react-hooks/exhaustive-deps": "off"
+        "react-hooks/exhaustive-deps": "off",
+        "no-console": "off"
       }
     }
   ]
