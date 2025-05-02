@@ -257,12 +257,12 @@ BNKaraoke.Api/vsdevcmd.trace.txt
 BNKaraoke.Api/project_structure.txt
 
 # Configuration files (BNKaraoke.Api)
-BNKaraoke.Api/appsettings.Development.json
-BNKaraoke.Api/appsettings.Production.json
-BNKaraoke.Api/appsettings.json
-BNKaraoke.Api/launchSettings.json
-BNKaraoke.Api/serviceDependencies.json
-BNKaraoke.Api/serviceDependencies.local.json
+#BNKaraoke.Api/appsettings.Development.json
+#BNKaraoke.Api/appsettings.Production.json
+#BNKaraoke.Api/appsettings.json
+#BNKaraoke.Api/launchSettings.json
+#BNKaraoke.Api/serviceDependencies.json
+#BNKaraoke.Api/serviceDependencies.local.json
 
 # Environment files
 .env
