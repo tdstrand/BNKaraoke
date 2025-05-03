@@ -147,15 +147,13 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddCors(options =>
 {
+    var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new[] { "https://www.bnkaraoke.com", "http://localhost:8080" };
     options.AddPolicy("AllowNetwork", policy =>
     {
-        policy.WithOrigins(
-            builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
-        )
-        .AllowAnyMethod()
-        .AllowAnyHeader()
-        .AllowCredentials();
-        Console.WriteLine("CORS policy configured for origins: {0}", string.Join(", ", builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()));
+        policy.WithOrigins(allowedOrigins)
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
 });
 
@@ -219,6 +217,10 @@ builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
+// Log CORS origins at runtime
+var allowedOriginsAtRuntime = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new[] { "https://www.bnkaraoke.com", "http://localhost:8080" };
+app.Logger.LogInformation("CORS policy configured for origins: {Origins}", string.Join(", ", allowedOriginsAtRuntime));
+
 // Early logging middleware
 app.Use(async (context, next) =>
 {
@@ -279,7 +281,6 @@ else
             await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred." });
         });
     });
-    // Disable HSTS and HTTPS redirection in production as Nginx handles SSL
 }
 
 app.UseStaticFiles();

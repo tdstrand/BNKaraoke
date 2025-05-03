@@ -73,6 +73,7 @@ const Dashboard: React.FC = () => {
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
   const [reorderError, setReorderError] = useState<string | null>(null);
   const [showReorderErrorModal, setShowReorderErrorModal] = useState<boolean>(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Fetch queue on mount to sync with backend
   useEffect(() => {
@@ -81,6 +82,7 @@ const Dashboard: React.FC = () => {
     console.log("Fetching queues on mount - token:", token, "userName:", userName);
     if (!token || !userName) {
       console.error("No token or userName found on mount");
+      setFetchError("Please log in to view your queue.");
       return;
     }
 
@@ -92,6 +94,12 @@ const Dashboard: React.FC = () => {
         if (!eventsResponse.ok) {
           const errorText = await eventsResponse.text();
           console.error(`Fetch events failed: ${eventsResponse.status} - ${errorText}`);
+          if (eventsResponse.status === 401) {
+            setFetchError("Session expired. Please log in again.");
+            localStorage.removeItem("token");
+            navigate("/login");
+            return;
+          }
           throw new Error(`Fetch events failed: ${eventsResponse.status}`);
         }
         const eventsData: Event[] = await eventsResponse.json();
@@ -106,6 +114,12 @@ const Dashboard: React.FC = () => {
             if (!queueResponse.ok) {
               const errorText = await queueResponse.text();
               console.error(`Fetch queue failed for event ${event.eventId}: ${queueResponse.status} - ${errorText}`);
+              if (queueResponse.status === 401) {
+                setFetchError("Session expired. Please log in again.");
+                localStorage.removeItem("token");
+                navigate("/login");
+                return;
+              }
               throw new Error(`Fetch queue failed for event ${event.eventId}: ${queueResponse.status}`);
             }
             const queueData: EventQueueItemResponse[] = await queueResponse.json();
@@ -134,6 +148,12 @@ const Dashboard: React.FC = () => {
                   if (!songResponse.ok) {
                     const errorText = await songResponse.text();
                     console.error(`Fetch song details failed for song ${item.songId}: ${songResponse.status} - ${errorText}`);
+                    if (songResponse.status === 401) {
+                      setFetchError("Session expired. Please log in again.");
+                      localStorage.removeItem("token");
+                      navigate("/login");
+                      return;
+                    }
                     throw new Error(`Fetch song details failed for song ${item.songId}: ${songResponse.status}`);
                   }
                   const songData = await songResponse.json();
@@ -172,13 +192,15 @@ const Dashboard: React.FC = () => {
         }
 
         setMyQueues(newQueues);
+        setFetchError(null);
       } catch (err) {
         console.error("Fetch events error on mount:", err);
+        setFetchError("Failed to load events. Please try again or contact support.");
       }
     };
 
     fetchAllQueues();
-  }, []);
+  }, [navigate]);
 
   // Fetch queues and song details when currentEvent changes
   useEffect(() => {
@@ -194,6 +216,7 @@ const Dashboard: React.FC = () => {
       console.error("No token or userName found");
       setGlobalQueue([]);
       setSongDetailsMap({});
+      setFetchError("Please log in to view the event queue.");
       return;
     }
 
@@ -205,6 +228,12 @@ const Dashboard: React.FC = () => {
         if (!queueResponse.ok) {
           const errorText = await queueResponse.text();
           console.error(`Fetch queue failed for event ${currentEvent.eventId}: ${queueResponse.status} - ${errorText}`);
+          if (queueResponse.status === 401) {
+            setFetchError("Session expired. Please log in again.");
+            localStorage.removeItem("token");
+            navigate("/login");
+            return;
+          }
           throw new Error(`Fetch queue failed for event ${currentEvent.eventId}: ${queueResponse.status}`);
         }
         const data: EventQueueItemResponse[] = await queueResponse.json();
@@ -243,6 +272,12 @@ const Dashboard: React.FC = () => {
               if (!songResponse.ok) {
                 const errorText = await songResponse.text();
                 console.error(`Fetch song details failed for song ${item.songId}: ${songResponse.status} - ${errorText}`);
+                if (songResponse.status === 401) {
+                  setFetchError("Session expired. Please log in again.");
+                  localStorage.removeItem("token");
+                  navigate("/login");
+                  return;
+                }
                 throw new Error(`Fetch song details failed for song ${item.songId}: ${songResponse.status}`);
               }
               const songData = await songResponse.json();
@@ -274,15 +309,17 @@ const Dashboard: React.FC = () => {
           }
         }
         setSongDetailsMap(prev => ({ ...prev, ...songDetails }));
+        setFetchError(null);
       } catch (err) {
         console.error(`Fetch queue error for event ${currentEvent.eventId}:`, err);
         setGlobalQueue([]);
         setSongDetailsMap({});
+        setFetchError("Failed to load the event queue. Please try again or contact support.");
       }
     };
 
     fetchQueue();
-  }, [currentEvent, checkedIn, isCurrentEventLive]);
+  }, [currentEvent, checkedIn, isCurrentEventLive, navigate]);
 
   const fetchSongs = async () => {
     if (!searchQuery.trim()) {
@@ -309,6 +346,12 @@ const Dashboard: React.FC = () => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Fetch failed with status: ${response.status}, response: ${errorText}`);
+        if (response.status === 401) {
+          setSearchError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
         throw new Error(`Search failed: ${response.status} - ${errorText}`);
       }
       const data = await response.json();
@@ -339,28 +382,35 @@ const Dashboard: React.FC = () => {
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("No token found");
+      setSearchError("Please log in again to search songs.");
       return;
     }
-    console.log(`Fetching Spotify songs with query: ${searchQuery}`);
+    console.log(`Fetching songs from GetSongBPM with query: ${searchQuery}`);
     try {
       const response = await fetch(`${API_ROUTES.SPOTIFY_SEARCH}?query=${encodeURIComponent(searchQuery)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Spotify fetch failed with status: ${response.status}, response: ${errorText}`);
-        throw new Error(`Spotify search failed: ${response.status} - ${errorText}`);
+        console.error(`GetSongBPM fetch failed with status: ${response.status}, response: ${errorText}`);
+        if (response.status === 401) {
+          setSearchError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
+        throw new Error(`GetSongBPM search failed: ${response.status} - ${errorText}`);
       }
       const data = await response.json();
-      console.log("Spotify fetch response:", data);
+      console.log("GetSongBPM fetch response:", data);
       const fetchedSpotifySongs = (data.songs as SpotifySong[]) || [];
-      console.log("Fetched Spotify songs:", fetchedSpotifySongs);
+      console.log("Fetched GetSongBPM songs:", fetchedSpotifySongs);
       setSpotifySongs(fetchedSpotifySongs);
       setShowSpotifyModal(true);
       setShowSearchModal(false);
     } catch (err) {
-      console.error("Spotify search error:", err);
-      setSearchError(err instanceof Error ? err.message : "An unknown error occurred while searching Spotify.");
+      console.error("GetSongBPM search error:", err);
+      setSearchError(err instanceof Error ? err.message : "An unknown error occurred while searching GetSongBPM.");
       setShowSearchModal(true);
     }
   };
@@ -374,13 +424,18 @@ const Dashboard: React.FC = () => {
   const submitSongRequest = async (song: SpotifySong) => {
     console.log("Submitting song request:", song);
     const token = localStorage.getItem("token");
+    const userId = localStorage.getItem("userName") || "Unknown User";
     if (!token) {
       console.error("No token found");
       setSearchError("Please log in again to request a song.");
       return;
     }
+    if (!userId || userId === "Unknown User") {
+      console.error("No userName found in localStorage");
+      setSearchError("User ID missing. Please log in again.");
+      return;
+    }
 
-    const userId = `${localStorage.getItem("firstName")} ${localStorage.getItem("lastName")}` || "Unknown User";
     const requestData = {
       title: song.title || "Unknown Title",
       artist: song.artist || "Unknown Artist",
@@ -393,11 +448,10 @@ const Dashboard: React.FC = () => {
       genre: song.genre || null,
       decade: song.decade || null,
       status: "pending",
-      requestDate: new Date().toISOString(),
       requestedBy: userId
     };
 
-    console.log("Request data:", requestData);
+    console.log("Sending song request payload:", requestData);
 
     try {
       setIsSearching(true);
@@ -415,6 +469,12 @@ const Dashboard: React.FC = () => {
 
       if (!response.ok) {
         console.error(`Failed to submit song request: ${response.status} - ${responseText}`);
+        if (response.status === 401) {
+          setSearchError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
         throw new Error(`Song request failed: ${response.status} - ${responseText}`);
       }
 
@@ -476,6 +536,7 @@ const Dashboard: React.FC = () => {
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("No token found in toggleFavorite");
+      setFetchError("Please log in to manage favorites.");
       return;
     }
 
@@ -500,6 +561,12 @@ const Dashboard: React.FC = () => {
 
       if (!response.ok) {
         console.error(`Failed to ${isFavorite ? 'remove' : 'add'} favorite: ${response.status} - ${responseText}`);
+        if (response.status === 401) {
+          setFetchError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
         throw new Error(`${isFavorite ? 'Remove' : 'Add'} favorite failed: ${response.status}`);
       }
 
@@ -524,6 +591,7 @@ const Dashboard: React.FC = () => {
       }
     } catch (err) {
       console.error(`${isFavorite ? 'Remove' : 'Add'} favorite error:`, err);
+      setFetchError(`Failed to ${isFavorite ? 'remove' : 'add'} favorite. Please try again.`);
     }
   };
 
@@ -534,12 +602,14 @@ const Dashboard: React.FC = () => {
 
     if (!token) {
       console.error("No token found in addToEventQueue");
-      throw new Error("Authentication token missing. Please log in again.");
+      setFetchError("Authentication token missing. Please log in again.");
+      return;
     }
 
     if (!requestorUserName) {
       console.error("Invalid or missing requestorUserName in addToEventQueue");
-      throw new Error("User not found. Please log in again to add songs to the queue.");
+      setFetchError("User not found. Please log in again to add songs to the queue.");
+      return;
     }
 
     const queueForEvent = myQueues[eventId] || [];
@@ -570,6 +640,12 @@ const Dashboard: React.FC = () => {
 
       if (!response.ok) {
         console.error(`Failed to add song to queue for event ${eventId}: ${response.status} - ${responseText}`);
+        if (response.status === 401) {
+          setFetchError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
         throw new Error(`Failed to add song: ${responseText || response.statusText}`);
       }
 
@@ -583,7 +659,16 @@ const Dashboard: React.FC = () => {
       const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${eventId}/queue`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!queueResponse.ok) throw new Error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
+      if (!queueResponse.ok) {
+        console.error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
+        if (queueResponse.status === 401) {
+          setFetchError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
+        throw new Error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
+      }
       const data: EventQueueItemResponse[] = await queueResponse.json();
       const parsedData: EventQueueItem[] = data.map(item => ({
         ...item,
@@ -606,7 +691,16 @@ const Dashboard: React.FC = () => {
         const songResponse = await fetch(`${API_ROUTES.SONG_BY_ID}/${song.id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!songResponse.ok) throw new Error(`Fetch song details failed for song ${song.id}: ${songResponse.status}`);
+        if (!songResponse.ok) {
+          console.error(`Fetch song details failed for song ${song.id}: ${songResponse.status}`);
+          if (songResponse.status === 401) {
+            setFetchError("Session expired. Please log in again.");
+            localStorage.removeItem("token");
+            navigate("/login");
+            return;
+          }
+          throw new Error(`Fetch song details failed for song ${song.id}: ${songResponse.status}`);
+        }
         const songData = await songResponse.json();
         setSongDetailsMap(prev => ({
           ...prev,
@@ -641,7 +735,7 @@ const Dashboard: React.FC = () => {
       }
     } catch (err) {
       console.error("Add to queue error:", err);
-      throw err;
+      setFetchError("Failed to add song to queue. Please try again.");
     }
   };
 
@@ -650,6 +744,7 @@ const Dashboard: React.FC = () => {
     const token = localStorage.getItem("token");
     if (!token) {
       console.error("No token found");
+      setFetchError("Please log in to manage the queue.");
       return;
     }
 
@@ -662,13 +757,28 @@ const Dashboard: React.FC = () => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Skip song failed: ${response.status} - ${errorText}`);
+        if (response.status === 401) {
+          setFetchError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
         throw new Error(`Skip song failed: ${response.status}`);
       }
 
       const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${eventId}/queue`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!queueResponse.ok) throw new Error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
+      if (!queueResponse.ok) {
+        console.error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
+        if (queueResponse.status === 401) {
+          setFetchError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
+        throw new Error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
+      }
       const data: EventQueueItemResponse[] = await queueResponse.json();
       const parsedData: EventQueueItem[] = data.map(item => ({
         ...item,
@@ -690,6 +800,7 @@ const Dashboard: React.FC = () => {
       setGlobalQueue(prev => prev.filter(q => q.queueId !== queueId));
     } catch (err) {
       console.error("Skip song error:", err);
+      setFetchError("Failed to remove song from queue. Please try again.");
       setMyQueues(prev => ({
         ...prev,
         [eventId]: (prev[eventId] || []).filter(q => q.queueId !== queueId),
@@ -771,13 +882,28 @@ const Dashboard: React.FC = () => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Drag-and-drop: Reorder failed: ${response.status} - ${errorText}`);
+        if (response.status === 401) {
+          setReorderError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
         throw new Error(`Reorder failed: ${response.status} - ${errorText}`);
       }
 
       const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.eventId}/queue`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!queueResponse.ok) throw new Error(`Fetch queue failed: ${queueResponse.status}`);
+      if (!queueResponse.ok) {
+        console.error(`Fetch queue failed: ${queueResponse.status}`);
+        if (queueResponse.status === 401) {
+          setReorderError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
+        }
+        throw new Error(`Fetch queue failed: ${queueResponse.status}`);
+      }
       const data: EventQueueItemResponse[] = await queueResponse.json();
       const parsedData: EventQueueItem[] = data.map(item => ({
         ...item,
@@ -824,6 +950,7 @@ const Dashboard: React.FC = () => {
     if (!token) {
       console.error("No token found");
       setFavorites([]);
+      setFetchError("Please log in to view favorites.");
       return;
     }
     console.log("Fetching favorites from:", API_ROUTES.FAVORITES);
@@ -833,6 +960,12 @@ const Dashboard: React.FC = () => {
       .then(res => {
         if (!res.ok) {
           console.error(`Fetch favorites failed with status: ${res.status}`);
+          if (res.status === 401) {
+            setFetchError("Session expired. Please log in again.");
+            localStorage.removeItem("token");
+            navigate("/login");
+            return;
+          }
           throw new Error(`Fetch favorites failed: ${res.status}`);
         }
         return res.json();
@@ -840,16 +973,19 @@ const Dashboard: React.FC = () => {
       .then((data: Song[]) => {
         console.log("Fetched favorites:", data);
         setFavorites(data || []);
+        setFetchError(null);
       })
       .catch(err => {
         console.error("Fetch favorites error:", err);
         setFavorites([]);
+        setFetchError("Failed to load favorites. Please try again or contact support.");
       });
-  }, []);
+  }, [navigate]);
 
   return (
     <div className="dashboard">
       <div className="dashboard-content">
+        {fetchError && <p className="error-text">{fetchError}</p>}
         <section className="search-section">
           <div className="search-bar-container">
             <input
@@ -965,20 +1101,6 @@ const Dashboard: React.FC = () => {
             )}
           </section>
         </div>
-
-        {/*
-          Commented out non-functional menu bar icons
-          <nav className="menu-bar">
-            <button title="Search" aria-label="Search">🔍</button>
-            <button title="Queue" aria-label="Queue">🎤</button>
-            <button title="Favorites" aria-label="Favorites">⭐</button>
-            <button title="Requests" aria-label="Requests">✉️</button>
-            {localStorage.getItem("role")?.includes("Manager") && <button title="Admin" aria-label="Admin">⚙️</button>}
-            <button title="Events" aria-label="Events">📅</button>
-            <button title="Profile" aria-label="Profile">👤</button>
-            <button title="Help" aria-label="Help">?</button>
-          </nav>
-        */}
       </div>
 
       {showSearchModal && (
@@ -1016,9 +1138,9 @@ const Dashboard: React.FC = () => {
       {showSpotifyModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3 className="modal-title">Spotify Search Results</h3>
+            <h3 className="modal-title">GetSongBPM Search Results</h3>
             {spotifySongs.length === 0 ? (
-              <p className="modal-text">No songs found on Spotify</p>
+              <p className="modal-text">No songs found on GetSongBPM</p>
             ) : (
               <div className="song-list">
                 {spotifySongs.map(song => (
@@ -1075,9 +1197,8 @@ const Dashboard: React.FC = () => {
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 className="modal-title">Request Submitted</h3>
-            {/* eslint-disable-next-line react/no-unescaped-entities */}
             <p className="modal-text">
-              A request has been made on your behalf to find a Karaoke version of '{requestedSong.title}' by {requestedSong.artist}.
+              A request has been made on your behalf to find a Karaoke version of \'{requestedSong.title}\' by {requestedSong.artist}.
             </p>
             <button onClick={resetSearch} className="modal-cancel">Done</button>
           </div>
