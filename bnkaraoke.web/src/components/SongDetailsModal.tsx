@@ -10,11 +10,12 @@ interface SongDetailsModalProps {
   isFavorite: boolean;
   isInQueue: boolean;
   onClose: () => void;
-  onToggleFavorite: (song: Song) => Promise<void>;
+  onToggleFavorite?: (song: Song) => Promise<void>;
   onAddToQueue?: (song: Song, eventId: number) => Promise<void>;
   onDeleteFromQueue?: (eventId: number, queueId: number) => Promise<void>;
   eventId?: number;
   queueId?: number;
+  readOnly?: boolean;
 }
 
 const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
@@ -27,6 +28,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   onDeleteFromQueue,
   eventId,
   queueId,
+  readOnly = false,
 }) => {
   const navigate = useNavigate();
   const { currentEvent } = useEventContext();
@@ -38,7 +40,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
 
   // Fetch events only if currentEvent is unset and events are needed
   useEffect(() => {
-    if (currentEvent || isInQueue || !onAddToQueue) return;
+    if (readOnly || currentEvent || isInQueue || !onAddToQueue) return;
 
     const token = localStorage.getItem("token");
     if (!token) {
@@ -65,7 +67,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
         setEvents([]);
         setError("Failed to load events. Please try again.");
       });
-  }, [navigate, currentEvent, isInQueue, onAddToQueue]);
+  }, [navigate, currentEvent, isInQueue, onAddToQueue, readOnly]);
 
   const handleAddToQueue = async (eventId: number) => {
     console.log("handleAddToQueue called with eventId:", eventId, "song:", song, "onAddToQueue:", !!onAddToQueue);
@@ -143,7 +145,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
     setShowEventSelectionModal(true);
   };
 
-  console.log("Rendering SongDetailsModal with song:", song, "isFavorite:", isFavorite, "isInQueue:", isInQueue, "eventId:", eventId, "queueId:", queueId);
+  console.log("Rendering SongDetailsModal with song:", song, "isFavorite:", isFavorite, "isInQueue:", isInQueue, "eventId:", eventId, "queueId:", queueId, "readOnly:", readOnly);
 
   return (
     <>
@@ -161,52 +163,58 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
             {song.decade && <p className="modal-text"><strong>Decade:</strong> {song.decade}</p>}
           </div>
           {error && <p className="modal-error">{error}</p>}
-          <div className="song-actions">
-            <button
-              onClick={() => {
-                console.log("Toggle favorite button clicked for song:", song);
-                onToggleFavorite(song);
-              }}
-              onTouchStart={() => {
-                console.log("Toggle favorite button touched for song:", song);
-                onToggleFavorite(song);
-              }}
-              className="action-button"
-            >
-              {isFavorite ? "Remove from Favorites" : "Add to Favorites"}
-            </button>
-            {isInQueue && onDeleteFromQueue && eventId && queueId ? (
-              <button
-                onClick={() => {
-                  console.log("Remove from Queue button clicked");
-                  handleDeleteFromQueue();
-                }}
-                onTouchStart={() => {
-                  console.log("Remove from Queue button touched");
-                  handleDeleteFromQueue();
-                }}
-                className="action-button"
-                disabled={isDeleting}
-              >
-                {isDeleting ? "Deleting..." : "Remove from Queue"}
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  console.log("Add to Queue button clicked with currentEvent:", currentEvent);
-                  currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
-                }}
-                onTouchStart={() => {
-                  console.log("Add to Queue button touched with currentEvent:", currentEvent);
-                  currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
-                }}
-                className="action-button"
-                disabled={isAddingToQueue || (!currentEvent && events.length === 0) || !onAddToQueue || isInQueue}
-              >
-                {isAddingToQueue ? "Adding..." : currentEvent ? `Add to Queue: ${currentEvent.eventCode}` : "Add to Queue"}
-              </button>
-            )}
-          </div>
+          {!readOnly && (
+            <div className="song-actions">
+              {onToggleFavorite && (
+                <button
+                  onClick={() => {
+                    console.log("Toggle favorite button clicked for song:", song);
+                    onToggleFavorite(song);
+                  }}
+                  onTouchStart={() => {
+                    console.log("Toggle favorite button touched for song:", song);
+                    onToggleFavorite(song);
+                  }}
+                  className="action-button"
+                >
+                  {isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+                </button>
+              )}
+              {isInQueue && onDeleteFromQueue && eventId && queueId ? (
+                <button
+                  onClick={() => {
+                    console.log("Remove from Queue button clicked");
+                    handleDeleteFromQueue();
+                  }}
+                  onTouchStart={() => {
+                    console.log("Remove from Queue button touched");
+                    handleDeleteFromQueue();
+                  }}
+                  className="action-button"
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? "Deleting..." : "Remove from Queue"}
+                </button>
+              ) : (
+                onAddToQueue && (
+                  <button
+                    onClick={() => {
+                      console.log("Add to Queue button clicked with currentEvent:", currentEvent);
+                      currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
+                    }}
+                    onTouchStart={() => {
+                      console.log("Add to Queue button touched with currentEvent:", currentEvent);
+                      currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
+                    }}
+                    className="action-button"
+                    disabled={isAddingToQueue || (!currentEvent && events.length === 0) || isInQueue}
+                  >
+                    {isAddingToQueue ? "Adding..." : currentEvent ? `Add to Queue: ${currentEvent.eventCode}` : "Add to Queue"}
+                  </button>
+                )
+              )}
+            </div>
+          )}
           <div className="modal-footer">
             <button
               onClick={onClose}
@@ -219,7 +227,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
         </div>
       </div>
 
-      {showEventSelectionModal && (
+      {showEventSelectionModal && !readOnly && (
         <div className="modal-overlay secondary-modal song-details-modal">
           <div className="modal-content song-details-modal">
             <h3 className="modal-title">Select Event Queue</h3>

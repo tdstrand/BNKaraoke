@@ -74,6 +74,13 @@ const Dashboard: React.FC = () => {
   const [reorderError, setReorderError] = useState<string | null>(null);
   const [showReorderErrorModal, setShowReorderErrorModal] = useState<boolean>(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isSingerOnly, setIsSingerOnly] = useState<boolean>(false);
+
+  // Check user roles
+  useEffect(() => {
+    const roles = JSON.parse(localStorage.getItem("roles") || "[]") as string[];
+    setIsSingerOnly(roles.length === 1 && roles.includes("Singer"));
+  }, []);
 
   // Fetch queue on mount to sync with backend
   useEffect(() => {
@@ -202,8 +209,8 @@ const Dashboard: React.FC = () => {
     fetchAllQueues();
   }, [navigate]);
 
-  // Fetch queues and song details when currentEvent changes
-  useEffect(() => {
+  // Fetch queues and song details when currentEvent changes or queue updates
+  const fetchQueue = async () => {
     if (!currentEvent) {
       setGlobalQueue([]);
       return;
@@ -220,104 +227,105 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    const fetchQueue = async () => {
-      try {
-        const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.eventId}/queue`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!queueResponse.ok) {
-          const errorText = await queueResponse.text();
-          console.error(`Fetch queue failed for event ${currentEvent.eventId}: ${queueResponse.status} - ${errorText}`);
-          if (queueResponse.status === 401) {
-            setFetchError("Session expired. Please log in again.");
-            localStorage.removeItem("token");
-            navigate("/login");
-            return;
-          }
-          throw new Error(`Fetch queue failed for event ${currentEvent.eventId}: ${queueResponse.status}`);
+    try {
+      const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.eventId}/queue`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!queueResponse.ok) {
+        const errorText = await queueResponse.text();
+        console.error(`Fetch queue failed for event ${currentEvent.eventId}: ${queueResponse.status} - ${errorText}`);
+        if (queueResponse.status === 401) {
+          setFetchError("Session expired. Please log in again.");
+          localStorage.removeItem("token");
+          navigate("/login");
+          return;
         }
-        const data: EventQueueItemResponse[] = await queueResponse.json();
-        const parsedData: EventQueueItem[] = data.map(item => ({
-          ...item,
-          singers: item.singers ? JSON.parse(item.singers) : [],
-        }));
-
-        // Deduplicate queue items by songId and requestorUserName
-        const uniqueQueueData = Array.from(
-          new Map(
-            parsedData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
-          ).values()
-        );
-        const userQueue = uniqueQueueData.filter(item => item.requestorUserName === userName);
-        console.log(`Fetched queue for event ${currentEvent.eventId} - total items: ${uniqueQueueData.length}, user items: ${userQueue.length}, userName: ${userName}`, userQueue);
-
-        setMyQueues(prev => ({
-          ...prev,
-          [currentEvent.eventId]: userQueue,
-        }));
-
-        if (checkedIn && isCurrentEventLive) {
-          setGlobalQueue(uniqueQueueData);
-        } else {
-          setGlobalQueue([]);
-        }
-
-        const songDetails: { [songId: number]: Song } = {};
-        for (const item of uniqueQueueData) {
-          if (!songDetails[item.songId]) {
-            try {
-              const songResponse = await fetch(`${API_ROUTES.SONG_BY_ID}/${item.songId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
-              if (!songResponse.ok) {
-                const errorText = await songResponse.text();
-                console.error(`Fetch song details failed for song ${item.songId}: ${songResponse.status} - ${errorText}`);
-                if (songResponse.status === 401) {
-                  setFetchError("Session expired. Please log in again.");
-                  localStorage.removeItem("token");
-                  navigate("/login");
-                  return;
-                }
-                throw new Error(`Fetch song details failed for song ${item.songId}: ${songResponse.status}`);
-              }
-              const songData = await songResponse.json();
-              songDetails[item.songId] = songData;
-            } catch (err) {
-              console.error(`Error fetching song details for song ${item.songId}:`, err);
-              songDetails[item.songId] = {
-                id: item.songId,
-                title: `Song ${item.songId}`,
-                artist: 'Unknown',
-                status: 'unknown',
-                bpm: 0,
-                danceability: 0,
-                energy: 0,
-                valence: undefined,
-                popularity: 0,
-                genre: undefined,
-                decade: undefined,
-                requestDate: '',
-                requestedBy: '',
-                spotifyId: undefined,
-                youTubeUrl: undefined,
-                approvedBy: undefined,
-                musicBrainzId: undefined,
-                mood: undefined,
-                lastFmPlaycount: undefined
-              };
-            }
-          }
-        }
-        setSongDetailsMap(prev => ({ ...prev, ...songDetails }));
-        setFetchError(null);
-      } catch (err) {
-        console.error(`Fetch queue error for event ${currentEvent.eventId}:`, err);
-        setGlobalQueue([]);
-        setSongDetailsMap({});
-        setFetchError("Failed to load the event queue. Please try again or contact support.");
+        throw new Error(`Fetch queue failed for event ${currentEvent.eventId}: ${queueResponse.status}`);
       }
-    };
+      const data: EventQueueItemResponse[] = await queueResponse.json();
+      const parsedData: EventQueueItem[] = data.map(item => ({
+        ...item,
+        singers: item.singers ? JSON.parse(item.singers) : [],
+      }));
 
+      // Deduplicate queue items by songId and requestorUserName
+      const uniqueQueueData = Array.from(
+        new Map(
+          parsedData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
+        ).values()
+      );
+      const userQueue = uniqueQueueData.filter(item => item.requestorUserName === userName);
+      console.log(`Fetched queue for event ${currentEvent.eventId} - total items: ${uniqueQueueData.length}, user items: ${userQueue.length}, userName: ${userName}`, userQueue);
+
+      setMyQueues(prev => ({
+        ...prev,
+        [currentEvent.eventId]: userQueue,
+      }));
+
+      // Show Karaoke DJ Queue for live events when checked in
+      if (checkedIn && currentEvent.status.toLowerCase() === "live") {
+        setGlobalQueue(uniqueQueueData);
+      } else {
+        setGlobalQueue([]);
+      }
+
+      const songDetails: { [songId: number]: Song } = {};
+      for (const item of uniqueQueueData) {
+        if (!songDetails[item.songId]) {
+          try {
+            const songResponse = await fetch(`${API_ROUTES.SONG_BY_ID}/${item.songId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!songResponse.ok) {
+              const errorText = await songResponse.text();
+              console.error(`Fetch song details failed for song ${item.songId}: ${songResponse.status} - ${errorText}`);
+              if (songResponse.status === 401) {
+                setFetchError("Session expired. Please log in again.");
+                localStorage.removeItem("token");
+                navigate("/login");
+                return;
+              }
+              throw new Error(`Fetch song details failed for song ${item.songId}: ${songResponse.status}`);
+            }
+            const songData = await songResponse.json();
+            songDetails[item.songId] = songData;
+          } catch (err) {
+            console.error(`Error fetching song details for song ${item.songId}:`, err);
+            songDetails[item.songId] = {
+              id: item.songId,
+              title: `Song ${item.songId}`,
+              artist: 'Unknown',
+              status: 'unknown',
+              bpm: 0,
+              danceability: 0,
+              energy: 0,
+              valence: undefined,
+              popularity: 0,
+              genre: undefined,
+              decade: undefined,
+              requestDate: '',
+              requestedBy: '',
+              spotifyId: undefined,
+              youTubeUrl: undefined,
+              approvedBy: undefined,
+              musicBrainzId: undefined,
+              mood: undefined,
+              lastFmPlaycount: undefined
+            };
+          }
+        }
+      }
+      setSongDetailsMap(prev => ({ ...prev, ...songDetails }));
+      setFetchError(null);
+    } catch (err) {
+      console.error(`Fetch queue error for event ${currentEvent.eventId}:`, err);
+      setGlobalQueue([]);
+      setSongDetailsMap({});
+      setFetchError("Failed to load the event queue. Please try again or contact support.");
+    }
+  };
+
+  useEffect(() => {
     fetchQueue();
   }, [currentEvent, checkedIn, isCurrentEventLive, navigate]);
 
@@ -385,32 +393,32 @@ const Dashboard: React.FC = () => {
       setSearchError("Please log in again to search songs.");
       return;
     }
-    console.log(`Fetching songs from GetSongBPM with query: ${searchQuery}`);
+    console.log(`Fetching songs from Spotify with query: ${searchQuery}`);
     try {
       const response = await fetch(`${API_ROUTES.SPOTIFY_SEARCH}?query=${encodeURIComponent(searchQuery)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`GetSongBPM fetch failed with status: ${response.status}, response: ${errorText}`);
+        console.error(`Spotify fetch failed with status: ${response.status}, response: ${errorText}`);
         if (response.status === 401) {
           setSearchError("Session expired. Please log in again.");
           localStorage.removeItem("token");
           navigate("/login");
           return;
         }
-        throw new Error(`GetSongBPM search failed: ${response.status} - ${errorText}`);
+        throw new Error(`Spotify search failed: ${response.status} - ${errorText}`);
       }
       const data = await response.json();
-      console.log("GetSongBPM fetch response:", data);
+      console.log("Spotify fetch response:", data);
       const fetchedSpotifySongs = (data.songs as SpotifySong[]) || [];
-      console.log("Fetched GetSongBPM songs:", fetchedSpotifySongs);
+      console.log("Fetched Spotify songs:", fetchedSpotifySongs);
       setSpotifySongs(fetchedSpotifySongs);
       setShowSpotifyModal(true);
       setShowSearchModal(false);
     } catch (err) {
-      console.error("GetSongBPM search error:", err);
-      setSearchError(err instanceof Error ? err.message : "An unknown error occurred while searching GetSongBPM.");
+      console.error("Spotify search error:", err);
+      setSearchError(err instanceof Error ? err.message : "An unknown error occurred while searching Spotify.");
       setShowSearchModal(true);
     }
   };
@@ -656,83 +664,8 @@ const Dashboard: React.FC = () => {
       };
       console.log(`Added to queue for event ${eventId}:`, parsedQueueItem);
 
-      const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${eventId}/queue`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!queueResponse.ok) {
-        console.error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
-        if (queueResponse.status === 401) {
-          setFetchError("Session expired. Please log in again.");
-          localStorage.removeItem("token");
-          navigate("/login");
-          return;
-        }
-        throw new Error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
-      }
-      const data: EventQueueItemResponse[] = await queueResponse.json();
-      const parsedData: EventQueueItem[] = data.map(item => ({
-        ...item,
-        singers: item.singers ? JSON.parse(item.singers) : [],
-      }));
-      const uniqueQueueData = Array.from(
-        new Map(
-          parsedData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
-        ).values()
-      );
-      const userQueue = uniqueQueueData.filter(item => item.requestorUserName === requestorUserName);
-      console.log(`Re-fetched queue for event ${eventId} after adding song:`, userQueue);
-
-      setMyQueues(prev => ({
-        ...prev,
-        [eventId]: userQueue,
-      }));
-
-      try {
-        const songResponse = await fetch(`${API_ROUTES.SONG_BY_ID}/${song.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!songResponse.ok) {
-          console.error(`Fetch song details failed for song ${song.id}: ${songResponse.status}`);
-          if (songResponse.status === 401) {
-            setFetchError("Session expired. Please log in again.");
-            localStorage.removeItem("token");
-            navigate("/login");
-            return;
-          }
-          throw new Error(`Fetch song details failed for song ${song.id}: ${songResponse.status}`);
-        }
-        const songData = await songResponse.json();
-        setSongDetailsMap(prev => ({
-          ...prev,
-          [song.id]: songData,
-        }));
-      } catch (err) {
-        console.error(`Error fetching song details for song ${song.id}:`, err);
-        setSongDetailsMap(prev => ({
-          ...prev,
-          [song.id]: {
-            id: song.id,
-            title: song.title || `Song ${song.id}`,
-            artist: song.artist || 'Unknown',
-            status: song.status || 'unknown',
-            bpm: song.bpm || 0,
-            danceability: song.danceability || 0,
-            energy: song.energy || 0,
-            valence: song.valence || undefined,
-            popularity: song.popularity || 0,
-            genre: song.genre || undefined,
-            decade: song.decade || undefined,
-            requestDate: song.requestDate || '',
-            requestedBy: song.requestedBy || '',
-            spotifyId: song.spotifyId || undefined,
-            youTubeUrl: song.youTubeUrl || undefined,
-            approvedBy: song.approvedBy || undefined,
-            musicBrainzId: song.musicBrainzId || undefined,
-            mood: song.mood || undefined,
-            lastFmPlaycount: song.lastFmPlaycount || undefined
-          },
-        }));
-      }
+      // Re-fetch queue to update Karaoke DJ Queue
+      await fetchQueue();
     } catch (err) {
       console.error("Add to queue error:", err);
       setFetchError("Failed to add song to queue. Please try again.");
@@ -766,38 +699,8 @@ const Dashboard: React.FC = () => {
         throw new Error(`Skip song failed: ${response.status}`);
       }
 
-      const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${eventId}/queue`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!queueResponse.ok) {
-        console.error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
-        if (queueResponse.status === 401) {
-          setFetchError("Session expired. Please log in again.");
-          localStorage.removeItem("token");
-          navigate("/login");
-          return;
-        }
-        throw new Error(`Fetch queue failed for event ${eventId}: ${queueResponse.status}`);
-      }
-      const data: EventQueueItemResponse[] = await queueResponse.json();
-      const parsedData: EventQueueItem[] = data.map(item => ({
-        ...item,
-        singers: item.singers ? JSON.parse(item.singers) : [],
-      }));
-      const uniqueQueueData = Array.from(
-        new Map(
-          parsedData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
-        ).values()
-      );
-      const userName = localStorage.getItem("userName");
-      const userQueue = uniqueQueueData.filter(item => item.requestorUserName === userName);
-      console.log(`Re-fetched queue for event ${eventId} after deleting song:`, userQueue);
-
-      setMyQueues(prev => ({
-        ...prev,
-        [eventId]: userQueue,
-      }));
-      setGlobalQueue(prev => prev.filter(q => q.queueId !== queueId));
+      // Re-fetch queue to update Karaoke DJ Queue
+      await fetchQueue();
     } catch (err) {
       console.error("Skip song error:", err);
       setFetchError("Failed to remove song from queue. Please try again.");
@@ -813,6 +716,11 @@ const Dashboard: React.FC = () => {
     console.log("handleQueueItemClick called with song:", song, "queueId:", queueId, "eventId:", eventId);
     setSelectedSong(song);
     setSelectedQueueId(queueId);
+  };
+
+  const handleGlobalQueueItemClick = (song: Song) => {
+    console.log("handleGlobalQueueItemClick called with song:", song);
+    setSelectedSong(song);
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -891,40 +799,8 @@ const Dashboard: React.FC = () => {
         throw new Error(`Reorder failed: ${response.status} - ${errorText}`);
       }
 
-      const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.eventId}/queue`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!queueResponse.ok) {
-        console.error(`Fetch queue failed: ${queueResponse.status}`);
-        if (queueResponse.status === 401) {
-          setReorderError("Session expired. Please log in again.");
-          localStorage.removeItem("token");
-          navigate("/login");
-          return;
-        }
-        throw new Error(`Fetch queue failed: ${queueResponse.status}`);
-      }
-      const data: EventQueueItemResponse[] = await queueResponse.json();
-      const parsedData: EventQueueItem[] = data.map(item => ({
-        ...item,
-        singers: item.singers ? JSON.parse(item.singers) : [],
-      }));
-      const uniqueQueueData = Array.from(
-        new Map(
-          parsedData.map(item => [`${item.songId}-${item.requestorUserName}`, item])
-        ).values()
-      );
-      const userName = localStorage.getItem("userName");
-      const userQueue = uniqueQueueData.filter(item => item.requestorUserName === userName);
-      console.log("Drag-and-drop: Re-fetched queue after reorder:", userQueue);
-
-      setMyQueues(prev => ({
-        ...prev,
-        [currentEvent.eventId]: userQueue,
-      }));
-      if (checkedIn && isCurrentEventLive) {
-        setGlobalQueue(uniqueQueueData);
-      }
+      // Re-fetch queue to update Karaoke DJ Queue
+      await fetchQueue();
       setReorderError(null);
       setShowReorderErrorModal(false);
     } catch (err) {
@@ -1054,26 +930,40 @@ const Dashboard: React.FC = () => {
             )}
           </aside>
 
-          {checkedIn && isCurrentEventLive && currentEvent && (
+          {checkedIn && isCurrentEventLive && currentEvent && currentEvent.status.toLowerCase() === "live" && (
             <aside className="global-queue-panel">
-              <h2>Global Event Queue</h2>
+              <h2>Karaoke DJ Queue</h2>
+              <p className="queue-info">Total Songs: {globalQueue.length}</p>
               {globalQueue.length === 0 ? (
-                <p>No songs in the event queue.</p>
+                <p>No songs in the Karaoke DJ Queue.</p>
               ) : (
                 <div className="event-queue">
                   <h3>{currentEvent.description}</h3>
                   <p className="queue-info">{myQueues[currentEvent.eventId]?.length || 0}/{currentEvent.requestLimit} songs</p>
-                  {globalQueue.map(queueItem => (
-                    <div key={queueItem.queueId} className="queue-song">
-                      <span>
-                        {songDetailsMap[queueItem.songId] ? (
-                          `${songDetailsMap[queueItem.songId].title} - ${songDetailsMap[queueItem.songId].artist}`
-                        ) : (
-                          `Loading Song ${queueItem.songId}...`
-                        )}
-                      </span>
-                    </div>
-                  ))}
+                  {globalQueue
+                    .sort((a, b) => a.position - b.position)
+                    .map(queueItem => (
+                      <div
+                        key={queueItem.queueId}
+                        className="queue-song"
+                        onClick={() => {
+                          const song = songDetailsMap[queueItem.songId];
+                          if (song) handleGlobalQueueItemClick(song);
+                        }}
+                        onTouchStart={() => {
+                          const song = songDetailsMap[queueItem.songId];
+                          if (song) handleGlobalQueueItemClick(song);
+                        }}
+                      >
+                        <span>
+                          {songDetailsMap[queueItem.songId] ? (
+                            `${queueItem.position}. ${songDetailsMap[queueItem.songId].title} - ${songDetailsMap[queueItem.songId].artist}`
+                          ) : (
+                            `Loading Song ${queueItem.songId}...`
+                          )}
+                        </span>
+                      </div>
+                    ))}
                 </div>
               )}
             </aside>
@@ -1094,7 +984,7 @@ const Dashboard: React.FC = () => {
                       setSelectedSong(song);
                     }}
                   >
-                    <span>{song.title} - {song.artist}</span>
+                    <span>{song.title} - ${song.artist}</span>
                   </li>
                 ))}
               </ul>
@@ -1123,7 +1013,7 @@ const Dashboard: React.FC = () => {
               <div className="song-list">
                 {songs.map(song => (
                   <div key={song.id} className="song-card" onClick={() => setSelectedSong(song)}>
-                    <span className="song-text">{song.title} - {song.artist}</span>
+                    <span className="song-text">{song.title} - ${song.artist}</span>
                   </div>
                 ))}
               </div>
@@ -1138,14 +1028,14 @@ const Dashboard: React.FC = () => {
       {showSpotifyModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3 className="modal-title">GetSongBPM Search Results</h3>
+            <h3 className="modal-title">Spotify Search Results</h3>
             {spotifySongs.length === 0 ? (
-              <p className="modal-text">No songs found on GetSongBPM</p>
+              <p className="modal-text">No songs found on Spotify</p>
             ) : (
               <div className="song-list">
                 {spotifySongs.map(song => (
                   <div key={song.id} className="song-card" onClick={() => handleSpotifySongSelect(song)}>
-                    <span className="song-text">{song.title} - {song.artist}</span>
+                    <span className="song-text">{song.title} - ${song.artist}</span>
                   </div>
                 ))}
               </div>
@@ -1198,7 +1088,7 @@ const Dashboard: React.FC = () => {
           <div className="modal-content">
             <h3 className="modal-title">Request Submitted</h3>
             <p className="modal-text">
-              A request has been made on your behalf to find a Karaoke version of \'{requestedSong.title}\' by {requestedSong.artist}.
+              A request has been made on your behalf to find a Karaoke version of '{requestedSong.title}' by {requestedSong.artist}.
             </p>
             <button onClick={resetSearch} className="modal-cancel">Done</button>
           </div>
@@ -1224,11 +1114,12 @@ const Dashboard: React.FC = () => {
             setSelectedSong(null);
             setSelectedQueueId(undefined);
           }}
-          onToggleFavorite={toggleFavorite}
-          onAddToQueue={addToEventQueue}
-          onDeleteFromQueue={currentEvent && selectedQueueId ? handleDeleteSong : undefined}
+          onToggleFavorite={isSingerOnly ? () => Promise.resolve() : toggleFavorite}
+          onAddToQueue={isSingerOnly ? undefined : addToEventQueue}
+          onDeleteFromQueue={isSingerOnly ? undefined : (currentEvent && selectedQueueId ? handleDeleteSong : undefined)}
           eventId={currentEvent?.eventId}
           queueId={selectedQueueId}
+          readOnly={isSingerOnly}
         />
       )}
     </div>

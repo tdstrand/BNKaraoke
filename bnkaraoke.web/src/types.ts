@@ -1,4 +1,3 @@
-// bnkaraoke.web/src/types.ts
 export interface Song {
   id: number;
   title: string;
@@ -59,13 +58,12 @@ export interface Event {
   requestLimit: number;
 }
 
-// Type for the raw API response where singers is a JSON-serialized string
 export interface EventQueueItemResponse {
   queueId: number;
   eventId: number;
   songId: number;
   requestorUserName: string;
-  singers: string; // JSON-serialized string, e.g., '["user1", "user2"]'
+  singers: string;
   position: number;
   status: string;
   isActive: boolean;
@@ -75,7 +73,6 @@ export interface EventQueueItemResponse {
   isOnBreak: boolean;
 }
 
-// Type for the parsed data where singers is a string array
 export interface EventQueueItem {
   queueId: number;
   eventId: number;
@@ -92,7 +89,7 @@ export interface EventQueueItem {
 }
 
 export interface AttendanceAction {
-  requestorUserName: string;
+  RequestorId: string;
 }
 
 export interface User {

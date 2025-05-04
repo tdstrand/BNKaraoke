@@ -27,7 +27,6 @@ namespace BNKaraoke.Api.Controllers
             _logger.LogInformation("EventController instantiated");
         }
 
-        // GET /api/events/health: Health check endpoint (no dependencies)
         [HttpGet("health")]
         [AllowAnonymous]
         public IActionResult HealthCheck()
@@ -36,7 +35,6 @@ namespace BNKaraoke.Api.Controllers
             return Ok(new { status = "healthy", message = "EventController is running" });
         }
 
-        // GET /api/events/minimal: Minimal test endpoint (no dependencies)
         [HttpGet("minimal")]
         [AllowAnonymous]
         public IActionResult MinimalTest()
@@ -45,15 +43,15 @@ namespace BNKaraoke.Api.Controllers
             return Ok(new { message = "Minimal test endpoint reached" });
         }
 
-        // GET /api/events: Get all events
         [HttpGet]
         [Authorize]
         public async Task<IActionResult> GetEvents()
         {
             try
             {
-                _logger.LogInformation("Fetching all events from the database");
+                _logger.LogInformation("Fetching visible events from the database");
                 var events = await _context.Events
+                    .Where(e => e.Visibility == "Visible" && !e.IsCanceled)
                     .Select(e => new EventDto
                     {
                         EventId = e.EventId,
@@ -83,7 +81,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // POST /api/events: Create a new event
         [HttpPost]
         [Authorize(Roles = "EventManager")]
         public async Task<IActionResult> CreateEvent([FromBody] EventCreateDto eventDto)
@@ -93,21 +90,27 @@ namespace BNKaraoke.Api.Controllers
                 _logger.LogInformation("Creating a new event with EventCode: {EventCode}", eventDto.EventCode);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for CreateEvent: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Invalid model state for CreateEvent: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
+                }
+
+                if (string.IsNullOrEmpty(eventDto.EventCode))
+                {
+                    _logger.LogWarning("EventCode is null or empty");
+                    return BadRequest("EventCode cannot be null or empty");
                 }
 
                 var newEvent = new Event
                 {
                     EventCode = eventDto.EventCode,
-                    Description = eventDto.Description,
+                    Description = eventDto.Description ?? string.Empty,
                     Status = eventDto.Status ?? "Upcoming",
                     Visibility = eventDto.Visibility ?? "Visible",
-                    Location = eventDto.Location,
+                    Location = eventDto.Location ?? string.Empty,
                     ScheduledDate = eventDto.ScheduledDate,
                     ScheduledStartTime = eventDto.ScheduledStartTime,
                     ScheduledEndTime = eventDto.ScheduledEndTime,
-                    KaraokeDJName = eventDto.KaraokeDJName,
+                    KaraokeDJName = eventDto.KaraokeDJName ?? string.Empty,
                     IsCanceled = eventDto.IsCanceled ?? false,
                     RequestLimit = eventDto.RequestLimit,
                     CreatedAt = DateTime.UtcNow,
@@ -131,7 +134,7 @@ namespace BNKaraoke.Api.Controllers
                     KaraokeDJName = newEvent.KaraokeDJName,
                     IsCanceled = newEvent.IsCanceled,
                     RequestLimit = newEvent.RequestLimit,
-                    QueueCount = 0 // New event, no queue entries yet
+                    QueueCount = 0
                 };
 
                 _logger.LogInformation("Successfully created event with EventId: {EventId}", newEvent.EventId);
@@ -144,7 +147,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // PUT /api/events/{eventId}: Update an event
         [HttpPut("{eventId}")]
         [Authorize(Roles = "EventManager")]
         public async Task<IActionResult> UpdateEvent(int eventId, [FromBody] EventUpdateDto eventDto)
@@ -154,7 +156,7 @@ namespace BNKaraoke.Api.Controllers
                 _logger.LogInformation("Updating event with EventId: {EventId}", eventId);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for UpdateEvent: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Invalid model state for UpdateEvent: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
                 }
 
@@ -165,11 +167,18 @@ namespace BNKaraoke.Api.Controllers
                     return NotFound("Event not found");
                 }
 
+                if (string.IsNullOrEmpty(eventDto.EventCode))
+                {
+                    _logger.LogWarning("EventCode is null or empty for EventId: {EventId}", eventId);
+                    return BadRequest("EventCode cannot be null or empty");
+                }
+
+                var oldStatus = existingEvent.Status;
                 existingEvent.EventCode = eventDto.EventCode;
-                existingEvent.Description = eventDto.Description;
+                existingEvent.Description = eventDto.Description ?? existingEvent.Description;
                 existingEvent.Status = eventDto.Status ?? existingEvent.Status;
                 existingEvent.Visibility = eventDto.Visibility ?? existingEvent.Visibility;
-                existingEvent.Location = eventDto.Location;
+                existingEvent.Location = eventDto.Location ?? existingEvent.Location;
                 existingEvent.ScheduledDate = eventDto.ScheduledDate;
                 existingEvent.ScheduledStartTime = eventDto.ScheduledStartTime ?? existingEvent.ScheduledStartTime;
                 existingEvent.ScheduledEndTime = eventDto.ScheduledEndTime ?? existingEvent.ScheduledEndTime;
@@ -178,10 +187,9 @@ namespace BNKaraoke.Api.Controllers
                 existingEvent.RequestLimit = eventDto.RequestLimit;
                 existingEvent.UpdatedAt = DateTime.UtcNow;
 
-                // If the status changes, update the status of associated queue entries
-                if (existingEvent.Status != eventDto.Status)
+                if (oldStatus != existingEvent.Status)
                 {
-                    _logger.LogInformation("Event status changed from {OldStatus} to {NewStatus}, updating queue entries", existingEvent.Status, eventDto.Status);
+                    _logger.LogInformation("Event status changed from {OldStatus} to {NewStatus}, updating queue entries for EventId: {EventId}", oldStatus, existingEvent.Status, eventId);
                     var queueEntries = await _context.EventQueues
                         .Where(eq => eq.EventId == eventId)
                         .ToListAsync();
@@ -189,6 +197,7 @@ namespace BNKaraoke.Api.Controllers
                     foreach (var entry in queueEntries)
                     {
                         entry.Status = existingEvent.Status;
+                        entry.IsActive = existingEvent.Status == "Live";
                         entry.UpdatedAt = DateTime.UtcNow;
                     }
                 }
@@ -223,7 +232,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // GET /api/events/{eventId}: Get an event by ID
         [HttpGet("{eventId}")]
         [Authorize]
         public async Task<IActionResult> GetEvent(int eventId)
@@ -266,7 +274,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // POST /api/events/{eventId}/queue: Add a song to the event queue
         [HttpPost("{eventId}/queue")]
         [Authorize]
         public async Task<IActionResult> AddToQueue(int eventId, [FromBody] EventQueueCreateDto queueDto)
@@ -276,7 +283,7 @@ namespace BNKaraoke.Api.Controllers
                 _logger.LogInformation("Adding song to queue for EventId: {EventId}, SongId: {SongId}, RequestorUserName: {RequestorUserName}", eventId, queueDto.SongId, queueDto.RequestorUserName);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for AddToQueue: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Invalid model state for AddToQueue: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
                 }
 
@@ -293,7 +300,6 @@ namespace BNKaraoke.Api.Controllers
                     return BadRequest("Cannot add to queue for a canceled or hidden event");
                 }
 
-                // Verify the song exists
                 var song = await _context.Songs.FindAsync(queueDto.SongId);
                 if (song == null)
                 {
@@ -301,7 +307,6 @@ namespace BNKaraoke.Api.Controllers
                     return BadRequest("Song not found");
                 }
 
-                // Verify the requestor exists by UserName
                 if (string.IsNullOrEmpty(queueDto.RequestorUserName))
                 {
                     _logger.LogWarning("RequestorUserName is null or empty");
@@ -317,7 +322,6 @@ namespace BNKaraoke.Api.Controllers
                     return BadRequest("Requestor not found with UserName: " + queueDto.RequestorUserName);
                 }
 
-                // Check for duplicate song in queue
                 var exists = await _context.EventQueues.AnyAsync(q =>
                     q.EventId == eventId &&
                     q.RequestorUserName == queueDto.RequestorUserName &&
@@ -328,7 +332,6 @@ namespace BNKaraoke.Api.Controllers
                     return BadRequest("Song already in queue.");
                 }
 
-                // Check the event's request limit (excluding co-sung songs)
                 var requestedCount = await _context.EventQueues
                     .CountAsync(eq => eq.EventId == eventId && eq.RequestorUserName == queueDto.RequestorUserName);
                 if (requestedCount >= eventEntity.RequestLimit)
@@ -337,7 +340,6 @@ namespace BNKaraoke.Api.Controllers
                     return BadRequest($"You have reached the event's request limit of {eventEntity.RequestLimit} songs.");
                 }
 
-                // Check if the requestor is checked in, but only for non-Upcoming events
                 if (eventEntity.Status != "Upcoming")
                 {
                     var attendance = await _context.EventAttendances
@@ -349,7 +351,6 @@ namespace BNKaraoke.Api.Controllers
                     }
                 }
 
-                // Get the next position in the queue
                 var maxPosition = await _context.EventQueues
                     .Where(eq => eq.EventId == eventId)
                     .MaxAsync(eq => (int?)eq.Position) ?? 0;
@@ -359,10 +360,10 @@ namespace BNKaraoke.Api.Controllers
                     EventId = eventId,
                     SongId = queueDto.SongId,
                     RequestorUserName = requestor.UserName,
-                    Singers = JsonSerializer.Serialize(new[] { requestor.UserName }), // Initialize with the requestor
+                    Singers = JsonSerializer.Serialize(new[] { requestor.UserName }),
                     Position = maxPosition + 1,
                     Status = eventEntity.Status,
-                    IsActive = eventEntity.Status != "Upcoming", // Active only if the event is not Upcoming
+                    IsActive = eventEntity.Status == "Live",
                     WasSkipped = false,
                     IsCurrentlyPlaying = false,
                     CreatedAt = DateTime.UtcNow,
@@ -373,7 +374,6 @@ namespace BNKaraoke.Api.Controllers
                 _context.EventQueues.Add(newQueueEntry);
                 await _context.SaveChangesAsync();
 
-                // Map the new queue entry to a DTO to avoid circular references
                 var singersList = new List<string>();
                 try
                 {
@@ -396,7 +396,7 @@ namespace BNKaraoke.Api.Controllers
                     RequestorUserName = newQueueEntry.RequestorUserName,
                     Singers = singersList,
                     Position = newQueueEntry.Position,
-                    Status = ComputeSongStatus(newQueueEntry, false), // No singers on break for a new entry
+                    Status = ComputeSongStatus(newQueueEntry, false),
                     IsActive = newQueueEntry.IsActive,
                     WasSkipped = newQueueEntry.WasSkipped,
                     IsCurrentlyPlaying = newQueueEntry.IsCurrentlyPlaying,
@@ -414,7 +414,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // GET /api/events/{eventId}/queue: Retrieve the event queue (with break status and computed status)
         [HttpGet("{eventId}/queue")]
         [Authorize]
         public async Task<IActionResult> GetEventQueue(int eventId)
@@ -429,12 +428,10 @@ namespace BNKaraoke.Api.Controllers
                     return NotFound("Event not found");
                 }
 
-                // Fetch all queue entries for the event
                 var queueEntries = await _context.EventQueues
                     .Where(eq => eq.EventId == eventId)
                     .ToListAsync();
 
-                // Fetch all users and attendances in bulk, performing filtering in memory
                 var requestorUserNames = queueEntries
                     .Select(eq => eq.RequestorUserName)
                     .Where(userName => userName != null)
@@ -489,17 +486,14 @@ namespace BNKaraoke.Api.Controllers
                 var queueDtos = new List<EventQueueDto>();
                 foreach (var eq in queueEntries)
                 {
-                    // Look up the requestor
                     if (string.IsNullOrEmpty(eq.RequestorUserName) || !users.TryGetValue(eq.RequestorUserName, out var requestor))
                     {
                         _logger.LogWarning("Requestor not found with UserName: {UserName} for QueueId {QueueId}", eq.RequestorUserName, eq.QueueId);
-                        continue; // Skip entries with invalid requestors
+                        continue;
                     }
 
-                    // Look up the requestor's attendance
                     attendances.TryGetValue(requestor.Id, out var attendance);
 
-                    // Deserialize singers directly into a List<string>
                     var singersList = new List<string>();
                     try
                     {
@@ -510,13 +504,12 @@ namespace BNKaraoke.Api.Controllers
                         _logger.LogWarning("Failed to deserialize Singers for QueueId {QueueId}: {Message}", eq.QueueId, ex.Message);
                     }
 
-                    // Check if any singer is on break
                     bool anySingerOnBreak = false;
                     foreach (var singer in singersList)
                     {
                         if (singer == "AllSing" || singer == "TheBoys" || singer == "TheGirls")
                         {
-                            continue; // Special groups don't have break status
+                            continue;
                         }
 
                         if (singer != null && singerUsers.TryGetValue(singer, out var singerUser) &&
@@ -547,7 +540,6 @@ namespace BNKaraoke.Api.Controllers
                     queueDtos.Add(queueDto);
                 }
 
-                // Sort by position in memory
                 var sortedQueueDtos = queueDtos.OrderBy(eq => eq.Position).ToList();
 
                 _logger.LogInformation("Successfully fetched {Count} queue entries for EventId: {EventId}", sortedQueueDtos.Count, eventId);
@@ -555,12 +547,11 @@ namespace BNKaraoke.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching event queue for EventId: {EventId}", eventId);
+                _logger.LogError(ex, "Error fetching event queue for EventId: {EventId}: {Message}", eventId, ex.Message);
                 return StatusCode(500, new { message = "An error occurred while fetching the event queue", details = ex.Message });
             }
         }
 
-        // GET /api/events/{eventId}/attendance/status: Get the attendance status of the requestor
         [HttpGet("{eventId}/attendance/status")]
         [Authorize]
         public async Task<IActionResult> GetAttendanceStatus(int eventId)
@@ -576,7 +567,6 @@ namespace BNKaraoke.Api.Controllers
                     return NotFound("Event not found");
                 }
 
-                // Get the user's UserName from the token
                 var userName = User.FindFirst(ClaimTypes.Name)?.Value;
                 if (string.IsNullOrEmpty(userName))
                 {
@@ -616,7 +606,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // POST /api/events/{eventId}/attendance/check-in: Requestor checks in
         [HttpPost("{eventId}/attendance/check-in")]
         [Authorize]
         public async Task<IActionResult> CheckIn(int eventId, [FromBody] AttendanceActionDto actionDto)
@@ -626,7 +615,7 @@ namespace BNKaraoke.Api.Controllers
                 _logger.LogInformation("Checking in requestor with UserName {UserName} for EventId: {EventId}", actionDto.RequestorId, eventId);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for CheckIn: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Invalid model state for CheckIn: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
                 }
 
@@ -643,7 +632,12 @@ namespace BNKaraoke.Api.Controllers
                     return BadRequest("Cannot check in to a canceled or hidden event");
                 }
 
-                // Look up requestor by UserName
+                if (eventEntity.Status != "Live")
+                {
+                    _logger.LogWarning("Cannot check in to EventId {EventId}: Event is not live (Status: {Status})", eventId, eventEntity.Status);
+                    return BadRequest("Can only check in to live events");
+                }
+
                 if (string.IsNullOrEmpty(actionDto.RequestorId))
                 {
                     _logger.LogWarning("RequestorId is null or empty");
@@ -656,7 +650,7 @@ namespace BNKaraoke.Api.Controllers
                 if (requestor == null)
                 {
                     _logger.LogWarning("Requestor not found with UserName: {UserName}", actionDto.RequestorId);
-                    return BadRequest("Requestor not found with UserName: " + actionDto.RequestorId);
+                    return BadRequest("Requestor not found");
                 }
 
                 var attendance = await _context.EventAttendances
@@ -687,10 +681,8 @@ namespace BNKaraoke.Api.Controllers
                     attendance.BreakEndAt = null;
                 }
 
-                // Save the EventAttendance record first to generate the AttendanceId
                 await _context.SaveChangesAsync();
 
-                // Log the check-in action with the generated AttendanceId
                 var attendanceHistory = new EventAttendanceHistory
                 {
                     EventId = eventId,
@@ -701,7 +693,6 @@ namespace BNKaraoke.Api.Controllers
                 };
                 _context.EventAttendanceHistories.Add(attendanceHistory);
 
-                // Activate the requestor's queue entries
                 var queueEntries = await _context.EventQueues
                     .Where(eq => eq.EventId == eventId && eq.RequestorUserName == requestor.UserName)
                     .ToListAsync();
@@ -709,10 +700,10 @@ namespace BNKaraoke.Api.Controllers
                 foreach (var entry in queueEntries)
                 {
                     entry.IsActive = true;
+                    entry.Status = "Live";
                     entry.UpdatedAt = DateTime.UtcNow;
                 }
 
-                // Save the EventAttendanceHistory and queue updates
                 await _context.SaveChangesAsync();
 
                 _logger.LogInformation("Successfully checked in requestor with UserName {UserName} for EventId {EventId}", actionDto.RequestorId, eventId);
@@ -725,7 +716,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // POST /api/events/{eventId}/attendance/check-out: Requestor checks out
         [HttpPost("{eventId}/attendance/check-out")]
         [Authorize]
         public async Task<IActionResult> CheckOut(int eventId, [FromBody] AttendanceActionDto actionDto)
@@ -735,7 +725,7 @@ namespace BNKaraoke.Api.Controllers
                 _logger.LogInformation("Checking out requestor with UserName {UserName} for EventId: {EventId}", actionDto.RequestorId, eventId);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for CheckOut: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Invalid model state for CheckOut: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
                 }
 
@@ -746,7 +736,6 @@ namespace BNKaraoke.Api.Controllers
                     return NotFound("Event not found");
                 }
 
-                // Look up requestor by UserName
                 if (string.IsNullOrEmpty(actionDto.RequestorId))
                 {
                     _logger.LogWarning("RequestorId is null or empty");
@@ -775,10 +764,8 @@ namespace BNKaraoke.Api.Controllers
                 attendance.BreakStartAt = null;
                 attendance.BreakEndAt = null;
 
-                // Save the updated EventAttendance record first
                 await _context.SaveChangesAsync();
 
-                // Log the check-out action with the AttendanceId
                 var attendanceHistory = new EventAttendanceHistory
                 {
                     EventId = eventId,
@@ -789,7 +776,6 @@ namespace BNKaraoke.Api.Controllers
                 };
                 _context.EventAttendanceHistories.Add(attendanceHistory);
 
-                // Deactivate the requestor's queue entries
                 var queueEntries = await _context.EventQueues
                     .Where(eq => eq.EventId == eventId && eq.RequestorUserName == requestor.UserName)
                     .ToListAsync();
@@ -800,7 +786,6 @@ namespace BNKaraoke.Api.Controllers
                     entry.UpdatedAt = DateTime.UtcNow;
                 }
 
-                // Save the EventAttendanceHistory and queue updates
                 await _context.SaveChangesAsync();
 
                 _logger.LogInformation("Successfully checked out requestor with UserName {UserName} for EventId {EventId}", actionDto.RequestorId, eventId);
@@ -813,7 +798,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // POST /api/events/{eventId}/attendance/break/start: Requestor takes a break
         [HttpPost("{eventId}/attendance/break/start")]
         [Authorize]
         public async Task<IActionResult> StartBreak(int eventId, [FromBody] AttendanceActionDto actionDto)
@@ -823,7 +807,7 @@ namespace BNKaraoke.Api.Controllers
                 _logger.LogInformation("Starting break for requestor with UserName {UserName} for EventId: {EventId}", actionDto.RequestorId, eventId);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for StartBreak: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Invalid model state for StartBreak: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
                 }
 
@@ -834,7 +818,6 @@ namespace BNKaraoke.Api.Controllers
                     return NotFound("Event not found");
                 }
 
-                // Look up requestor by UserName
                 if (string.IsNullOrEmpty(actionDto.RequestorId))
                 {
                     _logger.LogWarning("RequestorId is null or empty");
@@ -879,7 +862,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // POST /api/events/{eventId}/attendance/break/end: Requestor returns from break
         [HttpPost("{eventId}/attendance/break/end")]
         [Authorize]
         public async Task<IActionResult> EndBreak(int eventId, [FromBody] AttendanceActionDto actionDto)
@@ -889,7 +871,7 @@ namespace BNKaraoke.Api.Controllers
                 _logger.LogInformation("Ending break for requestor with UserName {UserName} for EventId: {EventId}", actionDto.RequestorId, eventId);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for EndBreak: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Invalid model state for EndBreak: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
                 }
 
@@ -900,7 +882,6 @@ namespace BNKaraoke.Api.Controllers
                     return NotFound("Event not found");
                 }
 
-                // Look up requestor by UserName
                 if (string.IsNullOrEmpty(actionDto.RequestorId))
                 {
                     _logger.LogWarning("RequestorId is null or empty");
@@ -927,7 +908,6 @@ namespace BNKaraoke.Api.Controllers
                 attendance.IsOnBreak = false;
                 attendance.BreakEndAt = DateTime.UtcNow;
 
-                // Move skipped songs to the top of the queue
                 var minPosition = await _context.EventQueues
                     .Where(eq => eq.EventId == eventId)
                     .MinAsync(eq => (int?)eq.Position) ?? 1;
@@ -944,7 +924,6 @@ namespace BNKaraoke.Api.Controllers
                     skippedEntries[i].UpdatedAt = DateTime.UtcNow;
                 }
 
-                // Reorder the rest of the queue
                 var otherEntries = await _context.EventQueues
                     .Where(eq => eq.EventId == eventId && (eq.RequestorUserName != requestor.UserName || !eq.WasSkipped))
                     .OrderBy(eq => eq.Position)
@@ -967,7 +946,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // POST /api/events/{eventId}/queue/{queueId}/skip: DJ skips a song
         [HttpPost("{eventId}/queue/{queueId}/skip")]
         [Authorize(Roles = "DJ")]
         public async Task<IActionResult> SkipSong(int eventId, int queueId)
@@ -1016,12 +994,11 @@ namespace BNKaraoke.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error skipping song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, ex.Message);
+                _logger.LogError(ex, "Error skipping song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, eventId, ex.Message);
                 return StatusCode(500, new { message = "An error occurred while skipping the song", details = ex.Message });
             }
         }
 
-        // PUT /api/events/{eventId}/queue/reorder: Reorder the user's queue entries
         [HttpPut("{eventId}/queue/reorder")]
         [Authorize]
         public async Task<IActionResult> ReorderQueue(int eventId, [FromBody] ReorderQueueRequest request)
@@ -1031,7 +1008,7 @@ namespace BNKaraoke.Api.Controllers
                 _logger.LogInformation("Reordering queue for EventId: {EventId}", eventId);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for ReorderQueue: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Invalid model state for ReorderQueue: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
                 }
 
@@ -1042,7 +1019,6 @@ namespace BNKaraoke.Api.Controllers
                     return NotFound("Event not found");
                 }
 
-                // Get the user's UserName from the token
                 var userName = User.FindFirst(ClaimTypes.Name)?.Value;
                 if (string.IsNullOrEmpty(userName))
                 {
@@ -1050,17 +1026,14 @@ namespace BNKaraoke.Api.Controllers
                     return Unauthorized("User identity not found in token");
                 }
 
-                // Fetch the user's queue playlist entries for this event using @> for Singers
                 var userQueueEntries = await _context.EventQueues
                     .FromSqlRaw(
-                        @"SELECT ""QueueId"", ""CreatedAt"", ""EventId"", ""IsActive"", ""IsCurrentlyPlaying"", ""IsOnBreak"", ""Position"", ""RequestorUserName"", ""Singers"", ""SongId"", ""Status"", ""SungAt"", ""UpdatedAt"", ""WasSkipped""
-                          FROM public.""EventQueues""
+                        @"SELECT * FROM public.""EventQueues""
                           WHERE ""EventId"" = {0} AND (""RequestorUserName"" = {1} OR ""Singers"" @> {2}::jsonb)",
                         eventId, userName, $"[{userName}]"
                     )
                     .ToListAsync();
 
-                // Validate the request
                 var requestQueueIds = request.NewOrder.Select(o => o.QueueId).ToList();
                 var userQueueIds = userQueueEntries.Select(eq => eq.QueueId).ToList();
 
@@ -1070,35 +1043,26 @@ namespace BNKaraoke.Api.Controllers
                     return BadRequest("Invalid reorder request: Queue IDs do not match user's queue entries");
                 }
 
-                // Get all queue entries for the event to determine position mapping
                 var allQueueEntries = await _context.EventQueues
                     .Where(eq => eq.EventId == eventId)
                     .OrderBy(eq => eq.Position)
                     .ToListAsync();
 
-                // Map current positions to queue entries
                 var positionMapping = allQueueEntries.ToDictionary(eq => eq.QueueId, eq => eq.Position);
 
-                // Update positions for the user's queue entries based on the new order
                 for (int i = 0; i < request.NewOrder.Count; i++)
                 {
                     var queueId = request.NewOrder[i].QueueId;
                     var newPosition = request.NewOrder[i].Position;
-
-                    var queueEntry = userQueueEntries.First(eq => eq.QueueId == queueId);
-                    var oldPosition = positionMapping[queueId];
-
-                    // Update the position in the mapping
                     positionMapping[queueId] = newPosition;
                 }
 
-                // Assign new positions to all queue entries
                 var sortedPositions = positionMapping.OrderBy(kv => kv.Value).ToList();
                 for (int i = 0; i < sortedPositions.Count; i++)
                 {
                     var queueId = sortedPositions[i].Key;
                     var queueEntry = allQueueEntries.First(eq => eq.QueueId == queueId);
-                    queueEntry.Position = i + 1; // Positions start at 1
+                    queueEntry.Position = i + 1;
                     queueEntry.UpdatedAt = DateTime.UtcNow;
                 }
 
@@ -1113,7 +1077,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // POST /api/events/{eventId}/queue/{queueId}/singers: Update singers for a queue entry
         [HttpPost("{eventId}/queue/{queueId}/singers")]
         [Authorize]
         public async Task<IActionResult> UpdateSingers(int eventId, int queueId, [FromBody] UpdateSingersRequest request)
@@ -1123,7 +1086,7 @@ namespace BNKaraoke.Api.Controllers
                 _logger.LogInformation("Updating singers for QueueId {QueueId} in EventId: {EventId}", queueId, eventId);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for UpdateSingers: {Errors}", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                    _logger.LogWarning("Invalid model state for UpdateSingers: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
                 }
 
@@ -1142,21 +1105,18 @@ namespace BNKaraoke.Api.Controllers
                     return NotFound("Queue entry not found");
                 }
 
-                // Validate the new singers list
                 if (request.Singers == null || !request.Singers.Any())
                 {
                     _logger.LogWarning("Singers list cannot be empty for QueueId {QueueId}", queueId);
                     return BadRequest("At least one singer or special group is required");
                 }
 
-                // Check for special groups
                 var specialGroups = new List<string> { "AllSing", "TheBoys", "TheGirls" };
                 var hasSpecialGroup = request.Singers.Any(s => specialGroups.Contains(s));
                 var individualSingers = request.Singers.Where(s => !specialGroups.Contains(s)).ToList();
 
                 if (hasSpecialGroup)
                 {
-                    // If a special group is selected, it must be the only entry
                     if (request.Singers.Count > 1)
                     {
                         _logger.LogWarning("Special group selected with additional singers for QueueId {QueueId}", queueId);
@@ -1165,14 +1125,12 @@ namespace BNKaraoke.Api.Controllers
                 }
                 else
                 {
-                    // If no special group, enforce the limit of 7 individual singers
                     if (individualSingers.Count > 7)
                     {
                         _logger.LogWarning("Too many individual singers ({Count}) for QueueId {QueueId}", individualSingers.Count, queueId);
                         return BadRequest("Cannot have more than 7 individual singers");
                     }
 
-                    // Validate that all individual singers exist (by UserName)
                     foreach (var singer in individualSingers)
                     {
                         if (string.IsNullOrEmpty(singer))
@@ -1206,7 +1164,6 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        // DELETE /api/events/queue/clear: Clear the user's queue entries across all events
         [HttpDelete("queue/clear")]
         [Authorize]
         public async Task<IActionResult> ClearUserQueue()
@@ -1233,12 +1190,11 @@ namespace BNKaraoke.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error clearing user queue for UserName {UserName}: {Message}", User.FindFirst(ClaimTypes.Name)?.Value, ex.Message);
-                return StatusCode(500, new { success = false, message = "An error occurred while clearing the queue." });
+                _logger.LogError(ex, "Error clearing user queue for UserName {UserName}: {Message}", User.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown", ex.Message);
+                return StatusCode(500, new { success = false, message = "An error occurred while clearing the queue.", details = ex.Message });
             }
         }
 
-        // Helper method to compute song status
         private string ComputeSongStatus(EventQueue queueEntry, bool anySingerOnBreak)
         {
             if (queueEntry.SungAt != null)

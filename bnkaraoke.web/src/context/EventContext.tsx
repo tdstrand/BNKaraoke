@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Event, EventQueueItem, EventQueueItemResponse } from '../types';
+import { Event } from '../types';
 import { API_ROUTES } from '../config/apiConfig';
 
 interface EventContextType {
@@ -16,7 +16,6 @@ interface EventContextType {
 const EventContext = createContext<EventContextType | undefined>(undefined);
 
 export const EventContextProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Initialize state from local storage
   const [currentEvent, setCurrentEvent] = useState<Event | null>(() => {
     const storedEvent = localStorage.getItem("currentEvent");
     return storedEvent ? JSON.parse(storedEvent) : null;
@@ -34,7 +33,7 @@ export const EventContextProvider: React.FC<{ children: ReactNode }> = ({ childr
     return storedIsOnBreak === "true";
   });
 
-  // Persist currentEvent to local storage
+  // Persist states to local storage
   useEffect(() => {
     if (currentEvent) {
       localStorage.setItem("currentEvent", JSON.stringify(currentEvent));
@@ -43,17 +42,14 @@ export const EventContextProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   }, [currentEvent]);
 
-  // Persist checkedIn to local storage
   useEffect(() => {
     localStorage.setItem("checkedIn", checkedIn.toString());
   }, [checkedIn]);
 
-  // Persist isCurrentEventLive to local storage
   useEffect(() => {
     localStorage.setItem("isCurrentEventLive", isCurrentEventLive.toString());
   }, [isCurrentEventLive]);
 
-  // Persist isOnBreak to local storage
   useEffect(() => {
     localStorage.setItem("isOnBreak", isOnBreak.toString());
   }, [isOnBreak]);
@@ -63,46 +59,45 @@ export const EventContextProvider: React.FC<{ children: ReactNode }> = ({ childr
     const fetchAttendanceStatus = async () => {
       if (!currentEvent) {
         setCheckedIn(false);
+        setIsCurrentEventLive(false);
         setIsOnBreak(false);
         return;
       }
 
       const token = localStorage.getItem("token");
-      const userName = localStorage.getItem("userName");
-      if (!token || !userName) {
-        console.error("No token or userName found");
+      if (!token) {
+        console.error("No token found");
         setCheckedIn(false);
+        setIsCurrentEventLive(false);
         setIsOnBreak(false);
         return;
       }
 
       try {
-        // Fetch the user's queue to determine check-in and break status
-        const queueResponse = await fetch(`${API_ROUTES.EVENT_QUEUE}/${currentEvent.eventId}/queue`, {
+        console.log(`Fetching attendance status for event ${currentEvent.eventId}`);
+        const response = await fetch(`${API_ROUTES.EVENTS}/${currentEvent.eventId}/attendance/status`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!queueResponse.ok) {
-          const errorText = await queueResponse.text();
-          console.error(`Fetch queue failed for event ${currentEvent.eventId}: ${queueResponse.status} - ${errorText}`);
-          throw new Error(`Fetch queue failed: ${queueResponse.status}`);
+        const responseText = await response.text();
+        console.log("Attendance Status Response:", response.status, responseText);
+        if (!response.ok) {
+          if (response.status === 401) {
+            localStorage.removeItem("token");
+            setCheckedIn(false);
+            setIsCurrentEventLive(false);
+            setIsOnBreak(false);
+            return;
+          }
+          throw new Error(`Fetch attendance status failed: ${response.status} - ${responseText}`);
         }
-        const queueData: EventQueueItemResponse[] = await queueResponse.json();
-        const parsedQueueData: EventQueueItem[] = queueData.map(item => ({
-          ...item,
-          singers: item.singers ? JSON.parse(item.singers) : [],
-        }));
-        const userQueue = parsedQueueData.filter(item => item.requestorUserName === userName);
-
-        // If the user has queue items, they are checked in
-        const isUserCheckedIn = userQueue.length > 0;
-        setCheckedIn(isUserCheckedIn);
-
-        // Determine break status based on queue items
-        const userOnBreak = isUserCheckedIn && userQueue.some(item => item.isOnBreak);
-        setIsOnBreak(userOnBreak);
+        const data = JSON.parse(responseText);
+        setCheckedIn(data.isCheckedIn || false);
+        setIsCurrentEventLive(currentEvent.status.toLowerCase() === "live");
+        setIsOnBreak(data.isOnBreak || false);
       } catch (err) {
         console.error("Fetch attendance status error:", err);
         setCheckedIn(false);
+        setIsCurrentEventLive(currentEvent.status.toLowerCase() === "live");
         setIsOnBreak(false);
       }
     };
