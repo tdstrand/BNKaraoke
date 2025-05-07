@@ -5,7 +5,7 @@ import "./Header.css";
 import { API_ROUTES } from "../config/apiConfig";
 import useEventContext from "../context/EventContext";
 import { AttendanceAction, Event } from "../types";
-
+//Adding Comment
 const Header: React.FC = () => {
   console.log("Header component rendering");
 
