@@ -902,33 +902,35 @@ const Dashboard: React.FC = () => {
         </section>
 
         <div className="main-content">
-          <aside className="queue-panel">
-            <h2>My Song Queue</h2>
-            {reorderError && !showReorderErrorModal && <p className="error-text">{reorderError}</p>}
-            {!currentEvent ? (
-              <p>Please select an event to view your queue.</p>
-            ) : !myQueues[currentEvent.eventId] || myQueues[currentEvent.eventId].length === 0 ? (
-              <p>No songs in your queue for this event.</p>
-            ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={myQueues[currentEvent.eventId].map(item => item.queueId)} strategy={verticalListSortingStrategy}>
-                  <div className="event-queue">
-                    <h3>{currentEvent.description}</h3>
-                    <p className="queue-info">{myQueues[currentEvent.eventId].length}/{currentEvent.requestLimit} songs</p>
-                    {myQueues[currentEvent.eventId].map(queueItem => (
-                      <SortableQueueItem
-                        key={queueItem.queueId}
-                        queueItem={queueItem}
-                        eventId={currentEvent.eventId}
-                        songDetails={songDetailsMap[queueItem.songId] || null}
-                        onClick={handleQueueItemClick}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            )}
-          </aside>
+          {currentEvent !== null && (checkedIn || !isCurrentEventLive) && (
+            <aside className="queue-panel">
+              <h2>My Song Queue</h2>
+              {reorderError && !showReorderErrorModal && <p className="error-text">{reorderError}</p>}
+              {!currentEvent ? (
+                <p>Please select an event to view your queue.</p>
+              ) : !myQueues[currentEvent.eventId] || myQueues[currentEvent.eventId].length === 0 ? (
+                <p>No songs in your queue for this event.</p>
+              ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={myQueues[currentEvent.eventId].map(item => item.queueId)} strategy={verticalListSortingStrategy}>
+                    <div className="event-queue">
+                      <h3>{currentEvent.description}</h3>
+                      <p className="queue-info">{myQueues[currentEvent.eventId].length}/{currentEvent.requestLimit} songs</p>
+                      {myQueues[currentEvent.eventId].map(queueItem => (
+                        <SortableQueueItem
+                          key={queueItem.queueId}
+                          queueItem={queueItem}
+                          eventId={currentEvent.eventId}
+                          songDetails={songDetailsMap[queueItem.songId] || null}
+                          onClick={handleQueueItemClick}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </aside>
+          )}
 
           {checkedIn && isCurrentEventLive && currentEvent && currentEvent.status.toLowerCase() === "live" && (
             <aside className="global-queue-panel">
@@ -984,7 +986,7 @@ const Dashboard: React.FC = () => {
                       setSelectedSong(song);
                     }}
                   >
-                    <span>{song.title} - ${song.artist}</span>
+                    <span>{song.title} - {song.artist}</span>
                   </li>
                 ))}
               </ul>
@@ -1013,7 +1015,7 @@ const Dashboard: React.FC = () => {
               <div className="song-list">
                 {songs.map(song => (
                   <div key={song.id} className="song-card" onClick={() => setSelectedSong(song)}>
-                    <span className="song-text">{song.title} - ${song.artist}</span>
+                    <span className="song-text">{song.title} - {song.artist}</span>
                   </div>
                 ))}
               </div>
@@ -1035,7 +1037,7 @@ const Dashboard: React.FC = () => {
               <div className="song-list">
                 {spotifySongs.map(song => (
                   <div key={song.id} className="song-card" onClick={() => handleSpotifySongSelect(song)}>
-                    <span className="song-text">{song.title} - ${song.artist}</span>
+                    <span className="song-text">{song.title} - {song.artist}</span>
                   </div>
                 ))}
               </div>
@@ -1120,6 +1122,8 @@ const Dashboard: React.FC = () => {
           eventId={currentEvent?.eventId}
           queueId={selectedQueueId}
           readOnly={isSingerOnly}
+          checkedIn={checkedIn}
+          isCurrentEventLive={isCurrentEventLive}
         />
       )}
     </div>

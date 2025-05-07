@@ -4,9 +4,11 @@ import { API_ROUTES } from '../config/apiConfig';
 import SongDetailsModal from '../components/SongDetailsModal';
 import './ExploreSongs.css';
 import { Song, EventQueueItem, Event } from '../types';
+import useEventContext from '../context/EventContext';
 
 const ExploreSongs: React.FC = () => {
   const navigate = useNavigate();
+  const { checkedIn, isCurrentEventLive, currentEvent: contextCurrentEvent } = useEventContext();
   const [queues, setQueues] = useState<{ [eventId: number]: EventQueueItem[] }>({});
   const [favorites, setFavorites] = useState<Song[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -85,7 +87,6 @@ const ExploreSongs: React.FC = () => {
           });
           if (!response.ok) throw new Error(`Fetch queue failed for event ${event.eventId}: ${response.status}`);
           const data: EventQueueItem[] = await response.json();
-          // Deduplicate queue items by songId and requestorUserName
           const uniqueQueueData = Array.from(
             new Map(
               data.map(item => [`${item.songId}-${item.requestorUserName}`, item])
@@ -144,13 +145,13 @@ const ExploreSongs: React.FC = () => {
 
     try {
       console.log(`Fetching artists from: ${API_ROUTES.ARTISTS}`);
-      const Cheltenham = await fetch(API_ROUTES.ARTISTS, {
+      const response = await fetch(API_ROUTES.ARTISTS, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const responseText = await Cheltenham.text();
-      if (!Cheltenham.ok) {
-        console.error(`Fetch artists failed with status: ${Cheltenham.status}, response: ${responseText}`);
-        throw new Error(`Fetch artists failed with status: ${Cheltenham.status}`);
+      const responseText = await response.text();
+      if (!response.ok) {
+        console.error(`Fetch artists failed with status: ${response.status}, response: ${responseText}`);
+        throw new Error(`Fetch artists failed with status: ${response.status}`);
       }
       const data = JSON.parse(responseText);
       const artistList = (data as string[] || []).sort();
@@ -275,11 +276,10 @@ const ExploreSongs: React.FC = () => {
         return res.json();
       })
       .then(data => {
-        console.log("Fetched songs response:", data); // Debug response
+        console.log("Fetched songs response:", data);
         const newSongs = ((data.songs as Song[]) || []).filter(song => song.status?.toLowerCase() === 'active');
-        console.log("Filtered active songs:", newSongs); // Debug filtered songs
+        console.log("Filtered active songs:", newSongs);
         if (requestedByFilter === "Only My Requests" && newSongs.length > 0 && userName) {
-          // Check if songs are actually filtered by requestedBy
           const unfiltered = newSongs.some(song => song.requestedBy !== userName);
           if (unfiltered) {
             setFilterError("Unexpected songs returned. The filter may not be applied correctly.");
@@ -378,6 +378,12 @@ const ExploreSongs: React.FC = () => {
       console.error("Event not found for eventId:", eventId);
       setQueueError("Selected event not found.");
       throw new Error("Selected event not found.");
+    }
+
+    if (!checkedIn && event.status.toLowerCase() === "live") {
+      console.error("User not checked in for live event:", eventId);
+      setQueueError("You must be checked into the live event to add to its queue.");
+      throw new Error("User not checked into live event.");
     }
 
     const queueForEvent = queues[eventId] || [];
@@ -645,6 +651,8 @@ const ExploreSongs: React.FC = () => {
           onToggleFavorite={toggleFavorite}
           onAddToQueue={addToEventQueue}
           eventId={currentEvent?.eventId}
+          checkedIn={checkedIn}
+          isCurrentEventLive={isCurrentEventLive}
         />
       )}
     </div>

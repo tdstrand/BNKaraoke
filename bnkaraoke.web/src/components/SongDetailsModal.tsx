@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './SongDetailsModal.css';
-import { Song, Event } from '../types';
+import { Song, Event, AttendanceAction } from '../types';
 import { API_ROUTES } from '../config/apiConfig';
 import useEventContext from '../context/EventContext';
 
@@ -16,6 +16,8 @@ interface SongDetailsModalProps {
   eventId?: number;
   queueId?: number;
   readOnly?: boolean;
+  checkedIn: boolean;
+  isCurrentEventLive: boolean;
 }
 
 const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
@@ -29,45 +31,71 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
   eventId,
   queueId,
   readOnly = false,
+  checkedIn,
+  isCurrentEventLive,
 }) => {
   const navigate = useNavigate();
-  const { currentEvent } = useEventContext();
+  const { currentEvent, setCurrentEvent, setCheckedIn, setIsCurrentEventLive } = useEventContext();
   const [events, setEvents] = useState<Event[]>([]);
+  const [liveEvents, setLiveEvents] = useState<Event[]>([]);
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showEventSelectionModal, setShowEventSelectionModal] = useState(false);
+  const [showJoinConfirmation, setShowJoinConfirmation] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
 
-  // Fetch events only if currentEvent is unset and events are needed
+  // Fetch events for pre-selection and live event status
   useEffect(() => {
-    if (readOnly || currentEvent || isInQueue || !onAddToQueue) return;
+    if (readOnly || isInQueue || !onAddToQueue) return;
 
     const token = localStorage.getItem("token");
     if (!token) {
-      console.error("No token found");
+      console.error("No token found in SongDetailsModal");
       setEvents([]);
+      setLiveEvents([]);
       setError("Authentication token missing. Please log in again.");
       navigate("/");
       return;
     }
 
-    fetch(API_ROUTES.EVENTS, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(res => {
-        if (!res.ok) throw new Error(`Fetch events failed: ${res.status}`);
-        return res.json();
-      })
-      .then((data: Event[]) => {
+    const fetchEvents = async () => {
+      try {
+        console.log(`SongDetailsModal - Fetching events from: ${API_ROUTES.EVENTS}`);
+        const response = await fetch(API_ROUTES.EVENTS, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Fetch events failed: ${response.status} - ${errorText}`);
+        }
+        const data: Event[] = await response.json();
         console.log("SongDetailsModal - Fetched events:", data);
-        setEvents(data || []);
-      })
-      .catch(err => {
+
+        const upcoming = data.filter(event =>
+          event.status.toLowerCase() === "upcoming" &&
+          event.visibility.toLowerCase() === "visible" &&
+          !event.isCanceled
+        );
+        const live = data.filter(event =>
+          event.status.toLowerCase() === "live" &&
+          event.visibility.toLowerCase() === "visible" &&
+          !event.isCanceled
+        );
+        setEvents(upcoming);
+        setLiveEvents(live);
+        console.log("SongDetailsModal - Upcoming events:", upcoming);
+        console.log("SongDetailsModal - Live events:", live);
+      } catch (err) {
         console.error("SongDetailsModal - Fetch events error:", err);
         setEvents([]);
+        setLiveEvents([]);
         setError("Failed to load events. Please try again.");
-      });
-  }, [navigate, currentEvent, isInQueue, onAddToQueue, readOnly]);
+      }
+    };
+
+    fetchEvents();
+  }, [navigate, isInQueue, onAddToQueue, readOnly]);
 
   const handleAddToQueue = async (eventId: number) => {
     console.log("handleAddToQueue called with eventId:", eventId, "song:", song, "onAddToQueue:", !!onAddToQueue);
@@ -90,6 +118,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
       await onAddToQueue(song, eventId);
       console.log("Song successfully added to queue for eventId:", eventId);
       setShowEventSelectionModal(false);
+      setShowJoinConfirmation(false);
       onClose();
     } catch (err) {
       console.error("SongDetailsModal - Add to queue error:", err);
@@ -142,10 +171,63 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
       navigate("/");
       return;
     }
+    if (liveEvents.length > 0 && !checkedIn) {
+      console.log("Live events exist, blocking event selection for non-checked-in user");
+      setError("You must be checked into a live event to add to its queue.");
+      return;
+    }
     setShowEventSelectionModal(true);
   };
 
-  console.log("Rendering SongDetailsModal with song:", song, "isFavorite:", isFavorite, "isInQueue:", isInQueue, "eventId:", eventId, "queueId:", queueId, "readOnly:", readOnly);
+  const handleJoinAndAdd = (eventId: number) => {
+    console.log("handleJoinAndAdd called for eventId:", eventId);
+    setSelectedEventId(eventId);
+    setShowJoinConfirmation(true);
+  };
+
+  const confirmJoinAndAdd = async () => {
+    if (!selectedEventId || !onAddToQueue) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setError("Please log in to join the event.");
+      navigate("/login");
+      return;
+    }
+
+    try {
+      const requestorId = localStorage.getItem("userName") || "unknown";
+      const requestData: AttendanceAction = { RequestorId: requestorId };
+      const response = await fetch(`${API_ROUTES.EVENTS}/${selectedEventId}/attendance/check-in`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      const responseText = await response.text();
+      console.log(`Check-in Response for event ${selectedEventId}:`, response.status, responseText);
+      if (!response.ok) {
+        throw new Error(`Check-in failed: ${response.status} - ${responseText}`);
+      }
+
+      const event = events.find(e => e.eventId === selectedEventId) || currentEvent;
+      if (event) {
+        setCurrentEvent(event);
+        setCheckedIn(true);
+        setIsCurrentEventLive(event.status.toLowerCase() === "live");
+      }
+
+      await handleAddToQueue(selectedEventId);
+    } catch (err) {
+      console.error("Join and add error:", err);
+      setError(err instanceof Error ? err.message : "Failed to join event and add song.");
+    }
+  };
+
+  console.log("Rendering SongDetailsModal with song:", song, "isFavorite:", isFavorite, "isInQueue:", isInQueue, "eventId:", eventId, "queueId:", queueId, "readOnly:", readOnly, "checkedIn:", checkedIn, "isCurrentEventLive:", isCurrentEventLive, "liveEvents:", liveEvents);
 
   return (
     <>
@@ -196,22 +278,38 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
                   {isDeleting ? "Deleting..." : "Remove from Queue"}
                 </button>
               ) : (
-                onAddToQueue && (
+                checkedIn && isCurrentEventLive && onAddToQueue && currentEvent && (
                   <button
                     onClick={() => {
                       console.log("Add to Queue button clicked with currentEvent:", currentEvent);
-                      currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
+                      handleAddToQueue(currentEvent.eventId);
                     }}
                     onTouchStart={() => {
                       console.log("Add to Queue button touched with currentEvent:", currentEvent);
-                      currentEvent ? handleAddToQueue(currentEvent.eventId) : handleOpenEventSelection();
+                      handleAddToQueue(currentEvent.eventId);
                     }}
                     className="action-button"
-                    disabled={isAddingToQueue || (!currentEvent && events.length === 0) || isInQueue}
+                    disabled={isAddingToQueue || isInQueue}
                   >
-                    {isAddingToQueue ? "Adding..." : currentEvent ? `Add to Queue: ${currentEvent.eventCode}` : "Add to Queue"}
+                    {isAddingToQueue ? "Adding..." : `Add to Queue: ${currentEvent.eventCode}`}
                   </button>
                 )
+              )}
+              {!checkedIn && !isCurrentEventLive && liveEvents.length === 0 && onAddToQueue && (
+                <button
+                  onClick={() => {
+                    console.log("Add to Queue (pre-select) button clicked");
+                    handleOpenEventSelection();
+                  }}
+                  onTouchStart={() => {
+                    console.log("Add to Queue (pre-select) button touched");
+                    handleOpenEventSelection();
+                  }}
+                  className="action-button"
+                  disabled={isAddingToQueue || events.length === 0 || isInQueue}
+                >
+                  {isAddingToQueue ? "Adding..." : "Add to Queue"}
+                </button>
               )}
             </div>
           )}
@@ -234,7 +332,7 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
             {error && <p className="modal-error">{error}</p>}
             <div className="event-list">
               {events
-                .filter(event => event.status === "Live" || event.status === "Upcoming")
+                .filter(event => event.status.toLowerCase() === "upcoming")
                 .map(event => (
                   <div
                     key={event.eventId}
@@ -261,6 +359,46 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
                 onTouchStart={() => {
                   console.log("Cancel event selection modal (touch)");
                   setShowEventSelectionModal(false);
+                }}
+                className="action-button"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showJoinConfirmation && selectedEventId && (
+        <div className="modal-overlay secondary-modal song-details-modal">
+          <div className="modal-content song-details-modal">
+            <h3 className="modal-title">Join Event</h3>
+            <p>Do you want to join the event and add this song to the queue?</p>
+            <div className="modal-footer">
+              <button
+                onClick={() => {
+                  console.log("Confirm join and add for eventId:", selectedEventId);
+                  confirmJoinAndAdd();
+                }}
+                onTouchStart={() => {
+                  console.log("Confirm join and add (touch) for eventId:", selectedEventId);
+                  confirmJoinAndAdd();
+                }}
+                className="action-button"
+                disabled={isAddingToQueue}
+              >
+                {isAddingToQueue ? "Joining..." : "Join and Add"}
+              </button>
+              <button
+                onClick={() => {
+                  console.log("Cancel join confirmation");
+                  setShowJoinConfirmation(false);
+                  setSelectedEventId(null);
+                }}
+                onTouchStart={() => {
+                  console.log("Cancel join confirmation (touch)");
+                  setShowJoinConfirmation(false);
+                  setSelectedEventId(null);
                 }}
                 className="action-button"
               >

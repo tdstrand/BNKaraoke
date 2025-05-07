@@ -63,6 +63,7 @@ const Login: React.FC = () => {
       }
       const data = JSON.parse(responseText);
       console.log("userId from response:", data.userId);
+      console.log("Setting localStorage with token:", data.token, "userId:", data.userId, "roles:", data.roles);
       localStorage.setItem("token", data.token);
       localStorage.setItem("userId", data.userId);
       localStorage.setItem("roles", JSON.stringify(data.roles));
@@ -70,6 +71,7 @@ const Login: React.FC = () => {
       localStorage.setItem("lastName", data.lastName);
       localStorage.setItem("userName", cleanPhone);
       localStorage.setItem("mustChangePassword", data.mustChangePassword.toString());
+      console.log("Navigating to:", data.mustChangePassword ? "/change-password" : "/dashboard");
       navigate(data.mustChangePassword ? "/change-password" : "/dashboard");
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";

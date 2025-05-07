@@ -1,5 +1,5 @@
 import React, { useEffect, useState, ReactNode, ErrorInfo } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
@@ -62,21 +62,23 @@ const HeaderWrapper: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [mustChangePassword, setMustChangePassword] = useState<boolean | null>(null);
 
-  console.log('HeaderWrapper initializing', { location: location.pathname });
+  // Compute authentication state immediately
+  const token = localStorage.getItem("token");
+  const authenticated = !!token;
+  const isLoginPage = ["/", "/register", "/change-password"].includes(location.pathname);
+  console.log('HeaderWrapper initializing', { location: location.pathname, isAuthenticated, isLoginPage, mustChangePassword });
 
   useEffect(() => {
-    console.log('HeaderWrapper useEffect running', { location: location.pathname });
+    console.log('HeaderWrapper useEffect running', { location: location.pathname, token });
     try {
-      const token = localStorage.getItem("token");
       const storedMustChangePassword = localStorage.getItem("mustChangePassword");
-
       console.log('HeaderWrapper useEffect: token=', token, 'mustChangePassword=', storedMustChangePassword);
 
-      setIsAuthenticated(!!token);
+      setIsAuthenticated(authenticated);
       setMustChangePassword(storedMustChangePassword === "true");
 
       // Handle redirects
-      if (token) {
+      if (authenticated) {
         if (storedMustChangePassword === "true" && location.pathname !== "/change-password") {
           console.log('HeaderWrapper redirecting to /change-password');
           navigate("/change-password", { replace: true });
@@ -84,16 +86,16 @@ const HeaderWrapper: React.FC<{ children: ReactNode }> = ({ children }) => {
           console.log('HeaderWrapper redirecting to /dashboard');
           navigate("/dashboard", { replace: true });
         }
-      } else if (location.pathname !== "/" && location.pathname !== "/register" && location.pathname !== "/change-password") {
+      } else if (!isLoginPage) {
         console.log('HeaderWrapper redirecting to /');
         navigate("/", { replace: true });
       }
     } catch (error) {
-      console.error('HeaderWrapper useEffect error:', error);
+      console.error('HeaderWrapper useEffect error:', error, { message: "An error occurred while handling redirects", details: error });
     }
-  }, [location.pathname, navigate]);
+  }, [location.pathname, navigate, token, isLoginPage, authenticated]);
 
-  const showHeader = !["/", "/register", "/change-password"].includes(location.pathname);
+  const showHeader = !isLoginPage && authenticated;
 
   try {
     return (
@@ -116,25 +118,37 @@ const App = () => {
   useEffect(() => {
     if (isDevelopment) {
       console.log('App useEffect running');
+      console.log('Clearing localStorage on initial load in development mode');
+      localStorage.clear();
       const originalConsoleError = console.error;
       console.error = (...args) => {
-        setConsoleErrors((prev) => [...prev, args.join(' ')]);
+        const errorMessage = args.join(' ');
+        setConsoleErrors((prev) => [...prev, `${new Date().toISOString()}: ${errorMessage}`]);
         originalConsoleError(...args);
       };
       window.onerror = (message, source, lineno) => {
-        setConsoleErrors((prev) => [...prev, `Error: ${message} at ${source}:${lineno}`]);
+        setConsoleErrors((prev) => [...prev, `${new Date().toISOString()}: Error: ${message} at ${source}:${lineno}`]);
         return true;
+      };
+      // Intercept check-in requests for debugging
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options) => {
+        if (typeof url === 'string' && url.includes('/api/events/') && url.includes('/attendance/check-in')) {
+          console.log('Intercepted check-in request:', { url, options });
+        }
+        return originalFetch(url, options);
       };
       return () => {
         console.error = originalConsoleError;
         window.onerror = null;
+        window.fetch = originalFetch;
       };
     }
   }, [isDevelopment]);
 
   return (
     <div>
-      {isDevelopment && consoleErrors.length > 0 && (
+      {isDevelopment && consoleErrors.length > 0 && !["/", "/register", "/change-password"].includes(window.location.pathname) && (
         <div style={{ color: 'red', margin: '10px', background: 'rgba(255, 255, 255, 0.1)', padding: '10px', borderRadius: '5px' }}>
           <h3>Console Errors:</h3>
           <ul>
@@ -161,6 +175,7 @@ const App = () => {
               <Route path="/user-management" element={<HeaderWrapper><UserManagementPage /></HeaderWrapper>} />
               <Route path="/explore-songs" element={<HeaderWrapper><ExploreSongs /></HeaderWrapper>} />
               <Route path="/karaoke-channels" element={<HeaderWrapper><KaraokeChannelsPage /></HeaderWrapper>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </EventContextProvider>
         </Router>

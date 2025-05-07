@@ -154,6 +154,8 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
+        var logger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+        logger.LogInformation("CORS policy configured for origins: {Origins}", string.Join(", ", allowedOrigins));
     });
 });
 
@@ -216,10 +218,6 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddHttpClient();
 
 var app = builder.Build();
-
-// Log CORS origins at runtime
-var allowedOriginsAtRuntime = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new[] { "https://www.bnkaraoke.com", "http://localhost:8080" };
-app.Logger.LogInformation("CORS policy configured for origins: {Origins}", string.Join(", ", allowedOriginsAtRuntime));
 
 // Early logging middleware
 app.Use(async (context, next) =>
