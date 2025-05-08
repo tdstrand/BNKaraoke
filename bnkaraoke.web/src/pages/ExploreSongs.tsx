@@ -6,13 +6,17 @@ import './ExploreSongs.css';
 import { Song, EventQueueItem, Event } from '../types';
 import useEventContext from '../context/EventContext';
 
+// Permanent fix for ESLint warnings (May 2025)
 const ExploreSongs: React.FC = () => {
   const navigate = useNavigate();
-  const { checkedIn, isCurrentEventLive, currentEvent: contextCurrentEvent } = useEventContext();
+  // TODO: Implement contextCurrentEvent or remove if not needed
+  // const { checkedIn, isCurrentEventLive, currentEvent: contextCurrentEvent } = useEventContext();
+  const { checkedIn, isCurrentEventLive, currentEvent } = useEventContext();
   const [queues, setQueues] = useState<{ [eventId: number]: EventQueueItem[] }>({});
   const [favorites, setFavorites] = useState<Song[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
-  const [currentEvent, setCurrentEvent] = useState<Event | null>(null);
+  // TODO: Implement currentEventState or remove if not needed
+  // const [currentEventState, setCurrentEvent] = useState<Event | null>(null);
   const [artistFilter, setArtistFilter] = useState<string>("All Artists");
   const [decadeFilter, setDecadeFilter] = useState<string>("All Decades");
   const [genreFilter, setGenreFilter] = useState<string>("All Genres");
@@ -57,8 +61,9 @@ const ExploreSongs: React.FC = () => {
       .then((data: Event[]) => {
         console.log("Fetched events:", data);
         setEvents(data || []);
-        const liveOrUpcomingEvent = data.find(e => e.status === "Live" || e.status === "Upcoming");
-        setCurrentEvent(liveOrUpcomingEvent || data[0] || null);
+        // TODO: Implement setCurrentEvent or remove if not needed
+        // const liveOrUpcomingEvent = data.find(e => e.status === "Live" || e.status === "Upcoming");
+        // setCurrentEvent(liveOrUpcomingEvent || data[0] || null);
       })
       .catch(err => {
         console.error("Fetch events error:", err);
