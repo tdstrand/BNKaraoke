@@ -6,6 +6,7 @@ import { API_ROUTES } from "../config/apiConfig";
 import useEventContext from "../context/EventContext";
 import { AttendanceAction, Event } from "../types";
 //Adding Comment
+// Recommit to ensure production build uses correct Header.tsx
 const Header: React.FC = () => {
   console.log("Header component rendering");
 
