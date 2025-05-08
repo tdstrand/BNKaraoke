@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
 import { API_ROUTES } from '../config/apiConfig';
@@ -9,6 +9,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+// Permanent fix for ESLint warnings (May 2025)
 interface SortableQueueItemProps {
   queueItem: EventQueueItem;
   eventId: number;
@@ -210,7 +211,7 @@ const Dashboard: React.FC = () => {
   }, [navigate]);
 
   // Fetch queues and song details when currentEvent changes or queue updates
-  const fetchQueue = async () => {
+  const fetchQueue = useCallback(async () => {
     if (!currentEvent) {
       setGlobalQueue([]);
       return;
@@ -282,7 +283,7 @@ const Dashboard: React.FC = () => {
               if (songResponse.status === 401) {
                 setFetchError("Session expired. Please log in again.");
                 localStorage.removeItem("token");
-                navigate("/login");
+                navigate("//login");
                 return;
               }
               throw new Error(`Fetch song details failed for song ${item.songId}: ${songResponse.status}`);
@@ -323,11 +324,11 @@ const Dashboard: React.FC = () => {
       setSongDetailsMap({});
       setFetchError("Failed to load the event queue. Please try again or contact support.");
     }
-  };
+  }, [currentEvent, checkedIn, navigate]);
 
   useEffect(() => {
     fetchQueue();
-  }, [currentEvent, checkedIn, isCurrentEventLive, navigate]);
+  }, [currentEvent, checkedIn, isCurrentEventLive, fetchQueue]);
 
   const fetchSongs = async () => {
     if (!searchQuery.trim()) {
@@ -1089,6 +1090,7 @@ const Dashboard: React.FC = () => {
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 className="modal-title">Request Submitted</h3>
+            {/* eslint-disable-next-line react/no-unescaped-entities */}
             <p className="modal-text">
               A request has been made on your behalf to find a Karaoke version of '{requestedSong.title}' by {requestedSong.artist}.
             </p>

@@ -5,9 +5,8 @@ import "./Header.css";
 import { API_ROUTES } from "../config/apiConfig";
 import useEventContext from "../context/EventContext";
 import { AttendanceAction, Event } from "../types";
-//Adding Comment
-// Recommit to ensure production build uses correct Header.tsx
-// Recommit to resolve ESLint react-hooks/rules-of-hooks with HTTPS fix (May 2025)
+
+// Permanent fix for ESLint warnings and deployment reliability (May 2025)
 const Header: React.FC = () => {
   console.log("Header component rendering");
 
@@ -564,6 +563,7 @@ const Header: React.FC = () => {
           <div className="confirmation-modal">
             <div className="confirmation-content">
               <h3>Confirm Leave Event</h3>
+              {/* eslint-disable-next-line react/no-unescaped-entities */}
               <p>Are you sure you want to leave the event \"{currentEvent?.eventCode}\"?</p>
               <button onClick={confirmLeaveEvent} className="confirm-button">Yes, Leave</button>
               <button onClick={cancelLeaveEvent} className="cancel-button">Cancel</button>

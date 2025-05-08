@@ -5,6 +5,7 @@ import { Song, Event, AttendanceAction } from '../types';
 import { API_ROUTES } from '../config/apiConfig';
 import useEventContext from '../context/EventContext';
 
+// Permanent fix for ESLint warnings (May 2025)
 interface SongDetailsModalProps {
   song: Song;
   isFavorite: boolean;
@@ -179,11 +180,12 @@ const SongDetailsModal: React.FC<SongDetailsModalProps> = ({
     setShowEventSelectionModal(true);
   };
 
-  const handleJoinAndAdd = (eventId: number) => {
-    console.log("handleJoinAndAdd called for eventId:", eventId);
-    setSelectedEventId(eventId);
-    setShowJoinConfirmation(true);
-  };
+  // TODO: Implement handleJoinAndAdd or remove if not needed
+  // const handleJoinAndAdd = (eventId: number) => {
+  //   console.log("handleJoinAndAdd called for eventId:", eventId);
+  //   setSelectedEventId(eventId);
+  //   setShowJoinConfirmation(true);
+  // };
 
   const confirmJoinAndAdd = async () => {
     if (!selectedEventId || !onAddToQueue) return;
