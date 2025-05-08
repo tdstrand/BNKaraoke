@@ -7,6 +7,7 @@ import useEventContext from "../context/EventContext";
 import { AttendanceAction, Event } from "../types";
 //Adding Comment
 // Recommit to ensure production build uses correct Header.tsx
+// Recommit to resolve ESLint react-hooks/rules-of-hooks with HTTPS fix (May 2025)
 const Header: React.FC = () => {
   console.log("Header component rendering");
 
