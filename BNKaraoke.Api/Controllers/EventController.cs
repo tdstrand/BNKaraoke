@@ -355,12 +355,13 @@ namespace BNKaraoke.Api.Controllers
                     .Where(eq => eq.EventId == eventId)
                     .MaxAsync(eq => (int?)eq.Position) ?? 0;
 
+                var userName = requestor.UserName ?? string.Empty; // Ensure non-null
                 var newQueueEntry = new EventQueue
                 {
                     EventId = eventId,
                     SongId = queueDto.SongId,
-                    RequestorUserName = requestor.UserName,
-                    Singers = JsonSerializer.Serialize(new[] { requestor.UserName }),
+                    RequestorUserName = userName,
+                    Singers = JsonSerializer.Serialize(new[] { userName }),
                     Position = maxPosition + 1,
                     Status = eventEntity.Status,
                     IsActive = eventEntity.Status == "Live",
@@ -377,11 +378,8 @@ namespace BNKaraoke.Api.Controllers
                 var singersList = new List<string>();
                 try
                 {
-                    var singersArray = JsonSerializer.Deserialize<string[]>(newQueueEntry.Singers);
-                    if (singersArray != null)
-                    {
-                        singersList.AddRange(singersArray);
-                    }
+                    var singersArray = JsonSerializer.Deserialize<string[]>(newQueueEntry.Singers) ?? Array.Empty<string>();
+                    singersList.AddRange(singersArray);
                 }
                 catch (JsonException ex)
                 {
@@ -497,7 +495,11 @@ namespace BNKaraoke.Api.Controllers
                     var singersList = new List<string>();
                     try
                     {
-                        singersList.AddRange(JsonSerializer.Deserialize<string[]>(eq.Singers) ?? Array.Empty<string>());
+                        var singersArray = JsonSerializer.Deserialize<string[]>(eq.Singers);
+                        if (singersArray != null)
+                        {
+                            singersList.AddRange(singersArray);
+                        }
                     }
                     catch (JsonException ex)
                     {

@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Security.Claims;
+using BNKaraoke.Api.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -154,8 +155,6 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
-        var logger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
-        logger.LogInformation("CORS policy configured for origins: {Origins}", string.Join(", ", allowedOrigins));
     });
 });
 
@@ -164,6 +163,9 @@ builder.Services.AddControllers()
     .AddControllersAsServices();
 
 builder.Services.AddTransient<EventController>();
+
+// Add SignalR services
+builder.Services.AddSignalR();
 
 var loggerFactory = LoggerFactory.Create(logging =>
 {
@@ -284,6 +286,16 @@ else
 app.UseStaticFiles();
 app.UseRouting();
 app.UseCors("AllowNetwork");
+
+// Add logging for CORS origins after app is built
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new[] { "https://www.bnkaraoke.com", "http://localhost:8080" };
+    logger.LogInformation("CORS policy configured for origins: {Origins}", string.Join(", ", allowedOrigins));
+    await next.Invoke();
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -297,7 +309,9 @@ app.Use(async (context, next) =>
         context.Request.Method, context.Request.Path, context.Response.StatusCode);
 });
 
+// Map controllers and SignalR hub
 app.MapControllers();
+app.MapHub<QueueHub>("/hub/queue");
 
 using (var scope = app.Services.CreateScope())
 {
