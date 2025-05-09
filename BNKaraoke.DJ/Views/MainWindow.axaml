@@ -1,20 +1,102 @@
+<!-- File: C:\Users\tstra\source\repos\BNKaraoke\BNKaraoke.DJ\Views\MainWindow.axaml -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:BNKaraoke.DJ.ViewModels"
+        xmlns:models="using:BNKaraoke.DJ.Models"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
         x:Class="BNKaraoke.DJ.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="BNKaraoke.DJ">
+        Title="BNKaraoke DJ Console"
+        Background="#121212" Foreground="#FFFFFF"
+        FontFamily="Inter">
+	<Window.Styles>
+		<Style Selector="Button">
+			<Setter Property="Background" Value="#1E90FF"/>
+			<Setter Property="Foreground" Value="#FFFFFF"/>
+			<Setter Property="CornerRadius" Value="4"/>
+			<Setter Property="Padding" Value="8"/>
+		</Style>
+		<Style Selector="Button:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="#06b6d4"/>
+		</Style>
+	</Window.Styles>
+	<Grid>
+		<!-- Header: Logo and Title on the left, Buttons on the right -->
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainWindowViewModel/>
-    </Design.DataContext>
+		<Grid Grid.Row="0" Margin="0,10,0,0">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="*"/>
+				<ColumnDefinition Width="Auto"/>
+			</Grid.ColumnDefinitions>
 
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+			<!-- Logo and Title (Left) -->
+			<StackPanel Grid.Column="0" Orientation="Horizontal" Margin="10,0,0,0">
+				<Image Source="/Assets/twosinger.png" Width="125" Height="62.5" HorizontalAlignment="Left"/>
+				<TextBlock Text="BNKaraoke.com DJ Control Center" FontSize="20" VerticalAlignment="Center" Margin="10,0,0,0"/>
+			</StackPanel>
 
+			<!-- Login and Check-In Buttons (Right) -->
+			<StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,10,0">
+				<Button Content="{Binding CheckInButtonText}"
+                        Command="{Binding ToggleCheckInCommand}"
+                        IsVisible="{Binding IsLoggedIn}"
+                        Margin="0,0,10,0"/>
+				<Button Content="{Binding LoginButtonText}"
+                        Command="{Binding ToggleLoginCommand}"/>
+			</StackPanel>
+		</Grid>
+
+		<!-- Main layout: Queue on the left, Video and Settings on the right -->
+		<Grid Grid.Row="1" Margin="0,10,0,0">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="1*"/>
+				<ColumnDefinition Width="2*"/>
+			</Grid.ColumnDefinitions>
+
+			<!-- Queue List -->
+			<ListBox Grid.Column="0" ItemsSource="{Binding Queue}" Margin="10" Background="#1E90FF">
+				<ListBox.ItemTemplate>
+					<DataTemplate x:DataType="models:EventQueueDto">
+						<StackPanel Orientation="Horizontal">
+							<TextBlock Text="{Binding Position}" Margin="5"/>
+							<TextBlock Text="{Binding Song.Title}" Margin="5"/>
+							<TextBlock Text="{Binding Song.Artist}" Margin="5"/>
+							<TextBlock Text="{Binding RequestorUserName}" Margin="5"/>
+						</StackPanel>
+					</DataTemplate>
+				</ListBox.ItemTemplate>
+			</ListBox>
+
+			<!-- Video Playback and Settings -->
+			<Grid Grid.Column="1">
+				<Grid.RowDefinitions>
+					<RowDefinition Height="2*"/>
+					<RowDefinition Height="1*"/>
+				</Grid.RowDefinitions>
+
+				<!-- Video Playback Placeholder -->
+				<Border Grid.Row="0" BorderBrush="#63B3ED" BorderThickness="1" Margin="10">
+					<TextBlock Text="Video Playback Placeholder"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="#FFFFFF"/>
+				</Border>
+
+				<!-- Settings Panel -->
+				<StackPanel Grid.Row="1" Margin="10" Background="#63B3ED">
+					<TextBlock Text="Settings" FontSize="16" Margin="0,0,0,10"/>
+					<TextBlock Text="Cache Size (GB):"/>
+					<NumericUpDown Value="{Binding CacheSize}" Minimum="1" Maximum="50" Increment="1" Margin="0,5"/>
+					<Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Margin="0,10"/>
+				</StackPanel>
+			</Grid>
+		</Grid>
+	</Grid>
 </Window>
