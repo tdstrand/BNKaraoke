@@ -1,5 +1,4 @@
-﻿// File: C:\Users\tstra\source\repos\BNKaraoke\BNKaraoke.DJ\Models\EventQueueDto.cs
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System;
 
 namespace BNKaraoke.DJ.Models
@@ -10,6 +9,7 @@ namespace BNKaraoke.DJ.Models
         public int EventId { get; set; }
         public int SongId { get; set; }
         public string RequestorUserName { get; set; } = string.Empty;
+        public string RequestorDisplayName { get; set; } = string.Empty; // Added to store the fetched display name
         public List<string> Singers { get; set; } = new List<string>();
         public int Position { get; set; }
         public string Status { get; set; } = string.Empty;
