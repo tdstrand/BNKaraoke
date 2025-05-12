@@ -2,13 +2,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:BNKaraoke.DJ"
              xmlns:converters="using:BNKaraoke.DJ.Converters"
-             xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+             xmlns:fluent="clr-namespace:Avalonia.Themes.Fluent;assembly=Avalonia.Themes.Fluent"
              x:Class="BNKaraoke.DJ.App"
              RequestedThemeVariant="Dark">
 	<Application.Resources>
 		<converters:FormatSingersConverter x:Key="FormatSingersConverter"/>
+		<converters:OpacityConverter x:Key="OpacityConverter"/>
+		<converters:MultiConditionBrushConverter x:Key="MultiConditionBrushConverter"/>
 	</Application.Resources>
 	<Application.Styles>
-		<FluentTheme />
+		<fluent:FluentTheme/>
 	</Application.Styles>
 </Application>

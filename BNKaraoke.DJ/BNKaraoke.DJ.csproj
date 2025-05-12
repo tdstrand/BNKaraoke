@@ -3,31 +3,33 @@
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0</TargetFramework>
 		<Nullable>enable</Nullable>
-		<BuiltInComInteropSupport>true</BuiltInComInteropSupport>
-		<ApplicationManifest>app.manifest</ApplicationManifest>
-		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+		<UseAvalonia>true</UseAvalonia>
+		<NoWarn>NU1608;AVLN3001</NoWarn>
+		<AvaloniaGenerateXamlWarnings>false</AvaloniaGenerateXamlWarnings>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<AvaloniaResource Include="Assets\**" />
+		<PackageReference Include="Avalonia" Version="11.3.0" />
+		<PackageReference Include="Avalonia.Diagnostics" Version="11.3.0" />
+		<PackageReference Include="Avalonia.Desktop" Version="11.3.0" />
+		<PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.0" />
+		<PackageReference Include="Avalonia.Xaml.Interactivity" Version="11.3.0" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+		<PackageReference Include="LibVLCSharp.Avalonia" Version="3.8.2" />
+		<PackageReference Include="LibVLCSharp" Version="3.8.2" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.15" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.5.0" />
+		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.2" />
+		<PackageReference Include="System.Text.Json" Version="8.0.5" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Avalonia" Version="11.2.7" />
-		<PackageReference Include="Avalonia.Desktop" Version="11.2.7" />
-		<PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.7" />
-		<PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.7" />
-		<!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
-		<PackageReference Include="Avalonia.Diagnostics" Version="11.2.7">
-			<IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
-			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
-		</PackageReference>
-		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.1" />
-		<PackageReference Include="LibVLCSharp" Version="3.9.3" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.8" />
-		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
-		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
-		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.5.2" />
-		<PackageReference Include="System.Reactive" Version="6.0.1" />
+		<ProjectReference Include="..\BNKaraoke.Api\BNKaraoke.Api.csproj" />
 	</ItemGroup>
+
+	<ItemGroup>
+		<AvaloniaResource Include="Assets\gear3.png" />
+		<AvaloniaResource Include="Assets\twosinger.png" />
+	</ItemGroup>
+
 </Project>

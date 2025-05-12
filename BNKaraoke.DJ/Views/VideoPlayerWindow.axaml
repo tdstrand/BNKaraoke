@@ -1,0 +1,22 @@
+<Window x:Class="BNKaraoke.DJ.Views.VideoPlayerWindow"
+        xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:BNKaraoke.DJ.ViewModels"
+        xmlns:converters="using:BNKaraoke.DJ.Converters"
+        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
+        mc:Ignorable="d"
+        Title="Video Player"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False">
+	<Grid>
+		<vlc:VideoView x:Name="VideoView" MediaPlayer="{Binding MediaPlayer}"/>
+		<Canvas x:Name="UpperOverlayCanvas" IsHitTestVisible="False" Opacity="{Binding Settings.OverlayBackgroundOpacity, Converter={StaticResource OpacityConverter}}">
+			<TextBlock x:Name="UpperOverlayTextBlock" Text="{Binding UpperOverlayText}" Foreground="{Binding Settings.CustomMessageColor}" FontSize="{Binding Settings.OverlayFontSize}"/>
+		</Canvas>
+		<Canvas x:Name="LowerOverlayCanvas" VerticalAlignment="Bottom" IsHitTestVisible="False" Opacity="{Binding Settings.OverlayBackgroundOpacity, Converter={StaticResource OpacityConverter}}">
+			<TextBlock x:Name="LowerOverlayTextBlock" Text="{Binding CurrentlyPlayingOverlayText}" Foreground="{Binding Settings.CurrentlyPlayingColor}" FontSize="{Binding Settings.OverlayFontSize}"/>
+		</Canvas>
+	</Grid>
+</Window>

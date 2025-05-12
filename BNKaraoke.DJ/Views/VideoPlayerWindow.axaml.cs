@@ -1,22 +1,21 @@
-using Avalonia.Controls;
-using Avalonia.Interactivity;
+﻿using Avalonia.Controls;
 using System.Net.Http;
 using BNKaraoke.DJ.Services;
 using BNKaraoke.DJ.ViewModels;
 
 namespace BNKaraoke.DJ.Views
 {
-    public partial class MainWindow : Window
+    public partial class VideoPlayerWindow : Window
     {
-        public MainWindow()
+        public VideoPlayerWindow()
         {
             InitializeComponent();
 
-            // Create service instances; consider using dependency injection in a full solution.
+            // Supply the required dependencies.
             IApiService apiService = new ApiService(new HttpClient());
             ISignalRService signalRService = new SignalRService();
 
-            // Set the DataContext to the view model.
+            // For now, use MainWindowViewModel as the DataContext.
             DataContext = new MainWindowViewModel(apiService, signalRService);
         }
     }

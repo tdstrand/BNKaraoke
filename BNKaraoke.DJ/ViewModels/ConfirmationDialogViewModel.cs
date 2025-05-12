@@ -1,5 +1,6 @@
 ﻿using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+
 using CommunityToolkit.Mvvm.Input;
 
 namespace BNKaraoke.DJ.ViewModels
@@ -8,16 +9,18 @@ namespace BNKaraoke.DJ.ViewModels
     {
         private readonly Window _window;
 
-        public ConfirmationDialogViewModel(Window window)
+        [ObservableProperty]
+        private string _title;
+
+        [ObservableProperty]
+        private string _message;
+
+        public ConfirmationDialogViewModel(Window window, string title, string message)
         {
             _window = window;
+            _title = title;
+            _message = message;
         }
-
-        [ObservableProperty]
-        private string _title = "Confirmation";
-
-        [ObservableProperty]
-        private string _message = string.Empty;
 
         [RelayCommand]
         private void Confirm()

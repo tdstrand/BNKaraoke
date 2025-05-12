@@ -4,15 +4,15 @@ using System.Globalization;
 
 namespace BNKaraoke.DJ.Converters
 {
-    public class FormatSingersConverter : IValueConverter
+    public class OpacityConverter : IValueConverter
     {
-        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
-            if (value is string[] singers && singers != null)
+            if (value is int percentage)
             {
-                return string.Join(", ", singers);
+                return percentage / 100.0;
             }
-            return null;
+            return 0.0;
         }
 
         public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

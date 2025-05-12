@@ -1,66 +1,42 @@
-<!-- File: C:\Users\tstra\source\repos\BNKaraoke\BNKaraoke.DJ\Views\LoginWindow.axaml -->
-<Window xmlns="https://github.com/avaloniaui"
+<Window x:Class="BNKaraoke.DJ.Views.LoginWindow"
+        xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:BNKaraoke.DJ.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="300"
-        x:Class="BNKaraoke.DJ.Views.LoginWindow"
-        x:DataType="vm:LoginWindowViewModel"
-        Title="Login"
-        Width="400" Height="300"
-        WindowStartupLocation="CenterOwner"
-        CanResize="False"
-        Background="#1e3a8a">
-    <Window.Styles>
-        <Style Selector="TextBlock">
-            <Setter Property="Foreground" Value="#FFFFFF"/>
-        </Style>
-        <Style Selector="TextBox">
-            <Setter Property="Background" Value="#374151"/>
-            <Setter Property="Foreground" Value="#FFFFFF"/>
-            <Setter Property="BorderBrush" Value="#4B5563"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="4"/>
-            <Setter Property="Padding" Value="8"/>
-        </Style>
-        <Style Selector="Button">
-            <Setter Property="Background" Value="#1E90FF"/>
-            <Setter Property="Foreground" Value="#FFFFFF"/>
-            <Setter Property="CornerRadius" Value="4"/>
-            <Setter Property="Padding" Value="8"/>
-        </Style>
-        <Style Selector="Button:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#06b6d4"/>
-        </Style>
-    </Window.Styles>
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
-        
-        <TextBlock Grid.Row="0" Text="Login" FontSize="24" HorizontalAlignment="Center" Margin="0,0,0,20"/>
-        
-        <TextBlock Grid.Row="1" Text="Phone Number" Margin="0,0,0,5"/>
-        <TextBox Grid.Row="2" x:Name="PhoneNumberBox" Text="{Binding PhoneNumber}" 
-                 KeyDown="PhoneNumber_KeyDown"
-                 GotFocus="PhoneNumber_GotFocus"
-                 Margin="0,0,0,15"/>
-        
-        <TextBlock Grid.Row="3" Text="Password" Margin="0,0,0,5"/>
-        <TextBox Grid.Row="4" x:Name="PasswordBox" Text="{Binding Password}" 
-                 PasswordChar="*" 
-                 KeyDown="Password_KeyDown"
-                 Margin="0,0,0,20"/>
-        
-        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,10,0,0">
-            <Button Content="Login" Command="{Binding LoginCommand}"/>
-            <Button Content="Cancel" Command="{Binding CancelCommand}"/>
-        </StackPanel>
-    </Grid>
+        xmlns:vm="using:BNKaraoke.DJ.ViewModels"
+        xmlns:converters="using:BNKaraoke.DJ.Converters"
+        mc:Ignorable="d"
+        Title="BNKaraoke DJ Login"
+        Width="400" Height="500" WindowStartupLocation="CenterScreen"
+        Background="#1E90FF" CanResize="False">
+	<Window.Resources>
+		<converters:PhoneNumberConverter x:Key="PhoneNumberConverter"/>
+	</Window.Resources>
+	<Grid Margin="20">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+		<!-- Logo -->
+		<Image Grid.Row="0" Source="/Assets/twosinger.png" Width="100" Height="100" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+		<!-- Login Form -->
+		<StackPanel Grid.Row="1" VerticalAlignment="Center" DataContext="{Binding .}">
+			<TextBlock Text="BNKaraoke DJ Login" FontSize="24" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+			<TextBox x:Name="PhoneNumberBox" Watermark="Phone Number (e.g., (123) 456-7890)"
+                     Text="{Binding PhoneNumber, Converter={StaticResource PhoneNumberConverter}, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,10" KeyDown="PhoneNumber_KeyDown"/>
+			<TextBox x:Name="PasswordBox" Watermark="Password" PasswordChar="*"
+                     Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,10" KeyDown="Password_KeyDown"/>
+			<TextBlock Text="{Binding ErrorMessage}" Foreground="Red" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+			<Button Content="Login" Command="{Binding LoginCommand}" Background="#0000FF" Foreground="White"
+                    Margin="0,20,0,0" HorizontalAlignment="Center" Width="120" Height="40" FontSize="16">
+				<Button.Styles>
+					<Style Selector="Button:pointerover /template/ ContentPresenter">
+						<Setter Property="Background" Value="#0000CC"/>
+					</Style>
+				</Button.Styles>
+			</Button>
+		</StackPanel>
+	</Grid>
 </Window>

@@ -17,31 +17,15 @@
         public int QueueCount { get; set; }
     }
 
-    public class EventQueueDto
-    {
-        public int QueueId { get; set; }
-        public int EventId { get; set; }
-        public int SongId { get; set; }
-        public required string RequestorUserName { get; set; } // Username of the requestor
-        public required List<string> Singers { get; set; }
-        public int Position { get; set; }
-        public required string Status { get; set; }
-        public bool IsActive { get; set; }
-        public bool WasSkipped { get; set; }
-        public bool IsCurrentlyPlaying { get; set; }
-        public DateTime? SungAt { get; set; }
-        public bool IsOnBreak { get; set; }
-    }
-
     public class EventQueueCreateDto
     {
         public int SongId { get; set; }
-        public string RequestorUserName { get; set; } = string.Empty; // Renamed from RequestorId
+        public string RequestorUserName { get; set; } = string.Empty;
     }
 
     public class AttendanceActionDto
     {
-        public string RequestorId { get; set; } = string.Empty; // Renamed from SingerId
+        public string RequestorId { get; set; } = string.Empty;
     }
 
     public class ReorderQueueRequest
@@ -72,7 +56,7 @@
         public TimeSpan? ScheduledEndTime { get; set; }
         public string? KaraokeDJName { get; set; }
         public bool? IsCanceled { get; set; }
-        public int RequestLimit { get; set; } = 15; // Added field
+        public int RequestLimit { get; set; } = 15;
     }
 
     public class EventUpdateDto
@@ -87,6 +71,6 @@
         public TimeSpan? ScheduledEndTime { get; set; }
         public string? KaraokeDJName { get; set; }
         public bool? IsCanceled { get; set; }
-        public int RequestLimit { get; set; } = 15; // Added field
+        public int RequestLimit { get; set; } = 15;
     }
 }
