@@ -17,6 +17,7 @@
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
 		<PackageReference Include="LibVLCSharp.Avalonia" Version="3.8.2" />
 		<PackageReference Include="LibVLCSharp" Version="3.8.2" />
+		<PackageReference Include="MessageBox.Avalonia" Version="3.2.0" />
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.15" />
 		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.5.0" />
 		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.2" />
@@ -24,12 +25,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\BNKaraoke.Api\BNKaraoke.Api.csproj" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<AvaloniaResource Include="Assets\gear3.png" />
 		<AvaloniaResource Include="Assets\twosinger.png" />
+		<AvaloniaResource Include="Assets\blue-gear.png" />
 	</ItemGroup>
 
 </Project>

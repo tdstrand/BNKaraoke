@@ -1,7 +1,6 @@
-﻿using Avalonia.Controls;
-using System.Net.Http;
+﻿// File: VideoPlayerWindow.axaml.cs
+using Avalonia.Controls;
 using BNKaraoke.DJ.Services;
-using BNKaraoke.DJ.ViewModels;
 
 namespace BNKaraoke.DJ.Views
 {
@@ -10,13 +9,7 @@ namespace BNKaraoke.DJ.Views
         public VideoPlayerWindow()
         {
             InitializeComponent();
-
-            // Supply the required dependencies.
-            IApiService apiService = new ApiService(new HttpClient());
-            ISignalRService signalRService = new SignalRService();
-
-            // For now, use MainWindowViewModel as the DataContext.
-            DataContext = new MainWindowViewModel(apiService, signalRService);
+            var api = DependencyLocator.ApiService; // IApiServices type
         }
     }
 }

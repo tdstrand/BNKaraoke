@@ -1,9 +1,9 @@
-﻿using Avalonia.Controls;
+﻿// File: LoginWindow.axaml.cs
+using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
+using BNKaraoke.DJ.Services;
 using BNKaraoke.DJ.ViewModels;
-using System.Net.Http;
 
 namespace BNKaraoke.DJ.Views
 {
@@ -12,32 +12,21 @@ namespace BNKaraoke.DJ.Views
         public LoginWindow()
         {
             InitializeComponent();
-            DataContext = new LoginWindowViewModel(this, new HttpClient());
+
+            DataContext = new LoginWindowViewModel(
+                DependencyLocator.ApiService,
+                DependencyLocator.UserSessionService,
+                () => this.Close()
+            );
         }
 
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
-
-        private void PhoneNumber_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Enter)
-            {
-                var passwordBox = this.FindControl<TextBox>("PasswordBox");
-                if (passwordBox != null)
-                {
-                    passwordBox.Focus();
-                }
-            }
-        }
-
-        private void Password_KeyDown(object sender, KeyEventArgs e)
+        // This will handle Enter keypress
+        private void OnKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)
             {
-                var viewModel = DataContext as LoginWindowViewModel;
-                if (viewModel != null)
+                var viewModel = (LoginWindowViewModel)DataContext;
+                if (viewModel.LoginCommand.CanExecute(null))
                 {
                     viewModel.LoginCommand.Execute(null);
                 }

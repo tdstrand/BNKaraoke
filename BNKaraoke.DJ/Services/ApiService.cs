@@ -1,90 +1,52 @@
-﻿using System.Collections.Generic;
+﻿// File: ApiService.cs
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Threading.Tasks;
 using BNKaraoke.DJ.Models;
 
-// Aliasing our DJ-specific types to avoid conflicts.
-using DjEvent = BNKaraoke.DJ.Models.Event;
-using DjEventQueue = BNKaraoke.DJ.Models.EventQueue;
-
 namespace BNKaraoke.DJ.Services
 {
-    /// <summary>
-    /// Implements the IApiService interface using HttpClient to call the BNKaraoke.API.
-    /// Responses are mapped to DJ‑specific models.
-    /// </summary>
-    public class ApiService : IApiService
+    public class ApiService : IApiServices
     {
         private readonly HttpClient _httpClient;
-        private readonly string _apiBaseUrl;
 
         public ApiService(HttpClient httpClient)
         {
             _httpClient = httpClient;
-            // Typically load this from configuration (appsettings.json) if needed.
-            _apiBaseUrl = "http://localhost:7290";
         }
 
-        public async Task<LoginResult> LoginAsync(string username, string password)
+        public async Task<string> LoginAsync(string phoneNumber, string password)
         {
-            var loginData = new { username, password };
-            var response = await _httpClient.PostAsJsonAsync($"{_apiBaseUrl}/api/auth/login", loginData);
+            var response = await _httpClient.PostAsJsonAsync("/api/auth/login", new
+            {
+                userName = phoneNumber,
+                password = password
+            });
+
             response.EnsureSuccessStatusCode();
-            // Ensure a non-null result is returned (adjust as needed).
-            return await response.Content.ReadFromJsonAsync<LoginResult>() ?? new LoginResult();
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.GetProperty("token").GetString()!;
         }
 
-        public async Task<IEnumerable<DjEvent>> GetActiveEventsAsync()
+        public async Task<UserInfo> GetUserInfoAsync(string token)
         {
-            var response = await _httpClient.GetAsync($"{_apiBaseUrl}/api/event");
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<IEnumerable<DjEvent>>() ?? new List<DjEvent>();
-        }
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        public async Task CheckInAsync(int eventId)
-        {
-            var data = new { eventId };
-            var response = await _httpClient.PostAsJsonAsync($"{_apiBaseUrl}/api/dj/checkin", data);
+            var response = await _httpClient.GetAsync("/api/users/me");
             response.EnsureSuccessStatusCode();
-        }
 
-        public async Task CheckOutAsync()
-        {
-            var response = await _httpClient.PostAsync($"{_apiBaseUrl}/api/dj/checkout", null);
-            response.EnsureSuccessStatusCode();
+            var user = await response.Content.ReadFromJsonAsync<UserInfo>();
+            return user!;
         }
+    }
 
-        public async Task<DjEventQueue> GetEventQueueAsync()
-        {
-            var response = await _httpClient.GetAsync($"{_apiBaseUrl}/api/song/queue");
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<DjEventQueue>() ?? new DjEventQueue();
-        }
-
-        public async Task AdvanceSongAsync()
-        {
-            var response = await _httpClient.PutAsync($"{_apiBaseUrl}/api/song/queue/advance", null);
-            response.EnsureSuccessStatusCode();
-        }
-
-        public async Task ReorderQueueAsync(IEnumerable<int> newOrder)
-        {
-            var response = await _httpClient.PutAsJsonAsync($"{_apiBaseUrl}/api/song/queue/reorder", newOrder);
-            response.EnsureSuccessStatusCode();
-        }
-
-        public async Task RemoveSongAsync(int songId)
-        {
-            var response = await _httpClient.DeleteAsync($"{_apiBaseUrl}/api/song/queue/{songId}");
-            response.EnsureSuccessStatusCode();
-        }
-
-        public async Task PauseQueueAsync(bool pause)
-        {
-            var data = new { pause };
-            var response = await _httpClient.PutAsJsonAsync($"{_apiBaseUrl}/api/song/queue/pause", data);
-            response.EnsureSuccessStatusCode();
-        }
+    public interface IApiServices
+    {
+        Task<string> LoginAsync(string phoneNumber, string password);
+        Task<UserInfo> GetUserInfoAsync(string token);
     }
 }

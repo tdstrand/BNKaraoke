@@ -1,42 +1,70 @@
-<Window x:Class="BNKaraoke.DJ.Views.LoginWindow"
-        xmlns="https://github.com/avaloniaui"
+<!-- File: LoginWindow.axaml -->
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vm="using:BNKaraoke.DJ.ViewModels"
-        xmlns:converters="using:BNKaraoke.DJ.Converters"
-        mc:Ignorable="d"
-        Title="BNKaraoke DJ Login"
-        Width="400" Height="500" WindowStartupLocation="CenterScreen"
-        Background="#1E90FF" CanResize="False">
+        xmlns:conv="clr-namespace:BNKaraoke.DJ.Converters"
+	x:Class="BNKaraoke.DJ.Views.LoginWindow"
+	Width="400"
+	Height="350"
+	Title="DJ Login"
+	Background="#202020"
+	WindowStartupLocation="CenterOwner"
+	KeyDown="OnKeyDown">
+
 	<Window.Resources>
-		<converters:PhoneNumberConverter x:Key="PhoneNumberConverter"/>
+		<conv:InverseBoolConverter x:Key="InverseBoolConverter" />
 	</Window.Resources>
-	<Grid Margin="20">
-		<Grid.RowDefinitions>
-			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="*"/>
-		</Grid.RowDefinitions>
-		<!-- Logo -->
-		<Image Grid.Row="0" Source="/Assets/twosinger.png" Width="100" Height="100" HorizontalAlignment="Center" Margin="0,0,0,20"/>
-		<!-- Login Form -->
-		<StackPanel Grid.Row="1" VerticalAlignment="Center" DataContext="{Binding .}">
-			<TextBlock Text="BNKaraoke DJ Login" FontSize="24" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,20"/>
-			<TextBox x:Name="PhoneNumberBox" Watermark="Phone Number (e.g., (123) 456-7890)"
-                     Text="{Binding PhoneNumber, Converter={StaticResource PhoneNumberConverter}, UpdateSourceTrigger=PropertyChanged}"
-                     Margin="0,10" KeyDown="PhoneNumber_KeyDown"/>
-			<TextBox x:Name="PasswordBox" Watermark="Password" PasswordChar="*"
-                     Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
-                     Margin="0,10" KeyDown="Password_KeyDown"/>
-			<TextBlock Text="{Binding ErrorMessage}" Foreground="Red" HorizontalAlignment="Center" Margin="0,10,0,0"/>
-			<Button Content="Login" Command="{Binding LoginCommand}" Background="#0000FF" Foreground="White"
-                    Margin="0,20,0,0" HorizontalAlignment="Center" Width="120" Height="40" FontSize="16">
-				<Button.Styles>
-					<Style Selector="Button:pointerover /template/ ContentPresenter">
-						<Setter Property="Background" Value="#0000CC"/>
-					</Style>
-				</Button.Styles>
-			</Button>
+
+	<Border Background="#f0f0f0" Padding="25" CornerRadius="8">
+		<StackPanel Spacing="12">
+			<TextBlock Text="DJ Login"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"
+                       Foreground="#202020" />
+
+			<!-- Phone number input -->
+			<TextBlock Text="Phone Number" Foreground="#333" />
+			<TextBox Text="{Binding DisplayPhone, Mode=TwoWay}"
+                     Watermark="(123) 456-7890"
+                     MaxLength="14"
+                     Background="White"
+                     Foreground="Black"
+                     BorderBrush="#007ACC"
+                     CornerRadius="4" />
+
+			<!-- Password input -->
+			<TextBlock Text="Password" Foreground="#333" />
+			<TextBox Text="{Binding Password, Mode=TwoWay}"
+                     PasswordChar="*"
+                     Watermark="Enter your password"
+                     Background="White"
+                     Foreground="Black"
+                     BorderBrush="#007ACC"
+                     CornerRadius="4" />
+
+			<!-- Error message -->
+			<TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="Red"
+                       FontWeight="Bold"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding HasError}" />
+
+			<!-- Login button -->
+			<Button Content="Login"
+                    Command="{Binding LoginCommand}"
+                    Background="#007ACC"
+                    Foreground="White"
+                    HorizontalAlignment="Center"
+                    Width="120"
+                    CornerRadius="4"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+
+			<!-- Logging in... -->
+			<TextBlock Text="Logging in..."
+                       HorizontalAlignment="Center"
+                       Foreground="#007ACC"
+                       FontStyle="Italic"
+                       IsVisible="{Binding IsBusy}" />
 		</StackPanel>
-	</Grid>
+	</Border>
 </Window>
