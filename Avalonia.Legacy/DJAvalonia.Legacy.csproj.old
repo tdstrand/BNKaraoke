@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseAvalonia>true</UseAvalonia>
+		<NoWarn>NU1608;AVLN3001</NoWarn>
+		<AvaloniaGenerateXamlWarnings>false</AvaloniaGenerateXamlWarnings>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Avalonia" Version="11.3.0" />
+		<PackageReference Include="Avalonia.Diagnostics" Version="11.3.0" />
+		<PackageReference Include="Avalonia.Desktop" Version="11.3.0" />
+		<PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.0" />
+		<PackageReference Include="Avalonia.Xaml.Interactivity" Version="11.3.0" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+		<PackageReference Include="LibVLCSharp.Avalonia" Version="3.8.2" />
+		<PackageReference Include="LibVLCSharp" Version="3.8.2" />
+		<PackageReference Include="MessageBox.Avalonia" Version="3.2.0" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.15" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.5.0" />
+		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.2" />
+		<PackageReference Include="System.Text.Json" Version="8.0.5" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<AvaloniaResource Include="Assets\gear3.png" />
+		<AvaloniaResource Include="Assets\twosinger.png" />
+		<AvaloniaResource Include="Assets\blue-gear.png" />
+		<AvaloniaResource Include="Assets\twosinger-mnt.png" />
+	</ItemGroup>
+
+</Project>
