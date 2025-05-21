@@ -26,7 +26,7 @@ public partial class DJScreen : Window
     public DJScreen()
     {
         _userSessionService = UserSessionService.Instance;
-        _apiService = new ApiService(_userSessionService);
+        _apiService = new ApiService(_userSessionService, SettingsService.Instance);
         _currentEventId = null;
         InitializeComponent();
         DataContext = new DJScreenViewModel();

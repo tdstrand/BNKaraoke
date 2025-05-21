@@ -15,6 +15,7 @@ public partial class DJScreenViewModel : ObservableObject
 {
     private readonly IUserSessionService _userSessionService;
     private readonly IApiService _apiService;
+    private readonly SettingsService _settingsService;
     private string? _currentEventId;
 
     [ObservableProperty]
@@ -41,7 +42,8 @@ public partial class DJScreenViewModel : ObservableObject
     public DJScreenViewModel()
     {
         _userSessionService = UserSessionService.Instance;
-        _apiService = new ApiService(_userSessionService);
+        _settingsService = SettingsService.Instance;
+        _apiService = new ApiService(_userSessionService, _settingsService);
         Log.Information("[DJSCREEN VM] ViewModel instance created: {InstanceId}", GetHashCode());
         _userSessionService.SessionChanged += UserSessionService_SessionChanged;
         UpdateAuthenticationState();

@@ -13,11 +13,13 @@ public class ApiService : IApiService
 {
     private readonly HttpClient _httpClient;
     private readonly IUserSessionService _userSessionService;
+    private readonly SettingsService _settingsService;
 
-    public ApiService(IUserSessionService userSessionService)
+    public ApiService(IUserSessionService userSessionService, SettingsService settingsService)
     {
-        _httpClient = new HttpClient { BaseAddress = new Uri("http://localhost:7290") };
+        _httpClient = new HttpClient { BaseAddress = new Uri(settingsService.Settings.ApiUrl) };
         _userSessionService = userSessionService;
+        _settingsService = settingsService;
     }
 
     public async Task<LoginResult> LoginAsync(string username, string password)
@@ -51,7 +53,7 @@ public class ApiService : IApiService
         }
     }
 
-    public async Task JoinEventAsync(string eventId, string userId)
+    public async Task JoinEventAsync(string eventId, string phoneNumber)
     {
         try
         {
@@ -59,18 +61,18 @@ public class ApiService : IApiService
             {
                 _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _userSessionService.Token);
             }
-            var response = await _httpClient.PostAsJsonAsync($"/api/events/{eventId}/attendance/check-in", new AttendanceActionDto { RequestorId = userId });
+            var response = await _httpClient.PostAsJsonAsync($"/api/events/{eventId}/attendance/check-in", new AttendanceActionDto { RequestorId = phoneNumber });
             response.EnsureSuccessStatusCode();
-            Log.Information("[API] Joined event: EventId={EventId}, UserId={UserId}", eventId, userId);
+            Log.Information("[API] Joined event: EventId={EventId}, PhoneNumber={PhoneNumber}", eventId, phoneNumber);
         }
         catch (Exception ex)
         {
-            Log.Error("[API] Failed to join event {EventId} for UserId {UserId}: {Message}", eventId, userId, ex.Message);
+            Log.Error("[API] Failed to join event {EventId} for PhoneNumber {PhoneNumber}: {Message}", eventId, phoneNumber, ex.Message);
             throw;
         }
     }
 
-    public async Task LeaveEventAsync(string eventId, string userId)
+    public async Task LeaveEventAsync(string eventId, string phoneNumber)
     {
         try
         {
@@ -78,13 +80,13 @@ public class ApiService : IApiService
             {
                 _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _userSessionService.Token);
             }
-            var response = await _httpClient.PostAsJsonAsync($"/api/events/{eventId}/attendance/check-out", new AttendanceActionDto { RequestorId = userId });
+            var response = await _httpClient.PostAsJsonAsync($"/api/events/{eventId}/attendance/check-out", new AttendanceActionDto { RequestorId = phoneNumber });
             response.EnsureSuccessStatusCode();
-            Log.Information("[API] Left event: EventId={EventId}, UserId={UserId}", eventId, userId);
+            Log.Information("[API] Left event: EventId={EventId}, PhoneNumber={PhoneNumber}", eventId, phoneNumber);
         }
         catch (Exception ex)
         {
-            Log.Error("[API] Failed to leave event {EventId} for UserId {UserId}: {Message}", eventId, userId, ex.Message);
+            Log.Error("[API] Failed to leave event {EventId} for PhoneNumber {PhoneNumber}: {Message}", eventId, phoneNumber, ex.Message);
             throw;
         }
     }

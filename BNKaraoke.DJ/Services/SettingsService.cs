@@ -1,43 +1,81 @@
+using BNKaraoke.DJ.Models;
+using Serilog;
 using System;
 using System.IO;
-using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace BNKaraoke.DJ.Services;
 
 public class SettingsService
 {
-    private const string SettingsFile = "appsettings.json";
+    private static readonly Lazy<SettingsService> _instance = new Lazy<SettingsService>(() => new SettingsService());
+    public static SettingsService Instance => _instance.Value;
 
-    public AppSettings LoadSettings()
+    private readonly string _settingsPath;
+
+    public DjSettings Settings { get; private set; }
+
+    private SettingsService()
     {
-        if (!File.Exists(SettingsFile))
-        {
-            return new AppSettings { ApiBaseUrl = "http://localhost:7290" };
-        }
-
-        var json = File.ReadAllText(SettingsFile);
-        return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+        _settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BNKaraoke", "settings.json");
+        Settings = new DjSettings();
     }
 
-    public void SaveSettings(AppSettings settings)
-    {
-        var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(SettingsFile, json);
-    }
-
-    public async Task<bool> TestApiAsync(string apiBaseUrl)
+    public async Task LoadSettingsAsync()
     {
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(apiBaseUrl) };
-            var response = await client.GetAsync("api/diagnostic/test");
-            return response.IsSuccessStatusCode;
+            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
+            if (File.Exists(_settingsPath))
+            {
+                var json = await File.ReadAllTextAsync(_settingsPath);
+                Settings = JsonSerializer.Deserialize<DjSettings>(json) ?? new DjSettings();
+                Log.Information("[SETTINGS SERVICE] Loaded settings from {SettingsPath}", _settingsPath);
+            }
+            else
+            {
+                Settings = new DjSettings();
+                await SaveSettingsAsync();
+                Log.Information("[SETTINGS SERVICE] Created new settings file with defaults at {SettingsPath}", _settingsPath);
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            Settings = new DjSettings();
+            Log.Error("[SETTINGS SERVICE] Failed to load settings from {SettingsPath}: {Message}", _settingsPath, ex.Message);
+            System.Diagnostics.Debug.WriteLine($"[SETTINGS SERVICE] Failed to load settings from {_settingsPath}: {ex.Message}");
+            MessageBox.Show($"Settings file {_settingsPath} is corrupt or inaccessible. Default settings applied. Please review Settings.",
+                "Settings Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            try
+            {
+                await SaveSettingsAsync();
+            }
+            catch (Exception saveEx)
+            {
+                Log.Error("[SETTINGS SERVICE] Failed to create default settings file: {Message}", saveEx.Message);
+                System.Diagnostics.Debug.WriteLine($"[SETTINGS SERVICE] Failed to create default settings file: {saveEx.Message}");
+            }
+        }
+    }
+
+    public async Task SaveSettingsAsync()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
+            var json = JsonSerializer.Serialize(Settings, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(_settingsPath, json);
+            Log.Information("[SETTINGS SERVICE] Saved settings to {SettingsPath}", _settingsPath);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[SETTINGS SERVICE] Failed to save settings to {SettingsPath}: {Message}", _settingsPath, ex.Message);
+            System.Diagnostics.Debug.WriteLine($"[SETTINGS SERVICE] Failed to save settings to {_settingsPath}: {ex.Message}");
+            MessageBox.Show($"Failed to save settings to {_settingsPath}. Changes may not persist.",
+                "Settings Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            throw;
         }
     }
 }

@@ -3,8 +3,10 @@ using BNKaraoke.DJ.ViewModels;
 using BNKaraoke.DJ.Views;
 using Serilog;
 using Serilog.Debugging;
+using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace BNKaraoke.DJ;
@@ -14,32 +16,77 @@ public partial class App : Application
     [DllImport("kernel32.dll")]
     private static extern bool AllocConsole();
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         // Enable Serilog self-logging for errors
         SelfLog.Enable(msg => System.Diagnostics.Debug.WriteLine($"[Serilog Error] {msg}"));
 
-        // Allocate console for dotnet run
-        AllocConsole();
-
-        // Use writable user directory for log file
-        var logPath = @"C:\Users\tstra\Documents\BNKaraoke\log.txt";
-        if (!string.IsNullOrEmpty(Path.GetDirectoryName(logPath)))
+        // Initialize SettingsService asynchronously
+        var settingsService = SettingsService.Instance;
+        try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(logPath)); // Ensure directory exists
+            await settingsService.LoadSettingsAsync();
         }
-        Log.Logger = new LoggerConfiguration()
-            .WriteTo.Console()
-            .WriteTo.Debug()
-            .WriteTo.File(logPath, rollingInterval: RollingInterval.Day)
-            .CreateLogger();
+        catch (Exception ex)
+        {
+            // Log to console as fallback before Serilog is configured
+            System.Diagnostics.Debug.WriteLine($"[APP START] Failed to load settings: {ex.Message}");
+            MessageBox.Show($"Failed to initialize settings: {ex.Message}. Using defaults.", "Startup Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
 
-        Log.Information("[APP START] Serilog initialized, log file: {LogPath}", logPath);
+        // Allocate console for dotnet run if ShowDebugConsole is enabled
+        if (settingsService.Settings.ShowDebugConsole)
+        {
+            AllocConsole();
+        }
+
+        // Use configured log file path
+        var logPath = settingsService.Settings.LogFilePath;
+        var logDir = Path.GetDirectoryName(logPath);
+        if (string.IsNullOrEmpty(logDir))
+        {
+            logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BNKaraoke", "logs.txt");
+            logDir = Path.GetDirectoryName(logPath);
+            System.Diagnostics.Debug.WriteLine($"[APP START] Invalid configured log path, using fallback: {logPath}");
+        }
+        if (!string.IsNullOrEmpty(logDir))
+        {
+            try
+            {
+                Directory.CreateDirectory(logDir); // Ensure directory exists
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[APP START] Failed to create log directory {logDir}: {ex.Message}");
+                logPath = Path.Combine(Path.GetTempPath(), "BNKaraoke", "logs.txt");
+            }
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine($"[APP START] Invalid log path directory: {logPath}");
+        }
+
+        try
+        {
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Is(settingsService.Settings.EnableVerboseLogging ? Serilog.Events.LogEventLevel.Verbose : Serilog.Events.LogEventLevel.Information)
+                .WriteTo.Console()
+                .WriteTo.Debug()
+                .WriteTo.File(logPath, rollingInterval: RollingInterval.Day)
+                .CreateLogger();
+
+            Log.Information("[APP START] Serilog initialized, log file: {LogPath}", logPath);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[APP START] Failed to initialize Serilog: {ex.Message}");
+            MessageBox.Show($"Failed to initialize logging: {ex.Message}. Check console for details.", "Startup Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
 
         base.OnStartup(e);
 
         var userSessionService = UserSessionService.Instance;
-        var mainWindow = new DJScreen { WindowState = WindowState.Maximized };
+        var mainWindow = new DJScreen { WindowState = settingsService.Settings.MaximizedOnStart ? WindowState.Maximized : WindowState.Normal };
 
         Log.Information("[APP START] Checking session: IsAuthenticated={IsAuthenticated}", userSessionService.IsAuthenticated);
 
