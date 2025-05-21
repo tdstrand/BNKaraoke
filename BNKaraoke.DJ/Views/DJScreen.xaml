@@ -1,13 +1,43 @@
 <Window x:Class="BNKaraoke.DJ.Views.DJScreen"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="DJ Console" Height="400" Width="600" Background="#1E3A5F"
-        WindowStartupLocation="CenterScreen">
-    <Grid>
-        <TextBlock Text="Welcome to the DJ Screen!"
-                   Foreground="White"
-                   FontSize="24"
-                   HorizontalAlignment="Center"
-                   VerticalAlignment="Center"/>
-    </Grid>
+        xmlns:local="clr-namespace:BNKaraoke.DJ.Converters"
+        WindowState="Maximized" Title="DJ Console" Background="Black">
+    <Window.Resources>
+        <local:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </Window.Resources>
+    <DockPanel>
+        <!-- Header Area -->
+        <DockPanel DockPanel.Dock="Top" Height="60" Background="#1E3A5F">
+            <Image Source="pack://application:,,,/Assets/TwoSingerMnt.png" Width="50" Margin="10,0" DockPanel.Dock="Left" Stretch="Uniform"/>
+            <TextBlock Text="BNKaraoke.com DJ Control Center" FontSize="24" FontWeight="Bold" Foreground="White" 
+                       VerticalAlignment="Center" HorizontalAlignment="Center" DockPanel.Dock="Left"/>
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Margin="10,0">
+                <Button x:Name="SettingsButton" Width="40" Height="40" Margin="5" Background="Blue" 
+                        Command="{Binding OpenSettingsCommand}" Content="Settings"/>
+                <Button x:Name="JoinEventButton" Width="150" Height="40" Margin="5" Content="Join Live Event" 
+                        Background="{Binding JoinEventButtonColor}" 
+                        Visibility="{Binding IsAuthenticated, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}"
+                        Command="{Binding JoinLiveEventCommand}"/>
+                <Button x:Name="LoginLogoutButton" Width="100" Height="40" Margin="5" 
+                        Content="{Binding LoginLogoutButtonText}" Background="{Binding LoginLogoutButtonColor}"
+                        Foreground="White" FontWeight="Bold" Command="{Binding LoginLogoutCommand}"/>
+            </StackPanel>
+        </DockPanel>
+        <!-- Placeholder for Main Content -->
+        <Grid>
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Visibility="{Binding !IsAuthenticated, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}">
+                <TextBlock Text="Please log in to continue" FontSize="20" Foreground="White" Margin="10"/>
+            </StackPanel>
+            <StackPanel Visibility="{Binding IsAuthenticated, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}">
+                <TextBlock Text="{Binding WelcomeMessage, UpdateSourceTrigger=PropertyChanged}" 
+                           FontSize="20" FontWeight="Bold" Foreground="White" Margin="10"/>
+                <!-- Placeholders for DJQueue, Singers Detail, Control Area -->
+                <TextBlock Text="DJQueue Area (Left 3/4) - Placeholder" FontSize="16" Foreground="White" Margin="10"/>
+                <TextBlock Text="Singers Detail Area (Right 1/4) - Placeholder" FontSize="16" Foreground="White" Margin="10"/>
+                <TextBlock Text="Control Area (Bottom) - Placeholder" FontSize="16" Foreground="White" Margin="10"/>
+            </StackPanel>
+        </Grid>
+    </DockPanel>
 </Window>

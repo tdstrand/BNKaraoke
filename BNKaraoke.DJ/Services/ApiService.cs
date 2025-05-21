@@ -1,20 +1,25 @@
+// Services/ApiService.cs
+using BNKaraoke.DJ.Models;
+using System;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Threading.Tasks;
 
 namespace BNKaraoke.DJ.Services;
 
-public class ApiService : IApiService
+public class ApiService
 {
     private readonly HttpClient _httpClient;
 
-    public ApiService(string baseUrl)
+    public ApiService()
     {
-        _httpClient = new HttpClient { BaseAddress = new System.Uri(baseUrl) };
+        _httpClient = new HttpClient { BaseAddress = new Uri("http://localhost:7290") };
     }
 
-    public async Task<string> GetDiagnosticAsync()
+    public async Task<LoginResult> LoginAsync(string username, string password)
     {
-        var response = await _httpClient.GetAsync("/api/diagnostic/test");
-        return await response.Content.ReadAsStringAsync();
+        var response = await _httpClient.PostAsJsonAsync("/api/auth/login", new { UserName = username, Password = password });
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<LoginResult>();
     }
 }

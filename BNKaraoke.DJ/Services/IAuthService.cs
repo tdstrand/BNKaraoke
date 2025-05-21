@@ -5,5 +5,5 @@ namespace BNKaraoke.DJ.Services;
 
 public interface IAuthService
 {
-    Task<LoginResult?> LoginAsync(string phone, string password);
+    Task<LoginResult> LoginAsync(string phoneNumber, string password);
 }
