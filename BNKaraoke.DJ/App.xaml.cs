@@ -68,4 +68,17 @@ public partial class App : Application
         Log.Information("[APP START] Activating DJScreen");
         mainWindow.Activate();
     }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        Log.Information("[APP EXIT] Application shutting down");
+        var userSessionService = UserSessionService.Instance;
+        if (userSessionService.IsAuthenticated)
+        {
+            Log.Information("[APP EXIT] User is authenticated, logging out and leaving event");
+            userSessionService.ClearSession();
+        }
+        base.OnExit(e);
+        Log.CloseAndFlush();
+    }
 }

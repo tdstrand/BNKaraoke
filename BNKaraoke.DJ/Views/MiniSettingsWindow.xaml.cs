@@ -1,33 +1,30 @@
+using System;
 using System.Windows;
-using BNKaraoke.DJ.Models;
-using BNKaraoke.DJ.Services;
 
 namespace BNKaraoke.DJ.Views;
 
 public partial class MiniSettingsWindow : Window
 {
-    private readonly AppSettings _settings;
-    private readonly SettingsService _settingsService;
+    public string? BaseUrl { get; private set; }
 
-    public MiniSettingsWindow(AppSettings settings)
+    public MiniSettingsWindow()
     {
         InitializeComponent();
-        _settings = settings;
-        _settingsService = new SettingsService();
-        ApiBaseUrlTextBox.Text = _settings.ApiBaseUrl;
+        BaseUrlTextBox.Text = "http://localhost:7290"; // Default
     }
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
-        _settings.ApiBaseUrl = ApiBaseUrlTextBox.Text.Trim();
-        _settingsService.SaveSettings(_settings);
-        DialogResult = true;
-        Close();
-    }
-
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        DialogResult = false;
-        Close();
+        try
+        {
+            var uri = new Uri(BaseUrlTextBox.Text);
+            BaseUrl = BaseUrlTextBox.Text;
+            DialogResult = true;
+            Close();
+        }
+        catch (UriFormatException)
+        {
+            MessageBox.Show("Invalid URL format. Please enter a valid URL (e.g., http://localhost:7290)", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }

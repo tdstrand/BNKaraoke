@@ -8,36 +8,63 @@
     </Window.Resources>
     <DockPanel>
         <!-- Header Area -->
-        <DockPanel DockPanel.Dock="Top" Height="60" Background="#1E3A5F">
-            <Image Source="pack://application:,,,/Assets/TwoSingerMnt.png" Width="50" Margin="10,0" DockPanel.Dock="Left" Stretch="Uniform"/>
-            <TextBlock Text="BNKaraoke.com DJ Control Center" FontSize="24" FontWeight="Bold" Foreground="White" 
-                       VerticalAlignment="Center" HorizontalAlignment="Center" DockPanel.Dock="Left"/>
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Margin="10,0">
-                <Button x:Name="SettingsButton" Width="40" Height="40" Margin="5" Background="Blue" 
-                        Command="{Binding OpenSettingsCommand}" Content="Settings"/>
-                <Button x:Name="JoinEventButton" Width="150" Height="40" Margin="5" Content="Join Live Event" 
-                        Background="{Binding JoinEventButtonColor}" 
-                        Visibility="{Binding IsAuthenticated, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}"
-                        Command="{Binding JoinLiveEventCommand}"/>
-                <Button x:Name="LoginLogoutButton" Width="100" Height="40" Margin="5" 
+        <Grid DockPanel.Dock="Top" Height="80" Background="#1E3A5F">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Image Source="pack://application:,,,/Assets/TwoSingerMnt.png" Width="70" Margin="10,0" Stretch="Uniform" Grid.Column="0"/>
+            <TextBlock Text="BNKaraoke.com DJ Control Center" FontSize="28" FontWeight="Bold" Foreground="White" 
+                       VerticalAlignment="Center" HorizontalAlignment="Center" Grid.Column="1"/>
+            <DockPanel Grid.Column="2" Margin="0,0,0,0" HorizontalAlignment="Right">
+                <Button x:Name="SettingsButton" Width="40" Height="40" Margin="5,0,0,0" Background="Blue" 
+                        Command="{Binding OpenSettingsCommand}" DockPanel.Dock="Right">
+                    <Image Source="pack://application:,,,/Assets/gear3.png" Width="24" Height="24"/>
+                </Button>
+                <Button x:Name="LoginLogoutButton" Width="100" Height="40" Margin="5,0,5,0" 
                         Content="{Binding LoginLogoutButtonText}" Background="{Binding LoginLogoutButtonColor}"
-                        Foreground="White" FontWeight="Bold" Command="{Binding LoginLogoutCommand}"/>
-            </StackPanel>
-        </DockPanel>
-        <!-- Placeholder for Main Content -->
-        <Grid>
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
-                        Visibility="{Binding !IsAuthenticated, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}">
-                <TextBlock Text="Please log in to continue" FontSize="20" Foreground="White" Margin="10"/>
-            </StackPanel>
-            <StackPanel Visibility="{Binding IsAuthenticated, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}">
-                <TextBlock Text="{Binding WelcomeMessage, UpdateSourceTrigger=PropertyChanged}" 
-                           FontSize="20" FontWeight="Bold" Foreground="White" Margin="10"/>
-                <!-- Placeholders for DJQueue, Singers Detail, Control Area -->
-                <TextBlock Text="DJQueue Area (Left 3/4) - Placeholder" FontSize="16" Foreground="White" Margin="10"/>
-                <TextBlock Text="Singers Detail Area (Right 1/4) - Placeholder" FontSize="16" Foreground="White" Margin="10"/>
-                <TextBlock Text="Control Area (Bottom) - Placeholder" FontSize="16" Foreground="White" Margin="10"/>
-            </StackPanel>
+                        Foreground="White" FontWeight="Bold" Command="{Binding LoginLogoutCommand}" DockPanel.Dock="Right"/>
+                <Button x:Name="JoinEventButton" Width="150" Height="40" Margin="5,0,5,0" Content="{Binding JoinEventButtonText}" 
+                        Background="{Binding JoinEventButtonColor}" 
+                        Visibility="{Binding IsJoinEventButtonVisible, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}"
+                        Command="{Binding JoinLiveEventCommand}" DockPanel.Dock="Right"/>
+            </DockPanel>
         </Grid>
+        <!-- Main Content -->
+        <DockPanel>
+            <!-- Control Area (Bottom) -->
+            <DockPanel DockPanel.Dock="Bottom" Height="80" Background="#1E3A5F">
+                <TextBlock Text="Control Area: Play, Stop, Resume, Skip, Launch Video, Now Playing, Up Next, Timers, Warning Box (Placeholder)" 
+                           FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10"/>
+            </DockPanel>
+            <!-- DJQueue and Singers Detail -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="3*"/>
+                    <ColumnDefinition Width="1*"/>
+                </Grid.ColumnDefinitions>
+                <!-- DJQueue Area (Left 3/4) -->
+                <Border BorderBrush="White" BorderThickness="3" Margin="5" Grid.Column="0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="DJQueue Area: Live Event Name (Placeholder)" 
+                                   FontSize="16" Foreground="White" Margin="5"/>
+                        <TextBlock Text="Drag-and-drop queue, SignalR sync (/hubs/queue), click for Song Details Popup (Placeholder)" 
+                                   FontSize="14" Foreground="White" Margin="5"/>
+                    </DockPanel>
+                </Border>
+                <!-- Singers Detail Area (Right 1/4) -->
+                <Border BorderBrush="White" BorderThickness="3" Margin="5" Grid.Column="1">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="Singers Detail Area (Placeholder)" 
+                                   FontSize="16" Foreground="White" Margin="5"/>
+                        <ScrollViewer>
+                            <TextBlock Text="Scrollable singer list, SignalR sync (/hubs/singers), click for singer details (Placeholder)" 
+                                       FontSize="14" Foreground="White" Margin="5"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </DockPanel>
     </DockPanel>
 </Window>
