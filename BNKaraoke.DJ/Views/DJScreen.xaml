@@ -1,11 +1,21 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Window x:Class="BNKaraoke.DJ.Views.DJScreen"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:BNKaraoke.DJ.Converters"
-        WindowState="Maximized" Title="DJ Console" Background="Black">
+        xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+        xmlns:behaviors="clr-namespace:BNKaraoke.DJ.Behaviors"
+        WindowState="Maximized" Title="DJ Console">
     <Window.Resources>
         <local:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <LinearGradientBrush x:Key="WindowBackground" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#1e3a8a" Offset="0"/>
+            <GradientStop Color="#3b82f6" Offset="1"/>
+        </LinearGradientBrush>
     </Window.Resources>
+    <Window.Background>
+        <StaticResource ResourceKey="WindowBackground"/>
+    </Window.Background>
     <DockPanel>
         <!-- Header Area -->
         <Grid DockPanel.Dock="Top" Height="80" Background="#1E3A5F">
@@ -45,12 +55,58 @@
                     <ColumnDefinition Width="1*"/>
                 </Grid.ColumnDefinitions>
                 <!-- DJQueue Area (Left 3/4) -->
-                <Border BorderBrush="White" BorderThickness="3" Margin="5" Grid.Column="0">
+                <Border BorderBrush="White" BorderThickness="3" Margin="5" Grid.Column="0" Background="#2D2D2D">
                     <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="DJQueue Area: Live Event Name (Placeholder)" 
-                                   FontSize="16" Foreground="White" Margin="5"/>
-                        <TextBlock Text="Drag-and-drop queue, SignalR sync (/hubs/queue), click for Song Details Popup (Placeholder)" 
-                                   FontSize="14" Foreground="White" Margin="5"/>
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding CurrentEvent.Description}" 
+                                   FontSize="18" Foreground="#22d3ee" Margin="5">
+                            <TextBlock.Effect>
+                                <DropShadowEffect Color="#22d3ee" ShadowDepth="0" BlurRadius="5"/>
+                            </TextBlock.Effect>
+                        </TextBlock>
+                        <TextBlock DockPanel.Dock="Top" Text="Total Songs: {Binding QueueEntries.Count}" 
+                                   FontSize="14" Foreground="#ddd" Margin="5"/>
+                        <ListView x:Name="QueueListView" ItemsSource="{Binding QueueEntries}" Margin="5">
+                            <i:Interaction.Behaviors>
+                                <behaviors:DragDropBehavior DragCommand="{Binding StartDragCommand}" DropCommand="{Binding DropCommand}"/>
+                            </i:Interaction.Behaviors>
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Pos" Width="50" DisplayMemberBinding="{Binding Position}"/>
+                                    <GridViewColumn Header="Song Title" Width="200" DisplayMemberBinding="{Binding SongTitle}"/>
+                                    <GridViewColumn Header="Artist" Width="150" DisplayMemberBinding="{Binding SongArtist}"/>
+                                    <GridViewColumn Header="Requestor" Width="150" DisplayMemberBinding="{Binding RequestorDisplayName}"/>
+                                    <GridViewColumn Header="Length" Width="80" DisplayMemberBinding="{Binding VideoLength}"/>
+                                </GridView>
+                            </ListView.View>
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Background" Value="#f0f0f0"/>
+                                    <Setter Property="Padding" Value="10"/>
+                                    <Setter Property="BorderBrush" Value="#ccc"/>
+                                    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#e0e0e0"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="☰" Margin="5,0" Cursor="SizeAll" Width="20"/>
+                                        <TextBlock Text="{Binding Position}" Width="50"/>
+                                        <TextBlock Text="{Binding SongTitle}" Width="200"/>
+                                        <TextBlock Text="{Binding SongArtist}" Width="150"/>
+                                        <TextBlock Text="{Binding RequestorDisplayName}" Width="150"/>
+                                        <TextBlock Text="{Binding VideoLength}" Width="80"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                            <ListView.InputBindings>
+                                <MouseBinding Gesture="LeftClick" Command="{Binding ShowSongDetailsCommand}"/>
+                            </ListView.InputBindings>
+                        </ListView>
                     </DockPanel>
                 </Border>
                 <!-- Singers Detail Area (Right 1/4) -->
