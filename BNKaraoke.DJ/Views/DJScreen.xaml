@@ -8,6 +8,8 @@
         WindowState="Maximized" Title="DJ Console">
     <Window.Resources>
         <local:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <local:PlayPauseConverter x:Key="PlayPauseConverter" />
+        <!-- New converter for Play/Pause icon -->
         <LinearGradientBrush x:Key="WindowBackground" StartPoint="0,0" EndPoint="0,1">
             <GradientStop Color="#1e3a8a" Offset="0"/>
             <GradientStop Color="#3b82f6" Offset="1"/>
@@ -45,8 +47,22 @@
         <DockPanel>
             <!-- Control Area (Bottom) -->
             <DockPanel DockPanel.Dock="Bottom" Height="80" Background="#1E3A5F">
-                <TextBlock Text="Control Area: Play, Stop, Resume, Skip, Launch Video, Now Playing, Up Next, Timers, Warning Box (Placeholder)" 
-                           FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10"/>
+                <StackPanel Orientation="Horizontal" Margin="10">
+                    <Button Width="80" Height="40" Margin="5" Command="{Binding PlayCommand}" Background="#22d3ee" Foreground="Black" FontWeight="Bold">
+                        <TextBlock Text="{Binding IsPlaying, Converter={StaticResource PlayPauseConverter}}" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Button>
+                    <Button Width="80" Height="40" Margin="5" Command="{Binding StopCommand}" Background="#22d3ee" Foreground="Black" FontWeight="Bold">
+                        <TextBlock Text="■" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Button>
+                    <Button Width="80" Height="40" Margin="5" Command="{Binding SkipCommand}" Background="#22d3ee" Foreground="Black" FontWeight="Bold">
+                        <TextBlock Text="⏭" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Button>
+                    <Button Content="Launch Video" Width="120" Height="40" Margin="5" Command="{Binding LaunchVideoCommand}" Background="#22d3ee" Foreground="Black" FontWeight="Bold"/>
+                    <TextBlock Text="Now Playing: [Placeholder]" FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
+                    <TextBlock Text="Up Next: [Placeholder]" FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
+                    <TextBlock Text="Timer: [Placeholder]" FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
+                    <TextBlock Text="Warning: [Placeholder]" FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
+                </StackPanel>
             </DockPanel>
             <!-- DJQueue and Singers Detail -->
             <Grid>
@@ -65,7 +81,7 @@
                         </TextBlock>
                         <TextBlock DockPanel.Dock="Top" Text="Total Songs: {Binding QueueEntries.Count}" 
                                    FontSize="14" Foreground="#ddd" Margin="5"/>
-                        <ListView x:Name="QueueListView" ItemsSource="{Binding QueueEntries}" Margin="5">
+                        <ListView x:Name="QueueListView" ItemsSource="{Binding QueueEntries}" Margin="5" SelectedItem="{Binding SelectedQueueEntry}">
                             <i:Interaction.Behaviors>
                                 <behaviors:DragDropBehavior DragCommand="{Binding StartDragCommand}" DropCommand="{Binding DropCommand}"/>
                             </i:Interaction.Behaviors>
@@ -76,6 +92,8 @@
                                     <GridViewColumn Header="Artist" Width="150" DisplayMemberBinding="{Binding SongArtist}"/>
                                     <GridViewColumn Header="Requestor" Width="150" DisplayMemberBinding="{Binding RequestorDisplayName}"/>
                                     <GridViewColumn Header="Length" Width="80" DisplayMemberBinding="{Binding VideoLength}"/>
+                                    <GridViewColumn Header="Genre" Width="100" DisplayMemberBinding="{Binding Genre}"/>
+                                    <GridViewColumn Header="Decade" Width="80" DisplayMemberBinding="{Binding Decade}"/>
                                 </GridView>
                             </ListView.View>
                             <ListView.ItemContainerStyle>
@@ -100,6 +118,8 @@
                                         <TextBlock Text="{Binding SongArtist}" Width="150"/>
                                         <TextBlock Text="{Binding RequestorDisplayName}" Width="150"/>
                                         <TextBlock Text="{Binding VideoLength}" Width="80"/>
+                                        <TextBlock Text="{Binding Genre}" Width="100"/>
+                                        <TextBlock Text="{Binding Decade}" Width="80"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListView.ItemTemplate>

@@ -1,7 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Windows;
@@ -46,6 +45,12 @@ public partial class DJScreenViewModel : ObservableObject
 
     [ObservableProperty]
     private ObservableCollection<QueueEntry> _queueEntries = new ObservableCollection<QueueEntry>();
+
+    [ObservableProperty]
+    private QueueEntry? _selectedQueueEntry; // Nullable to fix CS8618
+
+    [ObservableProperty]
+    private bool _isPlaying; // New property to track playback state
 
     public DJScreenViewModel()
     {
@@ -171,13 +176,21 @@ public partial class DJScreenViewModel : ObservableObject
     private void ShowSongDetails()
     {
         Log.Information("[DJSCREEN] ShowSongDetails command invoked");
-        var songDetailsWindow = new SongDetailsWindow
+        if (SelectedQueueEntry != null)
         {
-            WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            DataContext = new SongDetailsViewModel { SelectedQueueEntry = QueueEntries.Count > 0 ? QueueEntries[0] : null } // Placeholder: select first item
-        };
-        songDetailsWindow.ShowDialog();
-        Log.Information("[DJSCREEN] SongDetailsWindow closed");
+            var songDetailsWindow = new SongDetailsWindow
+            {
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                DataContext = new SongDetailsViewModel { SelectedQueueEntry = SelectedQueueEntry }
+            };
+            songDetailsWindow.ShowDialog();
+            Log.Information("[DJSCREEN] SongDetailsWindow closed");
+        }
+        else
+        {
+            Log.Information("[DJSCREEN] No queue entry selected for song details");
+            MessageBox.Show("Please select a song to view details.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
     }
 
     [RelayCommand]
@@ -185,6 +198,134 @@ public partial class DJScreenViewModel : ObservableObject
     {
         Log.Information("[DJSCREEN] ReorderQueue command invoked");
         // Placeholder: Log reordering; will integrate with ApiService.ReorderQueueAsync
+    }
+
+    [RelayCommand]
+    private async Task Play()
+    {
+        Log.Information("[DJSCREEN] Play/Pause command invoked");
+        if (SelectedQueueEntry != null && !string.IsNullOrEmpty(_currentEventId) && SelectedQueueEntry.QueueId != null)
+        {
+            try
+            {
+                if (IsPlaying)
+                {
+                    await _apiService.PauseAsync(_currentEventId, SelectedQueueEntry.QueueId);
+                    Log.Information("[DJSCREEN] Pause request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
+                    MessageBox.Show($"Paused {SelectedQueueEntry.SongTitle}", "Pause", MessageBoxButton.OK, MessageBoxImage.Information);
+                    IsPlaying = false;
+                }
+                else
+                {
+                    await _apiService.PlayAsync(_currentEventId, SelectedQueueEntry.QueueId);
+                    Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
+                    MessageBox.Show($"Playing {SelectedQueueEntry.SongTitle}", "Play", MessageBoxButton.OK, MessageBoxImage.Information);
+                    IsPlaying = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to {Action} queue {QueueId}: {Message}", IsPlaying ? "pause" : "play", SelectedQueueEntry.QueueId, ex.Message);
+                MessageBox.Show($"Failed to {(IsPlaying ? "pause" : "play")}: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        else
+        {
+            Log.Information("[DJSCREEN] Play/Pause failed: No queue entry selected or no event joined");
+            MessageBox.Show("Please select a song and join an event.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    [RelayCommand]
+    private async Task Stop()
+    {
+        Log.Information("[DJSCREEN] Stop command invoked");
+        if (SelectedQueueEntry != null && !string.IsNullOrEmpty(_currentEventId) && SelectedQueueEntry.QueueId != null)
+        {
+            try
+            {
+                await _apiService.StopAsync(_currentEventId, SelectedQueueEntry.QueueId);
+                Log.Information("[DJSCREEN] Stop request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
+                MessageBox.Show($"Stopped {SelectedQueueEntry.SongTitle}", "Stop", MessageBoxButton.OK, MessageBoxImage.Information);
+                IsPlaying = false; // Reset playback state
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to stop queue {QueueId}: {Message}", SelectedQueueEntry.QueueId, ex.Message);
+                MessageBox.Show($"Failed to stop: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        else
+        {
+            Log.Information("[DJSCREEN] Stop failed: No queue entry selected or no event joined");
+            MessageBox.Show("Please select a song and join an event.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    [RelayCommand]
+    private async Task Skip()
+    {
+        Log.Information("[DJSCREEN] Skip command invoked");
+        if (SelectedQueueEntry != null && !string.IsNullOrEmpty(_currentEventId) && SelectedQueueEntry.QueueId != null)
+        {
+            try
+            {
+                await _apiService.SkipAsync(_currentEventId, SelectedQueueEntry.QueueId);
+                Log.Information("[DJSCREEN] Skip request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
+                MessageBox.Show($"Skipped {SelectedQueueEntry.SongTitle}", "Skip", MessageBoxButton.OK, MessageBoxImage.Information);
+                IsPlaying = false; // Reset playback state
+                await LoadQueueData();
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to skip queue {QueueId}: {Message}", SelectedQueueEntry.QueueId, ex.Message);
+                MessageBox.Show($"Failed to skip: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        else
+        {
+            Log.Information("[DJSCREEN] Skip failed: No queue entry selected or no event joined");
+            MessageBox.Show("Please select a song and join an event.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    [RelayCommand]
+    private async Task LaunchVideo()
+    {
+        Log.Information("[DJSCREEN] LaunchVideo command invoked");
+        if (SelectedQueueEntry != null && !string.IsNullOrEmpty(_currentEventId) && SelectedQueueEntry.QueueId != null)
+        {
+            try
+            {
+                await _apiService.LaunchVideoAsync(_currentEventId, SelectedQueueEntry.QueueId);
+                Log.Information("[DJSCREEN] Launch video request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
+                MessageBox.Show($"Launched video for {SelectedQueueEntry.SongTitle}", "Launch Video", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to launch video for queue {QueueId}: {Message}", SelectedQueueEntry.QueueId, ex.Message);
+                MessageBox.Show($"Failed to launch video: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        else
+        {
+            Log.Information("[DJSCREEN] Launch video failed: No queue entry selected or no event joined");
+            MessageBox.Show("Please select a song and join an event.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    [RelayCommand]
+    private void StartDrag(QueueEntry entry)
+    {
+        Log.Information("[DJSCREEN] StartDrag command invoked for queue {QueueId}", entry?.QueueId);
+        // Placeholder for drag start logic
+    }
+
+    [RelayCommand]
+    private void Drop(QueueEntry entry)
+    {
+        Log.Information("[DJSCREEN] Drop command invoked for queue {QueueId}", entry?.QueueId);
+        // Placeholder for drop logic
     }
 
     public void UpdateAuthenticationState()
