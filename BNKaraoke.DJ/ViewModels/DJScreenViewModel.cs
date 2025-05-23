@@ -1,23 +1,26 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using BNKaraoke.DJ.Services;
 using BNKaraoke.DJ.Views;
 using BNKaraoke.DJ.Models;
 using Serilog;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace BNKaraoke.DJ.ViewModels;
 
 #pragma warning disable CS8622 // Suppress nullability warning for event handlers
 public partial class DJScreenViewModel : ObservableObject
 {
-    private readonly IUserSessionService _userSessionService;
-    private readonly IApiService _apiService;
-    private readonly SettingsService _settingsService;
+    private readonly IUserSessionService _userSessionService = UserSessionService.Instance;
+    private readonly IApiService _apiService = new ApiService(UserSessionService.Instance, SettingsService.Instance);
+    private readonly SettingsService _settingsService = SettingsService.Instance;
     private string? _currentEventId;
+    private HubConnection? _signalRConnection;
 
     [ObservableProperty]
     private bool _isAuthenticated;
@@ -47,28 +50,235 @@ public partial class DJScreenViewModel : ObservableObject
     private ObservableCollection<QueueEntry> _queueEntries = new ObservableCollection<QueueEntry>();
 
     [ObservableProperty]
-    private QueueEntry? _selectedQueueEntry; // Nullable to fix CS8618
+    private QueueEntry? _selectedQueueEntry;
 
     [ObservableProperty]
-    private bool _isPlaying; // New property to track playback state
+    private bool _isPlaying;
+
+    [ObservableProperty]
+    private ObservableCollection<Singer> _singers = new ObservableCollection<Singer>();
+
+    [ObservableProperty]
+    private int _nonDummySingersCount;
+
+    [ObservableProperty]
+    private ObservableCollection<Singer> _greenSingers = new ObservableCollection<Singer>();
+
+    [ObservableProperty]
+    private ObservableCollection<Singer> _yellowSingers = new ObservableCollection<Singer>();
+
+    [ObservableProperty]
+    private ObservableCollection<Singer> _orangeSingers = new ObservableCollection<Singer>();
+
+    [ObservableProperty]
+    private ObservableCollection<Singer> _redSingers = new ObservableCollection<Singer>();
 
     public DJScreenViewModel()
     {
-        _userSessionService = UserSessionService.Instance;
-        _settingsService = SettingsService.Instance;
-        _apiService = new ApiService(_userSessionService, _settingsService);
-        Log.Information("[DJSCREEN VM] ViewModel instance created: {InstanceId}", GetHashCode());
-        _userSessionService.SessionChanged += UserSessionService_SessionChanged;
-        UpdateAuthenticationState();
-        LoadMockQueueData(); // Temporary mock data for testing
-        Log.Information("[DJSCREEN INIT] Initial state: IsAuthenticated={IsAuthenticated}, WelcomeMessage={WelcomeMessage}, LoginLogoutButtonText={LoginLogoutButtonText}, JoinEventButtonText={JoinEventButtonText}",
-            IsAuthenticated, WelcomeMessage, LoginLogoutButtonText, JoinEventButtonText);
+        try
+        {
+            Log.Information("[DJSCREEN VM] Starting ViewModel constructor");
+            _userSessionService.SessionChanged += UserSessionService_SessionChanged;
+            Log.Information("[DJSCREEN VM] Subscribed to SessionChanged event");
+            UpdateAuthenticationState();
+            Log.Information("[DJSCREEN VM] Called UpdateAuthenticationState in constructor");
+            Log.Information("[DJSCREEN VM] ViewModel instance created: {InstanceId}", GetHashCode());
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN VM] Failed to initialize ViewModel: {Message}", ex.Message);
+            MessageBox.Show($"Failed to initialize DJScreen: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void InitializeSignalR()
+    {
+        try
+        {
+            Log.Information("[DJSCREEN SIGNALR] Initializing SignalR connection");
+            _signalRConnection = new HubConnectionBuilder()
+                .WithUrl("http://localhost:7290/hubs/singers")
+                .Build();
+
+            _signalRConnection.On<string, string, bool, bool, bool>("UpdateSingerStatus", (userId, displayName, isLoggedIn, isJoined, isOnBreak) =>
+            {
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    var singer = Singers.FirstOrDefault(s => s.UserId == userId);
+                    if (singer != null)
+                    {
+                        singer.IsLoggedIn = isLoggedIn;
+                        singer.IsJoined = isJoined;
+                        singer.IsOnBreak = isOnBreak;
+                    }
+                    else
+                    {
+                        singer = new Singer { UserId = userId, DisplayName = displayName, IsLoggedIn = isLoggedIn, IsJoined = isJoined, IsOnBreak = isOnBreak };
+                        Singers.Add(singer);
+                    }
+                    SortSingers();
+                    Log.Information("[DJSCREEN SIGNALR] Singer status updated: {UserId}, {DisplayName}, LoggedIn={IsLoggedIn}, Joined={IsJoined}, OnBreak={IsOnBreak}",
+                        userId, displayName, isLoggedIn, isJoined, isOnBreak);
+                });
+            });
+
+            _signalRConnection.Closed += async (error) =>
+            {
+                Log.Error("[DJSCREEN SIGNALR] Connection closed: {Error}", error?.Message);
+                await Task.Delay(5000);
+                await StartSignalRConnection();
+            };
+
+            StartSignalRConnection().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN SIGNALR] Failed to initialize SignalR: {Message}", ex.Message);
+        }
+    }
+
+    private async Task StartSignalRConnection()
+    {
+        try
+        {
+            if (_signalRConnection != null)
+            {
+                await _signalRConnection.StartAsync();
+                Log.Information("[DJSCREEN SIGNALR] Connected to singers hub");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN SIGNALR] Failed to connect to singers hub: {Message}", ex.Message);
+        }
+    }
+
+    private void LoadMockSingerData()
+    {
+        try
+        {
+            Log.Information("[DJSCREEN] Loading mock singer data");
+            Singers.Clear();
+
+            // Green (LoggedIn, Joined, Not OnBreak)
+            Singers.Add(new Singer { UserId = "7275651909", DisplayName = "Ted Strand", IsLoggedIn = true, IsJoined = true, IsOnBreak = false });
+            Singers.Add(new Singer { UserId = "5556667777", DisplayName = "Chris Matl", IsLoggedIn = true, IsJoined = true, IsOnBreak = false });
+            Singers.Add(new Singer { UserId = "6667778888", DisplayName = "Drew Wirstrom", IsLoggedIn = true, IsJoined = true, IsOnBreak = false });
+
+            // Yellow (LoggedIn, Joined, OnBreak)
+            Singers.Add(new Singer { UserId = "9876543210", DisplayName = "Jessica Gann", IsLoggedIn = true, IsJoined = true, IsOnBreak = true });
+            Singers.Add(new Singer { UserId = "7778889999", DisplayName = "Ann Marie Dixon", IsLoggedIn = true, IsJoined = true, IsOnBreak = true });
+            Singers.Add(new Singer { UserId = "8889990000", DisplayName = "Tina Wirstrom", IsLoggedIn = true, IsJoined = true, IsOnBreak = true });
+
+            // Orange (LoggedIn, Not Joined, Not OnBreak)
+            Singers.Add(new Singer { UserId = "1112223333", DisplayName = "John Doe", IsLoggedIn = true, IsJoined = false, IsOnBreak = false });
+            Singers.Add(new Singer { UserId = "9990001111", DisplayName = "Mark Dixon", IsLoggedIn = true, IsJoined = false, IsOnBreak = false });
+            Singers.Add(new Singer { UserId = "0001112222", DisplayName = "Sherrie Matl", IsLoggedIn = true, IsJoined = false, IsOnBreak = false });
+
+            // Red (Not LoggedIn, Not Joined, Not OnBreak)
+            Singers.Add(new Singer { UserId = "4445556666", DisplayName = "Jane Roe", IsLoggedIn = false, IsJoined = false, IsOnBreak = false });
+            Singers.Add(new Singer { UserId = "1112224444", DisplayName = "Terry Gann", IsLoggedIn = false, IsJoined = false, IsOnBreak = false });
+            Singers.Add(new Singer { UserId = "2223335555", DisplayName = "Tricia Strand", IsLoggedIn = false, IsJoined = false, IsOnBreak = false });
+
+            SortSingers();
+            NonDummySingersCount = Singers.Count;
+            Log.Information("[DJSCREEN] Loaded mock singer data: {Count} singers, Names={Names}",
+                NonDummySingersCount, string.Join(", ", Singers.Select(s => s.DisplayName)));
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN] Failed to load mock singer data: {Message}", ex.Message);
+        }
+    }
+
+    private void SortSingers()
+    {
+        try
+        {
+            Log.Information("[DJSCREEN] Sorting singers");
+            var sortedSingers = Singers.OrderBy(s =>
+            {
+                if (s.IsLoggedIn && s.IsJoined && !s.IsOnBreak) return 1; // Green
+                if (s.IsLoggedIn && s.IsJoined && s.IsOnBreak) return 2; // Yellow
+                if (s.IsLoggedIn && !s.IsJoined) return 3; // Orange
+                return 4; // Red
+            }).ThenBy(s => s.DisplayName).ToList();
+
+            Singers.Clear();
+            foreach (var singer in sortedSingers)
+            {
+                Singers.Add(singer);
+            }
+
+            // Update filtered collections
+            GreenSingers.Clear();
+            YellowSingers.Clear();
+            OrangeSingers.Clear();
+            RedSingers.Clear();
+
+            foreach (var singer in Singers)
+            {
+                if (singer.IsLoggedIn && singer.IsJoined && !singer.IsOnBreak)
+                    GreenSingers.Add(singer);
+                else if (singer.IsLoggedIn && singer.IsJoined && singer.IsOnBreak)
+                    YellowSingers.Add(singer);
+                else if (singer.IsLoggedIn && !singer.IsJoined)
+                    OrangeSingers.Add(singer);
+                else
+                    RedSingers.Add(singer);
+            }
+
+            NonDummySingersCount = Singers.Count;
+            OnPropertyChanged(nameof(NonDummySingersCount));
+            OnPropertyChanged(nameof(GreenSingers));
+            OnPropertyChanged(nameof(YellowSingers));
+            OnPropertyChanged(nameof(OrangeSingers));
+            OnPropertyChanged(nameof(RedSingers));
+            Log.Information("[DJSCREEN] Sorted singers: {Count} singers, Names={Names}",
+                NonDummySingersCount, string.Join(", ", Singers.Select(s => s.DisplayName)));
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN] Failed to sort singers: {Message}", ex.Message);
+        }
+    }
+
+    private void LoadMockQueueData()
+    {
+        try
+        {
+            Log.Information("[DJSCREEN] Loading mock queue data");
+            QueueEntries.Clear();
+            CurrentEvent = new EventDto { EventId = 3, Description = "Live Event Test 1" };
+            QueueEntries.Add(new QueueEntry { QueueId = "27", SongId = 12, SongTitle = "Come Sail Away", SongArtist = "Styx", RequestorDisplayName = "Ted Strand", VideoLength = "5:14", Position = 1, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Rock", Decade = "1970s", YouTubeUrl = "https://youtube.com/watch?v=a1", IsVideoCached = false });
+            QueueEntries.Add(new QueueEntry { QueueId = "28", SongId = 21, SongTitle = "All Out of Love", SongArtist = "Air Supply", RequestorDisplayName = "Ted Strand", VideoLength = "4:01", Position = 2, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Soft Rock", Decade = "1980s", YouTubeUrl = "https://youtube.com/watch?v=b2", IsVideoCached = false });
+            QueueEntries.Add(new QueueEntry { QueueId = "29", SongId = 32, SongTitle = "Give It Up", SongArtist = "KC and The Sunshine Band", RequestorDisplayName = "Ted Strand", VideoLength = "4:13", Position = 3, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Disco", Decade = "1980s", YouTubeUrl = "https://youtube.com/watch?v=c3", IsVideoCached = false });
+            QueueEntries.Add(new QueueEntry { QueueId = "30", SongId = 28, SongTitle = "Lovin', Touchin', Squeezin'", SongArtist = "Journey", RequestorDisplayName = "Ted Strand", VideoLength = "3:54", Position = 4, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Rock", Decade = "1970s", YouTubeUrl = "https://youtube.com/watch?v=d4", IsVideoCached = false });
+            QueueEntries.Add(new QueueEntry { QueueId = "31", SongId = 27, SongTitle = "Lights", SongArtist = "Journey", RequestorDisplayName = "Ted Strand", VideoLength = "3:10", Position = 5, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Rock", Decade = "1970s", YouTubeUrl = "https://youtube.com/watch?v=e5", IsVideoCached = false });
+            QueueEntries.Add(new QueueEntry { QueueId = "32", SongId = 35, SongTitle = "Will You Love Me Tomorrow", SongArtist = "The Shirelles", RequestorDisplayName = "Ted Strand", VideoLength = "2:41", Position = 6, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Pop", Decade = "1960s", YouTubeUrl = "https://youtube.com/watch?v=f6", IsVideoCached = false });
+            QueueEntries.Add(new QueueEntry { QueueId = "33", SongId = 15, SongTitle = "Crazy - Single Version", SongArtist = "Patsy Cline", RequestorDisplayName = "Jessica Gann", VideoLength = "2:44", Position = 7, Status = "Live", RequestorUserName = "9876543210", SungAt = null, Genre = "Country", Decade = "1960s", YouTubeUrl = "https://youtube.com/watch?v=g7", IsVideoCached = false });
+            QueueEntries.Add(new QueueEntry { QueueId = "34", SongId = 6, SongTitle = "Gentle River", SongArtist = "Alison Krauss", RequestorDisplayName = "Jessica Gann", VideoLength = "4:27", Position = 8, Status = "Live", RequestorUserName = "9876543210", SungAt = null, Genre = "Bluegrass", Decade = "1990s", YouTubeUrl = "https://youtube.com/watch?v=h8", IsVideoCached = false });
+            QueueEntries.Add(new QueueEntry { QueueId = "35", SongId = 48, SongTitle = "At Last", SongArtist = "Etta James", RequestorDisplayName = "Jessica Gann", VideoLength = "3:00", Position = 9, Status = "Live", RequestorUserName = "9876543210", SungAt = null, Genre = "Soul", Decade = "1960s", YouTubeUrl = "https://youtube.com/watch?v=i9", IsVideoCached = false });
+            QueueEntries.Add(new QueueEntry { QueueId = "36", SongId = 18, SongTitle = "Don't Mind If I Do", SongArtist = "Riley Green", RequestorDisplayName = "Jessica Gann", VideoLength = "3:34", Position = 10, Status = "Live", RequestorUserName = "9876543210", SungAt = null, Genre = "Country", Decade = "2010s", YouTubeUrl = "https://youtube.com/watch?v=j0", IsVideoCached = false });
+            Log.Information("[DJSCREEN] Loaded mock queue data: {Count} entries", QueueEntries.Count);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN] Failed to load mock queue data: {Message}", ex.Message);
+        }
     }
 
     private void UserSessionService_SessionChanged(object sender, EventArgs e)
     {
-        Log.Information("[DJSCREEN] Session changed event received");
-        UpdateAuthenticationState();
+        try
+        {
+            Log.Information("[DJSCREEN] Session changed event received");
+            UpdateAuthenticationState();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN] Failed to handle session changed event: {Message}", ex.Message);
+        }
     }
 
     [RelayCommand]
@@ -129,8 +339,11 @@ public partial class DJScreenViewModel : ObservableObject
                     JoinEventButtonText = $"Leave {events[0].EventCode}";
                     JoinEventButtonColor = "#FF0000"; // Red
                     Log.Information("[DJSCREEN] Joined event: {EventId}, {EventCode}", _currentEventId, events[0].EventCode);
-                    // Load queue data for the event
+                    // Load mock data after joining event
+                    LoadMockQueueData();
+                    LoadMockSingerData();
                     await LoadQueueData();
+                    await LoadSingerData();
                 }
                 else if (events.Count > 1)
                 {
@@ -153,6 +366,13 @@ public partial class DJScreenViewModel : ObservableObject
                 _currentEventId = null;
                 CurrentEvent = null;
                 QueueEntries.Clear();
+                Singers.Clear();
+                GreenSingers.Clear();
+                YellowSingers.Clear();
+                OrangeSingers.Clear();
+                RedSingers.Clear();
+                NonDummySingersCount = 0;
+                OnPropertyChanged(nameof(NonDummySingersCount));
                 await UpdateJoinEventButtonState();
             }
             catch (Exception ex)
@@ -247,7 +467,7 @@ public partial class DJScreenViewModel : ObservableObject
                 await _apiService.StopAsync(_currentEventId, SelectedQueueEntry.QueueId);
                 Log.Information("[DJSCREEN] Stop request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
                 MessageBox.Show($"Stopped {SelectedQueueEntry.SongTitle}", "Stop", MessageBoxButton.OK, MessageBoxImage.Information);
-                IsPlaying = false; // Reset playback state
+                IsPlaying = false;
             }
             catch (Exception ex)
             {
@@ -273,7 +493,7 @@ public partial class DJScreenViewModel : ObservableObject
                 await _apiService.SkipAsync(_currentEventId, SelectedQueueEntry.QueueId);
                 Log.Information("[DJSCREEN] Skip request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
                 MessageBox.Show($"Skipped {SelectedQueueEntry.SongTitle}", "Skip", MessageBoxButton.OK, MessageBoxImage.Information);
-                IsPlaying = false; // Reset playback state
+                IsPlaying = false;
                 await LoadQueueData();
             }
             catch (Exception ex)
@@ -330,57 +550,79 @@ public partial class DJScreenViewModel : ObservableObject
 
     public void UpdateAuthenticationState()
     {
-        Log.Information("[DJSCREEN] Updating authentication state");
-        bool newIsAuthenticated = _userSessionService.IsAuthenticated;
-        string newWelcomeMessage = newIsAuthenticated ? $"Welcome, {_userSessionService.FirstName}" : "Not logged in";
-        string newLoginLogoutButtonText = newIsAuthenticated ? "Logout" : "Login";
-        string newLoginLogoutButtonColor = newIsAuthenticated ? "#FF0000" : "#3B82F6"; // Red for logout, Blue for login
-        bool newIsJoinEventButtonVisible = newIsAuthenticated;
-
-        IsAuthenticated = newIsAuthenticated;
-        WelcomeMessage = newWelcomeMessage;
-        LoginLogoutButtonText = newLoginLogoutButtonText;
-        LoginLogoutButtonColor = newLoginLogoutButtonColor;
-        IsJoinEventButtonVisible = newIsJoinEventButtonVisible;
-
-        if (IsAuthenticated)
+        try
         {
-            Task.Run(UpdateJoinEventButtonState).GetAwaiter().GetResult();
+            Log.Information("[DJSCREEN] Updating authentication state");
+            bool newIsAuthenticated = _userSessionService.IsAuthenticated;
+            string newWelcomeMessage = newIsAuthenticated ? $"Welcome, {_userSessionService.FirstName ?? "User"}" : "Not logged in";
+            string newLoginLogoutButtonText = newIsAuthenticated ? "Logout" : "Login";
+            string newLoginLogoutButtonColor = newIsAuthenticated ? "#FF0000" : "#3B82F6"; // Red for logout, Blue for login
+            bool newIsJoinEventButtonVisible = newIsAuthenticated;
+
+            IsAuthenticated = newIsAuthenticated;
+            WelcomeMessage = newWelcomeMessage;
+            LoginLogoutButtonText = newLoginLogoutButtonText;
+            LoginLogoutButtonColor = newLoginLogoutButtonColor;
+            IsJoinEventButtonVisible = newIsJoinEventButtonVisible;
+
+            if (!newIsAuthenticated)
+            {
+                JoinEventButtonText = "No Live Events";
+                JoinEventButtonColor = "Gray";
+                _currentEventId = null;
+                CurrentEvent = null;
+                QueueEntries.Clear();
+                Singers.Clear();
+                GreenSingers.Clear();
+                YellowSingers.Clear();
+                OrangeSingers.Clear();
+                RedSingers.Clear();
+                NonDummySingersCount = 0;
+            }
+            else if (string.IsNullOrEmpty(_currentEventId))
+            {
+                Task.Run(UpdateJoinEventButtonState).GetAwaiter().GetResult();
+            }
+
+            OnPropertyChanged(nameof(IsAuthenticated));
+            OnPropertyChanged(nameof(WelcomeMessage));
+            OnPropertyChanged(nameof(LoginLogoutButtonText));
+            OnPropertyChanged(nameof(LoginLogoutButtonColor));
+            OnPropertyChanged(nameof(IsJoinEventButtonVisible));
+            OnPropertyChanged(nameof(JoinEventButtonText));
+            OnPropertyChanged(nameof(JoinEventButtonColor));
+            OnPropertyChanged(nameof(CurrentEvent));
+            OnPropertyChanged(nameof(QueueEntries));
+            OnPropertyChanged(nameof(Singers));
+            OnPropertyChanged(nameof(GreenSingers));
+            OnPropertyChanged(nameof(YellowSingers));
+            OnPropertyChanged(nameof(OrangeSingers));
+            OnPropertyChanged(nameof(RedSingers));
+            OnPropertyChanged(nameof(NonDummySingersCount));
+
+            Log.Information("[DJSCREEN] Authentication state updated: IsAuthenticated={IsAuthenticated}, WelcomeMessage={WelcomeMessage}, LoginLogoutButtonText={LoginLogoutButtonText}, IsJoinEventButtonVisible={IsJoinEventButtonVisible}",
+                IsAuthenticated, WelcomeMessage, LoginLogoutButtonText, IsJoinEventButtonVisible);
         }
-        else
+        catch (Exception ex)
         {
-            JoinEventButtonText = "No Live Events";
-            JoinEventButtonColor = "Gray";
-            _currentEventId = null;
-            CurrentEvent = null;
-            QueueEntries.Clear();
+            Log.Error("[DJSCREEN] Failed to update authentication state: {Message}", ex.Message);
         }
-
-        OnPropertyChanged(nameof(IsAuthenticated));
-        OnPropertyChanged(nameof(WelcomeMessage));
-        OnPropertyChanged(nameof(LoginLogoutButtonText));
-        OnPropertyChanged(nameof(LoginLogoutButtonColor));
-        OnPropertyChanged(nameof(IsJoinEventButtonVisible));
-        OnPropertyChanged(nameof(JoinEventButtonText));
-        OnPropertyChanged(nameof(JoinEventButtonColor));
-        OnPropertyChanged(nameof(CurrentEvent));
-        OnPropertyChanged(nameof(QueueEntries));
-
-        Log.Information("[DJSCREEN] State updated: IsAuthenticated={IsAuthenticated}, WelcomeMessage={WelcomeMessage}, LoginLogoutButtonText={LoginLogoutButtonText}, LoginLogoutButtonColor={LoginLogoutButtonColor}, IsJoinEventButtonVisible={IsJoinEventButtonVisible}, JoinEventButtonText={JoinEventButtonText}, JoinEventButtonColor={JoinEventButtonColor}",
-            IsAuthenticated, WelcomeMessage, LoginLogoutButtonText, LoginLogoutButtonColor, IsJoinEventButtonVisible, JoinEventButtonText, JoinEventButtonColor);
     }
 
     private async Task UpdateJoinEventButtonState()
     {
-        if (!IsAuthenticated)
-        {
-            JoinEventButtonText = "No Live Events";
-            JoinEventButtonColor = "Gray";
-            return;
-        }
-
         try
         {
+            Log.Information("[DJSCREEN] Updating join event button state");
+            if (!IsAuthenticated)
+            {
+                JoinEventButtonText = "No Live Events";
+                JoinEventButtonColor = "Gray";
+                OnPropertyChanged(nameof(JoinEventButtonText));
+                OnPropertyChanged(nameof(JoinEventButtonColor));
+                return;
+            }
+
             var events = await _apiService.GetLiveEventsAsync();
             if (events.Count == 0)
             {
@@ -399,42 +641,56 @@ public partial class DJScreenViewModel : ObservableObject
             }
             Log.Information("[DJSCREEN] Join event button updated: JoinEventButtonText={JoinEventButtonText}, JoinEventButtonColor={JoinEventButtonColor}, EventCount={EventCount}",
                 JoinEventButtonText, JoinEventButtonColor, events.Count);
+
+            OnPropertyChanged(nameof(JoinEventButtonText));
+            OnPropertyChanged(nameof(JoinEventButtonColor));
         }
         catch (Exception ex)
         {
-            Log.Error("[DJSCREEN] Failed to fetch live events: {Message}", ex.Message);
+            Log.Error("[DJSCREEN] Failed to update join event button state: {Message}", ex.Message);
             JoinEventButtonText = "No Live Events";
             JoinEventButtonColor = "Gray";
+            OnPropertyChanged(nameof(JoinEventButtonText));
+            OnPropertyChanged(nameof(JoinEventButtonColor));
         }
-
-        OnPropertyChanged(nameof(JoinEventButtonText));
-        OnPropertyChanged(nameof(JoinEventButtonColor));
     }
 
-    private void LoadMockQueueData()
-    {
-        // Mock data for LVTEST (ID 3)
-        QueueEntries.Clear();
-        CurrentEvent = new EventDto { EventId = 3, Description = "Live Event Test 1" };
-        QueueEntries.Add(new QueueEntry { QueueId = "27", SongId = 12, SongTitle = "Come Sail Away", SongArtist = "Styx", RequestorDisplayName = "Ted Strand", VideoLength = "5:14", Position = 1, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Rock", Decade = "1970s", YouTubeUrl = "https://youtube.com/watch?v=a1", IsVideoCached = false });
-        QueueEntries.Add(new QueueEntry { QueueId = "28", SongId = 21, SongTitle = "All Out of Love", SongArtist = "Air Supply", RequestorDisplayName = "Ted Strand", VideoLength = "4:01", Position = 2, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Soft Rock", Decade = "1980s", YouTubeUrl = "https://youtube.com/watch?v=b2", IsVideoCached = false });
-        QueueEntries.Add(new QueueEntry { QueueId = "29", SongId = 32, SongTitle = "Give It Up", SongArtist = "KC and The Sunshine Band", RequestorDisplayName = "Ted Strand", VideoLength = "4:13", Position = 3, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Disco", Decade = "1980s", YouTubeUrl = "https://youtube.com/watch?v=c3", IsVideoCached = false });
-        QueueEntries.Add(new QueueEntry { QueueId = "30", SongId = 28, SongTitle = "Lovin', Touchin', Squeezin'", SongArtist = "Journey", RequestorDisplayName = "Ted Strand", VideoLength = "3:54", Position = 4, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Rock", Decade = "1970s", YouTubeUrl = "https://youtube.com/watch?v=d4", IsVideoCached = false });
-        QueueEntries.Add(new QueueEntry { QueueId = "31", SongId = 27, SongTitle = "Lights", SongArtist = "Journey", RequestorDisplayName = "Ted Strand", VideoLength = "3:10", Position = 5, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Rock", Decade = "1970s", YouTubeUrl = "https://youtube.com/watch?v=e5", IsVideoCached = false });
-        QueueEntries.Add(new QueueEntry { QueueId = "32", SongId = 35, SongTitle = "Will You Love Me Tomorrow", SongArtist = "The Shirelles", RequestorDisplayName = "Ted Strand", VideoLength = "2:41", Position = 6, Status = "Live", RequestorUserName = "7275651909", SungAt = null, Genre = "Pop", Decade = "1960s", YouTubeUrl = "https://youtube.com/watch?v=f6", IsVideoCached = false });
-        QueueEntries.Add(new QueueEntry { QueueId = "33", SongId = 15, SongTitle = "Crazy - Single Version", SongArtist = "Patsy Cline", RequestorDisplayName = "Alice Smith", VideoLength = "2:44", Position = 7, Status = "Live", RequestorUserName = "1234567891", SungAt = null, Genre = "Country", Decade = "1960s", YouTubeUrl = "https://youtube.com/watch?v=g7", IsVideoCached = false });
-        QueueEntries.Add(new QueueEntry { QueueId = "34", SongId = 6, SongTitle = "Gentle River", SongArtist = "Alison Krauss", RequestorDisplayName = "Alice Smith", VideoLength = "4:27", Position = 8, Status = "Live", RequestorUserName = "1234567891", SungAt = null, Genre = "Bluegrass", Decade = "1990s", YouTubeUrl = "https://youtube.com/watch?v=h8", IsVideoCached = false });
-        QueueEntries.Add(new QueueEntry { QueueId = "35", SongId = 48, SongTitle = "At Last", SongArtist = "Etta James", RequestorDisplayName = "Alice Smith", VideoLength = "3:00", Position = 9, Status = "Live", RequestorUserName = "1234567891", SungAt = null, Genre = "Soul", Decade = "1960s", YouTubeUrl = "https://youtube.com/watch?v=i9", IsVideoCached = false });
-        QueueEntries.Add(new QueueEntry { QueueId = "36", SongId = 18, SongTitle = "Don't Mind If I Do", SongArtist = "Riley Green", RequestorDisplayName = "Alice Smith", VideoLength = "3:34", Position = 10, Status = "Live", RequestorUserName = "1234567891", SungAt = null, Genre = "Country", Decade = "2010s", YouTubeUrl = "https://youtube.com/watch?v=j0", IsVideoCached = false });
-        Log.Information("[DJSCREEN] Loaded mock queue data: {Count} entries", QueueEntries.Count);
-    }
-
-#pragma warning disable CS1998
     private async Task LoadQueueData()
     {
-        Log.Information("[DJSCREEN] Loading queue data for event: {EventId}", _currentEventId);
-        // Placeholder for ApiService.GetQueueAsync
+        try
+        {
+            Log.Information("[DJSCREEN] Loading queue data for event: {EventId}", _currentEventId);
+            // Placeholder for ApiService.GetQueueAsync
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN] Failed to load queue data: {Message}", ex.Message);
+        }
     }
-#pragma warning restore CS1998
+
+    private async Task LoadSingerData()
+    {
+        try
+        {
+            Log.Information("[DJSCREEN] Loading singer data for event: {EventId}", _currentEventId);
+            if (string.IsNullOrEmpty(_currentEventId))
+            {
+                Log.Information("[DJSCREEN] No event joined, skipping singer data load");
+                return;
+            }
+
+            // Skip ApiService.GetSingersAsync to retain mock singers from LoadMockSingerData
+            SortSingers();
+            NonDummySingersCount = Singers.Count;
+            Log.Information("[DJSCREEN] Loaded {Count} singers for event {EventId}, Names={Names}",
+                NonDummySingersCount, _currentEventId, string.Join(", ", Singers.Select(s => s.DisplayName)));
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN] Failed to load singers for event {EventId}: {Message}", _currentEventId, ex.Message);
+            MessageBox.Show($"Failed to load singers: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 }
 #pragma warning restore CS8622

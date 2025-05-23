@@ -1,58 +1,61 @@
 using System;
-using System.Collections.Generic;
-using BNKaraoke.DJ.Models;
 using Serilog;
+using BNKaraoke.DJ.Models;
 
-namespace BNKaraoke.DJ.Services;
-
-public class UserSessionService : IUserSessionService
+namespace BNKaraoke.DJ.Services
 {
-    private static readonly Lazy<UserSessionService> _instance = new Lazy<UserSessionService>(() => new UserSessionService());
-    public static UserSessionService Instance => _instance.Value;
-
-    public bool IsAuthenticated { get; private set; }
-    public string? Token { get; private set; }
-    public string? FirstName { get; private set; }
-    public string? LastName { get; private set; }
-    public string? UserId { get; private set; }
-    public string? PhoneNumber { get; private set; }
-    public List<string>? Roles { get; private set; }
-
-    public event EventHandler? SessionChanged;
-
-    private UserSessionService()
+    public class UserSessionService : IUserSessionService
     {
-        Log.Information("[SESSION] Singleton instance created: {InstanceId}", GetHashCode());
-    }
+        private static UserSessionService _instance = new UserSessionService();
+        public static UserSessionService Instance => _instance;
 
-    public void SetSession(LoginResult loginResult)
-    {
-        IsAuthenticated = !string.IsNullOrEmpty(loginResult.Token);
-        Token = loginResult.Token;
-        FirstName = loginResult.FirstName;
-        LastName = loginResult.LastName;
-        UserId = loginResult.UserId;
-        PhoneNumber = loginResult.PhoneNumber;
-        Roles = loginResult.Roles;
+        public event EventHandler? SessionChanged;
 
-        Log.Information("[SESSION] Set session: Token={Token}, FirstName={FirstName}, LastName={LastName}, UserId={UserId}, PhoneNumber={PhoneNumber}, Roles={Roles}, IsAuthenticated={IsAuthenticated}",
-            Token?.Substring(0, 10) ?? "null", FirstName, LastName, UserId, PhoneNumber,
-            Roles != null ? string.Join(",", Roles) : "null", IsAuthenticated);
+        public bool IsAuthenticated { get; private set; }
+        public string? Token { get; private set; }
+        public string? FirstName { get; private set; }
+        public string? PhoneNumber { get; private set; }
 
-        SessionChanged?.Invoke(this, EventArgs.Empty);
-    }
+        private UserSessionService()
+        {
+            Log.Information("[SESSION] Singleton instance created: {InstanceId}", GetHashCode());
+        }
 
-    public void ClearSession()
-    {
-        IsAuthenticated = false;
-        Token = null;
-        FirstName = null;
-        LastName = null;
-        UserId = null;
-        PhoneNumber = null;
-        Roles = null;
+        public void SetSession(LoginResult loginResult)
+        {
+            try
+            {
+                Log.Information("[SESSION] Setting session: Token={Token}, FirstName={FirstName}, PhoneNumber={PhoneNumber}",
+                    loginResult?.Token, loginResult?.FirstName, loginResult?.PhoneNumber);
+                Token = loginResult?.Token;
+                FirstName = loginResult?.FirstName;
+                PhoneNumber = loginResult?.PhoneNumber;
+                IsAuthenticated = !string.IsNullOrEmpty(Token);
+                SessionChanged?.Invoke(this, EventArgs.Empty);
+                Log.Information("[SESSION] Session set: IsAuthenticated={IsAuthenticated}", IsAuthenticated);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[SESSION] Failed to set session: {Message}", ex.Message);
+            }
+        }
 
-        Log.Information("[SESSION] Cleared session");
-        SessionChanged?.Invoke(this, EventArgs.Empty);
+        public void ClearSession()
+        {
+            try
+            {
+                Log.Information("[SESSION] Clearing session");
+                Token = null;
+                FirstName = null;
+                PhoneNumber = null;
+                IsAuthenticated = false;
+                SessionChanged?.Invoke(this, EventArgs.Empty);
+                Log.Information("[SESSION] Session cleared: IsAuthenticated={IsAuthenticated}", IsAuthenticated);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[SESSION] Failed to clear session: {Message}", ex.Message);
+            }
+        }
     }
 }

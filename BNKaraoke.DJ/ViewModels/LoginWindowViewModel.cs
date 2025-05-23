@@ -1,3 +1,4 @@
+using BNKaraoke.DJ.Models;
 using BNKaraoke.DJ.Services;
 using BNKaraoke.DJ.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -5,53 +6,72 @@ using CommunityToolkit.Mvvm.Input;
 using Serilog;
 using System;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace BNKaraoke.DJ.ViewModels;
-
-public partial class LoginWindowViewModel : ObservableObject
+namespace BNKaraoke.DJ.ViewModels
 {
-    private readonly IAuthService _authService;
-    private readonly IUserSessionService _userSessionService;
-
-    [ObservableProperty]
-    private string _username = string.Empty;
-
-    [ObservableProperty]
-    private string _password = string.Empty;
-
-    [ObservableProperty]
-    private string? _errorMessage;
-
-    public LoginWindowViewModel()
+    public partial class LoginWindowViewModel : ObservableObject
     {
-        _authService = new AuthService();
-        _userSessionService = UserSessionService.Instance;
-        Log.Information("[LOGIN INIT] ViewModel initialized: {InstanceId}", GetHashCode());
-    }
+        private readonly IApiService _apiService = new ApiService(UserSessionService.Instance, SettingsService.Instance);
+        private readonly IUserSessionService _userSessionService = UserSessionService.Instance;
 
-    [RelayCommand]
-    private async Task Login()
-    {
-        try
+        [ObservableProperty]
+        private string _phoneNumber = string.Empty;
+
+        [ObservableProperty]
+        private string _password = string.Empty;
+
+        [ObservableProperty]
+        private bool _isBusy;
+
+        public LoginWindowViewModel()
         {
-            ErrorMessage = null;
-            var phone = Regex.Replace(Username, "[^0-9]", "");
-            Log.Information("[LOGIN DEBUG] Sending login for: {Phone}", phone);
-            var loginResult = await _authService.LoginAsync(phone, Password);
-            Log.Information("[LOGIN DEBUG] Login result: Token={Token}, FirstName={FirstName}, UserId={UserId}, PhoneNumber={PhoneNumber}, Roles={Roles}, IsAuthenticated={IsAuthenticated}",
-                loginResult.Token?.Substring(0, 10) ?? "null", loginResult.FirstName, loginResult.UserId, loginResult.PhoneNumber,
-                loginResult.Roles != null ? string.Join(",", loginResult.Roles) : "null", _userSessionService.IsAuthenticated);
-            _userSessionService.SetSession(loginResult);
-            Log.Information("[LOGIN DEBUG] Session set: IsAuthenticated={IsAuthenticated}", _userSessionService.IsAuthenticated);
-            Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w is LoginWindow)?.Close();
+            Log.Information("[LOGIN INIT] ViewModel initialized: {InstanceId}", GetHashCode());
         }
-        catch (Exception ex)
+
+        [RelayCommand]
+        private async Task LoginAsync()
         {
-            Log.Warning("[LOGIN DEBUG] Login failed: {Message}", ex.Message);
-            ErrorMessage = $"Login failed: {ex.Message}";
+            try
+            {
+                Log.Information("[LOGIN DEBUG] Sending login for: {PhoneNumber}", PhoneNumber);
+                IsBusy = true;
+
+                var loginResult = await _apiService.LoginAsync(PhoneNumber, Password);
+                Log.Information("[LOGIN DEBUG] Login result: Token={Token}, FirstName={FirstName}, PhoneNumber={PhoneNumber}",
+                    loginResult.Token, loginResult.FirstName, loginResult.PhoneNumber);
+
+                if (!string.IsNullOrEmpty(loginResult.Token))
+                {
+                    _userSessionService.SetSession(loginResult);
+                    Log.Information("[LOGIN DEBUG] Session set: IsAuthenticated=True");
+
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (Application.Current.Windows.OfType<LoginWindow>().FirstOrDefault() is LoginWindow loginWindow)
+                        {
+                            loginWindow.DialogResult = true;
+                            loginWindow.Close();
+                            Log.Information("[LOGIN DEBUG] LoginWindow closed after successful login");
+                        }
+                    });
+                }
+                else
+                {
+                    Log.Error("[LOGIN DEBUG] Login failed: Invalid credentials");
+                    MessageBox.Show("Invalid phone number or password.", "Login Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[LOGIN DEBUG] Login failed: {Message}", ex.Message);
+                MessageBox.Show($"Login failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
         }
     }
 }
