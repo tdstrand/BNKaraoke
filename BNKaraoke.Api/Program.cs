@@ -16,6 +16,8 @@ using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Security.Claims;
+using BNKaraoke.Api.Services;
+using BNKaraoke.Api.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -148,14 +150,20 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddCors(options =>
 {
     var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new[] { "https://www.bnkaraoke.com", "http://localhost:8080" };
+    var loggerFactory = LoggerFactory.Create(logging =>
+    {
+        logging.AddConsole();
+        logging.AddDebug();
+        logging.SetMinimumLevel(LogLevel.Information);
+    });
+    var logger = loggerFactory.CreateLogger<Program>();
+    logger.LogInformation("CORS policy configured for origins: {Origins}", string.Join(", ", allowedOrigins));
     options.AddPolicy("AllowNetwork", policy =>
     {
         policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
-        var logger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
-        logger.LogInformation("CORS policy configured for origins: {Origins}", string.Join(", ", allowedOrigins));
     });
 });
 
@@ -164,6 +172,8 @@ builder.Services.AddControllers()
     .AddControllersAsServices();
 
 builder.Services.AddTransient<EventController>();
+builder.Services.AddSignalR();
+builder.Services.AddScoped<SingerService>();
 
 var loggerFactory = LoggerFactory.Create(logging =>
 {
@@ -298,6 +308,7 @@ app.Use(async (context, next) =>
 });
 
 app.MapControllers();
+app.MapHub<SingersHub>("/hubs/singers");
 
 using (var scope = app.Services.CreateScope())
 {

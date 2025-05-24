@@ -21,6 +21,7 @@
         public DbSet<RegistrationSettings> RegistrationSettings { get; set; }
         public DbSet<PinChangeHistory> PinChangeHistory { get; set; }
         public DbSet<KaraokeChannel> KaraokeChannels { get; set; }
+        public DbSet<Singer> Singers { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -306,6 +307,36 @@
                 .Property(kc => kc.SortOrder).HasColumnName("SortOrder").IsRequired();
             modelBuilder.Entity<KaraokeChannel>()
                 .Property(kc => kc.IsActive).HasColumnName("IsActive").IsRequired().HasDefaultValue(true);
+
+            // Singer
+            modelBuilder.Entity<Singer>()
+                .ToTable("Singers", "public")
+                .HasKey(s => new { s.UserId, s.EventId });
+
+            modelBuilder.Entity<Singer>()
+                .Property(s => s.UserId).HasColumnName("UserId");
+            modelBuilder.Entity<Singer>()
+                .Property(s => s.EventId).HasColumnName("EventId");
+            modelBuilder.Entity<Singer>()
+                .Property(s => s.DisplayName).HasColumnName("DisplayName").IsRequired().HasMaxLength(200);
+            modelBuilder.Entity<Singer>()
+                .Property(s => s.IsLoggedIn).HasColumnName("IsLoggedIn").IsRequired().HasDefaultValue(false);
+            modelBuilder.Entity<Singer>()
+                .Property(s => s.IsJoined).HasColumnName("IsJoined").IsRequired().HasDefaultValue(false);
+            modelBuilder.Entity<Singer>()
+                .Property(s => s.IsOnBreak).HasColumnName("IsOnBreak").IsRequired().HasDefaultValue(false);
+
+            modelBuilder.Entity<Singer>()
+                .HasOne(s => s.Event)
+                .WithMany()
+                .HasForeignKey(s => s.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Singer>()
+                .HasOne(s => s.User)
+                .WithMany()
+                .HasForeignKey(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

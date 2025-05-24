@@ -10,6 +10,8 @@ using BNKaraoke.Api.Models;
 using System.Linq;
 using System.Security.Claims;
 using System.Collections.Generic;
+using Microsoft.AspNetCore.SignalR;
+using BNKaraoke.Api.Hubs;
 
 namespace BNKaraoke.Api.Controllers
 {
@@ -19,11 +21,13 @@ namespace BNKaraoke.Api.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly ILogger<EventController> _logger;
+        private readonly IHubContext<SingersHub> _hubContext;
 
-        public EventController(ApplicationDbContext context, ILogger<EventController> logger)
+        public EventController(ApplicationDbContext context, ILogger<EventController> logger, IHubContext<SingersHub> hubContext)
         {
             _context = context;
             _logger = logger;
+            _hubContext = hubContext;
             _logger.LogInformation("EventController instantiated");
         }
 
@@ -107,7 +111,7 @@ namespace BNKaraoke.Api.Controllers
                     Status = eventDto.Status ?? "Upcoming",
                     Visibility = eventDto.Visibility ?? "Visible",
                     Location = eventDto.Location ?? string.Empty,
-                    ScheduledDate = eventDto.ScheduledDate,
+                    ScheduledDate = eventDto.ScheduledDate, // Non-nullable, validated by ModelState
                     ScheduledStartTime = eventDto.ScheduledStartTime,
                     ScheduledEndTime = eventDto.ScheduledEndTime,
                     KaraokeDJName = eventDto.KaraokeDJName ?? string.Empty,
@@ -179,7 +183,7 @@ namespace BNKaraoke.Api.Controllers
                 existingEvent.Status = eventDto.Status ?? existingEvent.Status;
                 existingEvent.Visibility = eventDto.Visibility ?? existingEvent.Visibility;
                 existingEvent.Location = eventDto.Location ?? existingEvent.Location;
-                existingEvent.ScheduledDate = eventDto.ScheduledDate;
+                existingEvent.ScheduledDate = eventDto.ScheduledDate; // Non-nullable, validated by ModelState
                 existingEvent.ScheduledStartTime = eventDto.ScheduledStartTime ?? existingEvent.ScheduledStartTime;
                 existingEvent.ScheduledEndTime = eventDto.ScheduledEndTime ?? existingEvent.ScheduledEndTime;
                 existingEvent.KaraokeDJName = eventDto.KaraokeDJName ?? existingEvent.KaraokeDJName;
@@ -404,6 +408,7 @@ namespace BNKaraoke.Api.Controllers
                     IsOnBreak = newQueueEntry.IsOnBreak
                 };
 
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", newQueueEntry.QueueId, "Added");
                 _logger.LogInformation("Successfully added song to queue for EventId {EventId}, QueueId: {QueueId}", eventId, newQueueEntry.QueueId);
                 return CreatedAtAction(nameof(GetEventQueue), new { eventId, queueId = newQueueEntry.QueueId }, queueEntryDto);
             }
@@ -705,6 +710,7 @@ namespace BNKaraoke.Api.Controllers
                 }
 
                 await _context.SaveChangesAsync();
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("UpdateSingerStatus", requestor.Id, eventId, $"{requestor.FirstName} {requestor.LastName}", true, true, false);
 
                 _logger.LogInformation("Successfully checked in requestor with UserName {UserName} for EventId {EventId}", actionDto.RequestorId, eventId);
                 return Ok(new { message = "Check-in successful" });
@@ -787,6 +793,7 @@ namespace BNKaraoke.Api.Controllers
                 }
 
                 await _context.SaveChangesAsync();
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("UpdateSingerStatus", requestor.Id, eventId, $"{requestor.FirstName} {requestor.LastName}", true, false, false);
 
                 _logger.LogInformation("Successfully checked out requestor with UserName {UserName} for EventId {EventId}", actionDto.RequestorId, eventId);
                 return Ok(new { message = "Check-out successful" });
@@ -852,6 +859,8 @@ namespace BNKaraoke.Api.Controllers
                 attendance.BreakEndAt = null;
 
                 await _context.SaveChangesAsync();
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("UpdateSingerStatus", requestor.Id, eventId, $"{requestor.FirstName} {requestor.LastName}", true, true, true);
+
                 _logger.LogInformation("Successfully started break for requestor with UserName {UserName} for EventId {EventId}", actionDto.RequestorId, eventId);
                 return Ok();
             }
@@ -936,6 +945,8 @@ namespace BNKaraoke.Api.Controllers
                 }
 
                 await _context.SaveChangesAsync();
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("UpdateSingerStatus", requestor.Id, eventId, $"{requestor.FirstName} {requestor.LastName}", true, true, false);
+
                 _logger.LogInformation("Successfully ended break for requestor with UserName {UserName} for EventId {EventId}", actionDto.RequestorId, eventId);
                 return Ok();
             }
@@ -989,12 +1000,14 @@ namespace BNKaraoke.Api.Controllers
                 queueEntry.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", queueId, "Skipped");
+
                 _logger.LogInformation("Successfully skipped song with QueueId {QueueId} for EventId {EventId}", queueId, eventId);
                 return Ok();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error skipping song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, eventId, ex.Message);
+                _logger.LogError(ex, "Error skipping song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, ex.Message);
                 return StatusCode(500, new { message = "An error occurred while skipping the song", details = ex.Message });
             }
         }
@@ -1050,24 +1063,44 @@ namespace BNKaraoke.Api.Controllers
 
                 var positionMapping = allQueueEntries.ToDictionary(eq => eq.QueueId, eq => eq.Position);
 
-                for (int i = 0; i < request.NewOrder.Count; i++)
+                foreach (var order in request.NewOrder)
                 {
-                    var queueId = request.NewOrder[i].QueueId;
-                    var newPosition = request.NewOrder[i].Position;
-                    positionMapping[queueId] = newPosition;
+                    var queueEntry = allQueueEntries.FirstOrDefault(eq => eq.QueueId == order.QueueId);
+                    if (queueEntry != null)
+                    {
+                        positionMapping[queueEntry.QueueId] = order.Position;
+                    }
                 }
 
-                var sortedPositions = positionMapping.OrderBy(kv => kv.Value).ToList();
-                for (int i = 0; i < sortedPositions.Count; i++)
+                var otherQueueEntries = allQueueEntries
+                    .Where(eq => !userQueueIds.Contains(eq.QueueId))
+                    .OrderBy(eq => eq.Position)
+                    .ToList();
+
+                var sortedUserEntries = userQueueEntries
+                    .OrderBy(eq => request.NewOrder.FirstOrDefault(o => o.QueueId == eq.QueueId)?.Position ?? int.MaxValue)
+                    .ToList();
+
+                int position = 1;
+                var reorderedEntries = new List<EventQueue>();
+                foreach (var userEntry in sortedUserEntries)
                 {
-                    var queueId = sortedPositions[i].Key;
-                    var queueEntry = allQueueEntries.First(eq => eq.QueueId == queueId);
-                    queueEntry.Position = i + 1;
-                    queueEntry.UpdatedAt = DateTime.UtcNow;
+                    userEntry.Position = position++;
+                    userEntry.UpdatedAt = DateTime.UtcNow;
+                    reorderedEntries.Add(userEntry);
+                }
+
+                foreach (var otherEntry in otherQueueEntries)
+                {
+                    otherEntry.Position = position++;
+                    otherEntry.UpdatedAt = DateTime.UtcNow;
+                    reorderedEntries.Add(otherEntry);
                 }
 
                 await _context.SaveChangesAsync();
-                _logger.LogInformation("Successfully reordered queue for EventId {EventId}", eventId);
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", 0, "Reordered");
+
+                _logger.LogInformation("Successfully reordered queue for EventId: {EventId}", eventId);
                 return Ok();
             }
             catch (Exception ex)
@@ -1079,14 +1112,14 @@ namespace BNKaraoke.Api.Controllers
 
         [HttpPost("{eventId}/queue/{queueId}/singers")]
         [Authorize]
-        public async Task<IActionResult> UpdateSingers(int eventId, int queueId, [FromBody] UpdateSingersRequest request)
+        public async Task<IActionResult> UpdateQueueSingers(int eventId, int queueId, [FromBody] UpdateQueueSingersDto singersDto)
         {
             try
             {
                 _logger.LogInformation("Updating singers for QueueId {QueueId} in EventId: {EventId}", queueId, eventId);
                 if (!ModelState.IsValid)
                 {
-                    _logger.LogWarning("Invalid model state for UpdateSingers: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
+                    _logger.LogWarning("Invalid model state for UpdateQueueSingers: {Errors}", string.Join("; ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return BadRequest(ModelState);
                 }
 
@@ -1105,57 +1138,104 @@ namespace BNKaraoke.Api.Controllers
                     return NotFound("Queue entry not found");
                 }
 
-                if (request.Singers == null || !request.Singers.Any())
+                var userName = User.FindFirst(ClaimTypes.Name)?.Value;
+                if (string.IsNullOrEmpty(userName))
                 {
-                    _logger.LogWarning("Singers list cannot be empty for QueueId {QueueId}", queueId);
-                    return BadRequest("At least one singer or special group is required");
+                    _logger.LogWarning("User identity not found in token");
+                    return Unauthorized("User identity not found in token");
                 }
 
-                var specialGroups = new List<string> { "AllSing", "TheBoys", "TheGirls" };
-                var hasSpecialGroup = request.Singers.Any(s => specialGroups.Contains(s));
-                var individualSingers = request.Singers.Where(s => !specialGroups.Contains(s)).ToList();
-
-                if (hasSpecialGroup)
+                var requestor = await _context.Users
+                    .OfType<ApplicationUser>()
+                    .FirstOrDefaultAsync(u => u.UserName == queueEntry.RequestorUserName);
+                if (requestor == null)
                 {
-                    if (request.Singers.Count > 1)
-                    {
-                        _logger.LogWarning("Special group selected with additional singers for QueueId {QueueId}", queueId);
-                        return BadRequest("Special groups cannot be combined with individual singers");
-                    }
+                    _logger.LogWarning("Requestor not found with UserName: {UserName}", queueEntry.RequestorUserName);
+                    return BadRequest("Requestor not found");
                 }
-                else
-                {
-                    if (individualSingers.Count > 7)
-                    {
-                        _logger.LogWarning("Too many individual singers ({Count}) for QueueId {QueueId}", individualSingers.Count, queueId);
-                        return BadRequest("Cannot have more than 7 individual singers");
-                    }
 
-                    foreach (var singer in individualSingers)
+                if (queueEntry.RequestorUserName != userName)
+                {
+                    try
                     {
-                        if (string.IsNullOrEmpty(singer))
+                        var currentSingers = JsonSerializer.Deserialize<string[]>(queueEntry.Singers) ?? Array.Empty<string>();
+                        if (!currentSingers.Contains(userName))
                         {
-                            _logger.LogWarning("Singer UserName is null or empty for QueueId {QueueId}", queueId);
-                            return BadRequest("Singer UserName cannot be null or empty");
+                            _logger.LogWarning("User with UserName {UserName} is not authorized to update singers for QueueId {QueueId}", userName, queueId);
+                            return Forbid("Only the requestor or a singer in the queue entry can update singers");
                         }
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning("Failed to deserialize Singers for QueueId {QueueId}: {Message}", queueId, ex.Message);
+                        return StatusCode(500, new { message = "Error processing singers data", details = ex.Message });
+                    }
+                }
 
+                var newSingers = singersDto.Singers ?? Array.Empty<string>();
+                foreach (var singer in newSingers)
+                {
+                    if (singer != "AllSing" && singer != "TheBoys" && singer != "TheGirls")
+                    {
                         var singerUser = await _context.Users
                             .OfType<ApplicationUser>()
                             .FirstOrDefaultAsync(u => u.UserName == singer);
                         if (singerUser == null)
                         {
-                            _logger.LogWarning("Singer not found with UserName: {UserName} for QueueId: {QueueId}", singer, queueId);
+                            _logger.LogWarning("Singer not found with UserName: {UserName}", singer);
                             return BadRequest($"Singer not found: {singer}");
+                        }
+
+                        var attendance = await _context.EventAttendances
+                            .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == singerUser.Id);
+                        if (eventEntity.Status != "Upcoming" && (attendance == null || !attendance.IsCheckedIn))
+                        {
+                            _logger.LogWarning("Singer with UserName {UserName} must be checked in to be added to queue for EventId {EventId}", singer, eventId);
+                            return BadRequest($"Singer must be checked in: {singer}");
                         }
                     }
                 }
 
-                queueEntry.Singers = JsonSerializer.Serialize(request.Singers);
+                if (!newSingers.Any(s => s == queueEntry.RequestorUserName || s == "AllSing" || s == "TheBoys" || s == "TheGirls"))
+                {
+                    _logger.LogWarning("RequestorUserName {UserName} must be included in singers list for QueueId {QueueId}", queueEntry.RequestorUserName, queueId);
+                    return BadRequest("Requestor must be included in the singers list");
+                }
+
+                var serializedSingers = JsonSerializer.Serialize(newSingers);
+                queueEntry.Singers = serializedSingers;
                 queueEntry.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
+
+                var singersList = new List<string>();
+                try
+                {
+                    singersList.AddRange(JsonSerializer.Deserialize<string[]>(queueEntry.Singers) ?? Array.Empty<string>());
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning("Failed to deserialize Singers for QueueId {QueueId}: {Message}", queueId, ex.Message);
+                }
+
+                var queueEntryDto = new EventQueueDto
+                {
+                    QueueId = queueEntry.QueueId,
+                    EventId = queueEntry.EventId,
+                    SongId = queueEntry.SongId,
+                    RequestorUserName = queueEntry.RequestorUserName,
+                    Singers = singersList,
+                    Position = queueEntry.Position,
+                    Status = ComputeSongStatus(queueEntry, false),
+                    IsActive = queueEntry.IsActive,
+                    WasSkipped = queueEntry.WasSkipped,
+                    IsCurrentlyPlaying = queueEntry.IsCurrentlyPlaying,
+                    SungAt = queueEntry.SungAt,
+                    IsOnBreak = queueEntry.IsOnBreak
+                };
+
                 _logger.LogInformation("Successfully updated singers for QueueId {QueueId} in EventId {EventId}", queueId, eventId);
-                return Ok();
+                return Ok(queueEntryDto);
             }
             catch (Exception ex)
             {
@@ -1164,52 +1244,139 @@ namespace BNKaraoke.Api.Controllers
             }
         }
 
-        [HttpDelete("queue/clear")]
-        [Authorize]
-        public async Task<IActionResult> ClearUserQueue()
+        [HttpPost("{eventId}/queue/{queueId}/play")]
+        [Authorize(Roles = "Karaoke DJ")]
+        public async Task<IActionResult> PlaySong(int eventId, int queueId)
         {
             try
             {
-                var userName = User.FindFirst(ClaimTypes.Name)?.Value;
-                if (string.IsNullOrEmpty(userName))
+                _logger.LogInformation("Playing song with QueueId {QueueId} for EventId: {EventId}", queueId, eventId);
+                var queueEntry = await _context.EventQueues
+                    .FirstOrDefaultAsync(eq => eq.EventId == eventId && eq.QueueId == queueId);
+                if (queueEntry == null)
                 {
-                    _logger.LogWarning("User identity not found in token");
-                    return Unauthorized("User identity not found in token");
+                    _logger.LogWarning("Queue entry not found with QueueId {QueueId} for EventId {EventId}", queueId, eventId);
+                    return NotFound("Queue entry not found");
                 }
-
-                _logger.LogInformation("Clearing queue for user with UserName: {UserName}", userName);
-                var userQueueItems = await _context.EventQueues
-                    .Where(eq => eq.RequestorUserName == userName)
-                    .ToListAsync();
-
-                _context.EventQueues.RemoveRange(userQueueItems);
+                queueEntry.IsCurrentlyPlaying = true;
+                queueEntry.Status = "Live";
+                queueEntry.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-
-                _logger.LogInformation("Successfully cleared queue for user with UserName: {UserName}", userName);
-                return Ok(new { success = true, message = "User queue cleared successfully." });
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", queueId, "Playing");
+                _logger.LogInformation("Successfully played song with QueueId {QueueId} for EventId {EventId}", queueId, eventId);
+                return Ok();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error clearing user queue for UserName {UserName}: {Message}", User.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown", ex.Message);
-                return StatusCode(500, new { success = false, message = "An error occurred while clearing the queue.", details = ex.Message });
+                _logger.LogError(ex, "Error playing song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, eventId, ex.Message);
+                return StatusCode(500, new { message = "Error playing song", details = ex.Message });
+            }
+        }
+
+        [HttpPost("{eventId}/queue/{queueId}/pause")]
+        [Authorize(Roles = "Karaoke DJ")]
+        public async Task<IActionResult> PauseSong(int eventId, int queueId)
+        {
+            try
+            {
+                _logger.LogInformation("Pausing song with QueueId {QueueId} for EventId: {EventId}", queueId, eventId);
+                var queueEntry = await _context.EventQueues
+                    .FirstOrDefaultAsync(eq => eq.EventId == eventId && eq.QueueId == queueId);
+                if (queueEntry == null)
+                {
+                    _logger.LogWarning("Queue entry not found with QueueId {QueueId} for EventId {EventId}", queueId, eventId);
+                    return NotFound("Queue entry not found");
+                }
+                queueEntry.IsCurrentlyPlaying = false;
+                queueEntry.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", queueId, "Paused");
+                _logger.LogInformation("Successfully paused song with QueueId {QueueId} for EventId {EventId}", queueId, eventId);
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error pausing song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, eventId, ex.Message);
+                return StatusCode(500, new { message = "Error pausing song", details = ex.Message });
+            }
+        }
+
+        [HttpPost("{eventId}/queue/{queueId}/stop")]
+        [Authorize(Roles = "Karaoke DJ")]
+        public async Task<IActionResult> StopSong(int eventId, int queueId)
+        {
+            try
+            {
+                _logger.LogInformation("Stopping song with QueueId {QueueId} for EventId: {EventId}", queueId, eventId);
+                var queueEntry = await _context.EventQueues
+                    .FirstOrDefaultAsync(eq => eq.EventId == eventId && eq.QueueId == queueId);
+                if (queueEntry == null)
+                {
+                    _logger.LogWarning("Queue entry not found with QueueId {QueueId} for EventId {EventId}", queueId, eventId);
+                    return NotFound("Queue entry not found");
+                }
+                queueEntry.IsCurrentlyPlaying = false;
+                queueEntry.SungAt = DateTime.UtcNow;
+                queueEntry.Status = "Archived";
+                queueEntry.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", queueId, "Stopped");
+                _logger.LogInformation("Successfully stopped song with QueueId {QueueId} for EventId {EventId}", queueId, eventId);
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error stopping song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, eventId, ex.Message);
+                return StatusCode(500, new { message = "Error stopping song", details = ex.Message });
+            }
+        }
+
+        [HttpPost("{eventId}/queue/{queueId}/launch")]
+        [Authorize(Roles = "Karaoke DJ")]
+        public async Task<IActionResult> LaunchVideo(int eventId, int queueId)
+        {
+            try
+            {
+                _logger.LogInformation("Launching video for QueueId {QueueId} in EventId: {EventId}", queueId, eventId);
+                var queueEntry = await _context.EventQueues
+                    .Include(eq => eq.Song)
+                    .FirstOrDefaultAsync(eq => eq.EventId == eventId && eq.QueueId == queueId);
+                if (queueEntry == null)
+                {
+                    _logger.LogWarning("Queue entry not found with QueueId {QueueId} for EventId {EventId}", queueId, eventId);
+                    return NotFound("Queue entry not found");
+                }
+                if (string.IsNullOrEmpty(queueEntry.Song?.YouTubeUrl))
+                {
+                    _logger.LogWarning("No YouTube URL for QueueId {QueueId} in EventId {EventId}", queueId, eventId);
+                    return BadRequest("No YouTube URL available for this song");
+                }
+                queueEntry.IsCurrentlyPlaying = true;
+                queueEntry.Status = "Live";
+                queueEntry.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", queueId, "Playing", queueEntry.Song.YouTubeUrl);
+                _logger.LogInformation("Successfully launched video for QueueId {QueueId} in EventId {EventId}", queueId, eventId);
+                return Ok(new { youTubeUrl = queueEntry.Song.YouTubeUrl });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error launching video for QueueId {QueueId} in EventId {EventId}: {Message}", queueId, ex.Message);
+                return StatusCode(500, new { message = "Error launching video", details = ex.Message });
             }
         }
 
         private string ComputeSongStatus(EventQueue queueEntry, bool anySingerOnBreak)
         {
-            if (queueEntry.SungAt != null)
-            {
-                return "Completed";
-            }
+            if (queueEntry.WasSkipped)
+                return "Skipped";
             if (queueEntry.IsCurrentlyPlaying)
-            {
-                return "Now Singing";
-            }
+                return "Playing";
+            if (queueEntry.SungAt != null)
+                return "Sung";
             if (anySingerOnBreak)
-            {
-                return "Waiting on singers";
-            }
-            return "Pending";
+                return "OnBreak";
+            return queueEntry.Status;
         }
     }
 }
