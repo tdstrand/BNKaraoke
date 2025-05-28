@@ -1,6 +1,6 @@
-﻿namespace BNKaraoke.DJ.Models
+﻿namespace BNKaraoke.Api.Dtos
 {
-    public class Singer
+    public class DJSingerDto
     {
         public string? UserId { get; set; }
         public string? DisplayName { get; set; }

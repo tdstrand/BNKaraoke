@@ -21,9 +21,9 @@ namespace BNKaraoke.Api.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly ILogger<EventController> _logger;
-        private readonly IHubContext<SingersHub> _hubContext;
+        private readonly IHubContext<KaraokeDJHub> _hubContext;
 
-        public EventController(ApplicationDbContext context, ILogger<EventController> logger, IHubContext<SingersHub> hubContext)
+        public EventController(ApplicationDbContext context, ILogger<EventController> logger, IHubContext<KaraokeDJHub> hubContext)
         {
             _context = context;
             _logger = logger;
@@ -363,7 +363,7 @@ namespace BNKaraoke.Api.Controllers
                 {
                     EventId = eventId,
                     SongId = queueDto.SongId,
-                    RequestorUserName = requestor.UserName,
+                    RequestorUserName = requestor.UserName!,
                     Singers = JsonSerializer.Serialize(new[] { requestor.UserName }),
                     Position = maxPosition + 1,
                     Status = eventEntity.Status,
@@ -397,7 +397,7 @@ namespace BNKaraoke.Api.Controllers
                     QueueId = newQueueEntry.QueueId,
                     EventId = newQueueEntry.EventId,
                     SongId = newQueueEntry.SongId,
-                    RequestorUserName = newQueueEntry.RequestorUserName,
+                    RequestorUserName = newQueueEntry.RequestorUserName!,
                     Singers = singersList,
                     Position = newQueueEntry.Position,
                     Status = ComputeSongStatus(newQueueEntry, false),
@@ -1007,7 +1007,7 @@ namespace BNKaraoke.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error skipping song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, ex.Message);
+                _logger.LogError(ex, "Error skipping song with QueueId {QueueId} for EventId {EventId}: {Message}", queueId, eventId, ex.Message);
                 return StatusCode(500, new { message = "An error occurred while skipping the song", details = ex.Message });
             }
         }
@@ -1361,7 +1361,7 @@ namespace BNKaraoke.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error launching video for QueueId {QueueId} in EventId {EventId}: {Message}", queueId, ex.Message);
+                _logger.LogError(ex, "Error launching video for QueueId {QueueId} in EventId {EventId}: {Message}", queueId, eventId, ex.Message);
                 return StatusCode(500, new { message = "Error launching video", details = ex.Message });
             }
         }

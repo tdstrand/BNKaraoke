@@ -1,63 +1,25 @@
-// Views/LoginWindow.xaml.cs
-using BNKaraoke.DJ.ViewModels;
-using System;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
+using BNKaraoke.DJ.ViewModels;
 
-namespace BNKaraoke.DJ.Views;
-
-public partial class LoginWindow : Window
+namespace BNKaraoke.DJ.Views
 {
-    private readonly LoginWindowViewModel _viewModel;
-
-    public LoginWindow()
+    public partial class LoginWindow : Window
     {
-        InitializeComponent();
-        _viewModel = new LoginWindowViewModel();
-        DataContext = _viewModel;
-        PhoneNumberBox.TextChanged += PhoneNumberTextBox_TextChanged;
-        PhoneNumberBox.PreviewTextInput += PhoneNumberTextBox_PreviewTextInput;
-        PasswordBox.PasswordChanged += (s, e) => _viewModel.Password = PasswordBox.Password;
-        KeyDown += Window_KeyDown;
-        PhoneNumberBox.Focus();
-    }
-
-    private void PhoneNumberTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        e.Handled = !Regex.IsMatch(e.Text, "[0-9]");
-    }
-
-    private void PhoneNumberTextBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        var digits = Regex.Replace(PhoneNumberBox.Text, "[^0-9]", "");
-        if (digits.Length > 10) digits = digits.Substring(0, 10);
-
-        string formatted = digits;
-        if (digits.Length >= 7)
-            formatted = $"({digits.Substring(0, 3)}) {digits.Substring(3, 3)}-{digits.Substring(6)}";
-        else if (digits.Length >= 4)
-            formatted = $"({digits.Substring(0, 3)}) {digits.Substring(3)}";
-        else if (digits.Length >= 1)
-            formatted = $"({digits}";
-
-        PhoneNumberBox.Text = formatted;
-        PhoneNumberBox.CaretIndex = PhoneNumberBox.Text.Length;
-    }
-
-    private void Window_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && PhoneNumberBox.Text.Length >= 10 && PasswordBox.Password.Length > 0)
+        public LoginWindow()
         {
-            _viewModel.LoginCommand.Execute(null);
+            InitializeComponent();
+            DataContext = new LoginWindowViewModel();
+            LoginBox.Focus();
         }
-    }
 
-    protected override void OnClosed(EventArgs e)
-    {
-        PhoneNumberBox.Text = string.Empty;
-        PasswordBox.Clear();
-        base.OnClosed(e);
+        private void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is LoginWindowViewModel viewModel && sender is PasswordBox passwordBox)
+            {
+                viewModel.Password = passwordBox.Password;
+                Serilog.Log.Information("[LOGIN] PasswordBox changed: PasswordLength={Length}, CanLogin={CanLogin}", passwordBox.Password.Length, viewModel.CanLogin);
+            }
+        }
     }
 }

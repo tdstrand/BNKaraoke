@@ -483,7 +483,7 @@ namespace BNKaraoke.Api.Controllers
                 }
                 var videoIds = string.Join(",", searchData.Items
                     .Where(v => v.Id?.VideoId != null)
-                    .Select(v => v.Id.VideoId));
+                    .Select(v => v.Id!.VideoId!));
                 if (string.IsNullOrEmpty(videoIds))
                 {
                     _logger.LogWarning("YouTubeSearch: No valid video IDs found for query '{Query}'", query);

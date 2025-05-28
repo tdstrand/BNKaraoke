@@ -24,5 +24,8 @@ public class ApplicationUser : IdentityUser
     public string LastName { get; set; } = string.Empty;
 
     [Column(TypeName = "boolean")]
-    public bool MustChangePassword { get; set; } = false; // Added to match database column
+    public bool MustChangePassword { get; set; } = false;
+
+    [Column(TypeName = "timestamp with time zone")]
+    public DateTime? LastActivity { get; set; } // Added for authentication tracking
 }

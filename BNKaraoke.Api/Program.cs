@@ -16,7 +16,6 @@ using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Security.Claims;
-using BNKaraoke.Api.Services;
 using BNKaraoke.Api.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -135,7 +134,7 @@ builder.Services.AddAuthorization(options =>
         policy.RequireAuthenticatedUser();
         policy.RequireRole("Singer");
     });
-    options.AddPolicy("SongManager", policy =>
+    options.AddPolicy("SongController", policy =>
     {
         policy.RequireAuthenticatedUser();
         policy.RequireRole("Song Manager");
@@ -173,7 +172,7 @@ builder.Services.AddControllers()
 
 builder.Services.AddTransient<EventController>();
 builder.Services.AddSignalR();
-builder.Services.AddScoped<SingerService>();
+builder.Services.AddHttpClient();
 
 var loggerFactory = LoggerFactory.Create(logging =>
 {
@@ -225,8 +224,6 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-builder.Services.AddHttpClient();
-
 var app = builder.Build();
 
 // Early logging middleware
@@ -249,12 +246,12 @@ app.Use(async (context, next) =>
     {
         var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
         logger.LogError(ex, "Error processing request {Method} {Path}: {Message}",
-            context.Request.Method, context.Request.Path, ex.Message);
+            context.Request.Method, context.Request.Path);
         throw;
     }
 });
 
-// Request logging
+// Request logging with 404 logging for /leave
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
@@ -263,6 +260,35 @@ app.Use(async (context, next) =>
     await next.Invoke();
     logger.LogDebug("Sending response: {StatusCode} with CORS headers: {AllowOrigin}",
         context.Response.StatusCode, context.Response.Headers["Access-Control-Allow-Origin"]);
+    if (context.Response.StatusCode == 404 && context.Request.Path.Value != null &&
+        context.Request.Path.Value.StartsWith("/api/events/", StringComparison.OrdinalIgnoreCase) &&
+        context.Request.Path.Value.EndsWith("/leave", StringComparison.OrdinalIgnoreCase))
+    {
+        var eventId = context.Request.Path.Value.Split('/')[3];
+        var requestorId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "Unknown";
+        logger.LogWarning("404 on /leave for EventId={EventId}, RequestorId={RequestorId}, Time={Time}", eventId, requestorId, DateTime.UtcNow);
+    }
+});
+
+// Middleware to update LastActivity for authenticated users
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var user = await dbContext.Users.FindAsync(userId);
+            if (user != null)
+            {
+                user.LastActivity = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
+        }
+    }
+    await next();
 });
 
 if (app.Environment.IsDevelopment())
@@ -308,7 +334,7 @@ app.Use(async (context, next) =>
 });
 
 app.MapControllers();
-app.MapHub<SingersHub>("/hubs/singers");
+app.MapHub<KaraokeDJHub>("/hubs/karaoke-dj");
 
 using (var scope = app.Services.CreateScope())
 {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Serilog;
 using BNKaraoke.DJ.Models;
 
@@ -14,22 +15,25 @@ namespace BNKaraoke.DJ.Services
         public bool IsAuthenticated { get; private set; }
         public string? Token { get; private set; }
         public string? FirstName { get; private set; }
-        public string? PhoneNumber { get; private set; }
+        public string? UserName { get; private set; }
+        public List<string>? Roles { get; private set; }
 
         private UserSessionService()
         {
             Log.Information("[SESSION] Singleton instance created: {InstanceId}", GetHashCode());
         }
 
-        public void SetSession(LoginResult loginResult)
+        public void SetSession(LoginResult loginResult, string userName)
         {
             try
             {
-                Log.Information("[SESSION] Setting session: Token={Token}, FirstName={FirstName}, PhoneNumber={PhoneNumber}",
-                    loginResult?.Token, loginResult?.FirstName, loginResult?.PhoneNumber);
+                Log.Information("[SESSION] Setting session: Token={Token}, FirstName={FirstName}, UserName={UserName}, Roles={Roles}",
+                    loginResult?.Token?.Substring(0, Math.Min(10, loginResult.Token?.Length ?? 0)) ?? "null",
+                    loginResult?.FirstName, userName, loginResult?.Roles?.Count ?? 0);
                 Token = loginResult?.Token;
                 FirstName = loginResult?.FirstName;
-                PhoneNumber = loginResult?.PhoneNumber;
+                UserName = userName;
+                Roles = loginResult?.Roles;
                 IsAuthenticated = !string.IsNullOrEmpty(Token);
                 SessionChanged?.Invoke(this, EventArgs.Empty);
                 Log.Information("[SESSION] Session set: IsAuthenticated={IsAuthenticated}", IsAuthenticated);
@@ -47,7 +51,8 @@ namespace BNKaraoke.DJ.Services
                 Log.Information("[SESSION] Clearing session");
                 Token = null;
                 FirstName = null;
-                PhoneNumber = null;
+                UserName = null;
+                Roles = null;
                 IsAuthenticated = false;
                 SessionChanged?.Invoke(this, EventArgs.Empty);
                 Log.Information("[SESSION] Session cleared: IsAuthenticated={IsAuthenticated}", IsAuthenticated);

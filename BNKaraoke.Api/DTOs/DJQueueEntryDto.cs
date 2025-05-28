@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace BNKaraoke.DJ.Models
+namespace BNKaraoke.Api.Dtos
 {
-    public class QueueEntry
+    public class DJQueueEntryDto
     {
         public int QueueId { get; set; }
         public int EventId { get; set; }

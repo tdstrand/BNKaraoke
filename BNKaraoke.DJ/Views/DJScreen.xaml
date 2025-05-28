@@ -43,7 +43,7 @@
                         Content="{Binding JoinEventButtonText, UpdateSourceTrigger=PropertyChanged}" 
                         Background="{Binding JoinEventButtonColor, UpdateSourceTrigger=PropertyChanged}" 
                         Visibility="{Binding IsJoinEventButtonVisible, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}"
-                        Command="{Binding JoinLiveEventCommand}" DockPanel.Dock="Right"/>
+                        Command="{Binding JoinLiveEventCommand}"/>
             </DockPanel>
         </Grid>
         <!-- Main Content -->
@@ -82,11 +82,12 @@
                                 <DropShadowEffect Color="#22d3ee" ShadowDepth="0" BlurRadius="5"/>
                             </TextBlock.Effect>
                         </TextBlock>
-                        <TextBlock DockPanel.Dock="Top" Text="Total Songs: {Binding QueueEntries.Count}" 
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding QueueEntries.Count, StringFormat='Total Songs: {0}'}" 
                                    FontSize="14" Foreground="#ddd" Margin="5"/>
-                        <ListView x:Name="QueueListView" ItemsSource="{Binding QueueEntries}" Margin="5" SelectedItem="{Binding SelectedQueueEntry}">
+                        <ListView x:Name="QueueListView" ItemsSource="{Binding QueueEntries}" Margin="5" 
+                                  SelectedItem="{Binding SelectedQueueEntry}" AllowDrop="True">
                             <i:Interaction.Behaviors>
-                                <behaviors:DragDropBehavior DragCommand="{Binding StartDragCommand}" DropCommand="{Binding DropCommand}"/>
+                                <behaviors:DragDropBehavior DropCommand="{Binding DropCommand}"/>
                             </i:Interaction.Behaviors>
                             <ListView.View>
                                 <GridView>
@@ -104,17 +105,41 @@
                                     <Setter Property="Padding" Value="10"/>
                                     <Setter Property="BorderBrush" Value="#ccc"/>
                                     <Setter Property="BorderThickness" Value="0,0,0,1"/>
-                                    <Style.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background" Value="#e0e0e0"/>
-                                        </Trigger>
-                                    </Style.Triggers>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListViewItem">
+                                                <Border x:Name="Border" Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}">
+                                                    <Grid>
+                                                        <Rectangle x:Name="DropIndicator" Height="2" Fill="#22D3EE" Visibility="Collapsed"
+                                                                   VerticalAlignment="Top"/>
+                                                        <ContentPresenter/>
+                                                    </Grid>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="DropIndicator" Property="Visibility" Value="Visible"/>
+                                                        <Setter Property="Background" Value="#e0e0e0"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter Property="Background" Value="#d1d5db"/>
+                                                    </Trigger>
+                                                    <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsMouseOver}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="#22d3ee"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                    </DataTrigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <EventSetter Event="PreviewMouseLeftButtonDown" Handler="ListViewItem_PreviewMouseLeftButtonDown"/>
                                 </Style>
                             </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="☰" FontSize="18" Margin="5,0" Cursor="SizeAll" Width="20"/>
+                                        <TextBlock Text="☰" FontSize="18" Margin="5,0" Width="20"/>
                                         <TextBlock Text="{Binding Position}" FontSize="18" Width="50"/>
                                         <TextBlock Text="{Binding SongTitle}" FontSize="18" Width="200"/>
                                         <TextBlock Text="{Binding SongArtist}" FontSize="18" Width="150"/>
@@ -124,7 +149,7 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                             <ListView.InputBindings>
-                                <MouseBinding Gesture="LeftClick" Command="{Binding ShowSongDetailsCommand}"/>
+                                <MouseBinding Gesture="LeftDoubleClick" Command="{Binding ShowSongDetailsCommand}"/>
                             </ListView.InputBindings>
                         </ListView>
                     </DockPanel>

@@ -1,87 +1,109 @@
-﻿using System.Windows;
+﻿using System;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using Microsoft.Xaml.Behaviors;
+using Microsoft.Xaml.Behaviors; // Updated namespace
 using BNKaraoke.DJ.Models;
 using CommunityToolkit.Mvvm.Input;
+using Serilog;
 
 namespace BNKaraoke.DJ.Behaviors
 {
     public class DragDropBehavior : Behavior<ListView>
     {
-        public static readonly DependencyProperty DragCommandProperty =
-            DependencyProperty.Register("DragCommand", typeof(IRelayCommand), typeof(DragDropBehavior));
-
         public static readonly DependencyProperty DropCommandProperty =
-            DependencyProperty.Register("DropCommand", typeof(IRelayCommand), typeof(DragDropBehavior));
+            DependencyProperty.Register("DropCommand", typeof(IAsyncRelayCommand<DragEventArgs>), typeof(DragDropBehavior), new PropertyMetadata(null));
 
-        public IRelayCommand DragCommand
+        public IAsyncRelayCommand<DragEventArgs> DropCommand
         {
-            get => (IRelayCommand)GetValue(DragCommandProperty);
-            set => SetValue(DragCommandProperty, value);
+            get { return (IAsyncRelayCommand<DragEventArgs>)GetValue(DropCommandProperty); }
+            set { SetValue(DropCommandProperty, value); }
         }
 
-        public IRelayCommand DropCommand
-        {
-            get => (IRelayCommand)GetValue(DropCommandProperty);
-            set => SetValue(DropCommandProperty, value);
-        }
+        private bool _hasLoggedDragOver;
 
         protected override void OnAttached()
         {
             base.OnAttached();
-            AssociatedObject.PreviewMouseMove += OnPreviewMouseMove;
-            AssociatedObject.DragOver += OnDragOver;
-            AssociatedObject.Drop += OnDrop;
             AssociatedObject.AllowDrop = true;
+            AssociatedObject.DragOver += AssociatedObject_DragOver;
+            AssociatedObject.Drop += AssociatedObject_Drop;
+            AssociatedObject.MouseMove += AssociatedObject_MouseMove;
+            Log.Information("[DRAGDROP BEHAVIOR] Attached to ListView");
         }
 
         protected override void OnDetaching()
         {
+            AssociatedObject.DragOver -= AssociatedObject_DragOver;
+            AssociatedObject.Drop -= AssociatedObject_Drop;
+            AssociatedObject.MouseMove -= AssociatedObject_MouseMove;
             base.OnDetaching();
-            AssociatedObject.PreviewMouseMove -= OnPreviewMouseMove;
-            AssociatedObject.DragOver -= OnDragOver;
-            AssociatedObject.Drop -= OnDrop;
+            Log.Information("[DRAGDROP BEHAVIOR] Detached from ListView");
         }
 
-        private void OnPreviewMouseMove(object sender, MouseEventArgs e)
+        private void AssociatedObject_MouseMove(object sender, MouseEventArgs e)
         {
-            if (e.LeftButton == MouseButtonState.Pressed && AssociatedObject.SelectedItem != null)
+            try
             {
-                var draggedItem = AssociatedObject.SelectedItem as QueueEntry;
-                if (draggedItem != null && DragCommand?.CanExecute(draggedItem) == true)
+                if (e.LeftButton == MouseButtonState.Pressed && AssociatedObject.SelectedItem != null)
                 {
-                    DragCommand.Execute(draggedItem);
-                    var data = new DataObject(typeof(QueueEntry), draggedItem);
-                    DragDrop.DoDragDrop(AssociatedObject, data, DragDropEffects.Move);
+                    var draggedItem = AssociatedObject.SelectedItem as QueueEntry;
+                    if (draggedItem != null)
+                    {
+                        Log.Information("[DRAGDROP BEHAVIOR] Initiating drag for QueueId={QueueId}", draggedItem.QueueId);
+                        var data = new DataObject(typeof(QueueEntry), draggedItem);
+                        DragDrop.DoDragDrop(AssociatedObject, data, DragDropEffects.Move);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DRAGDROP BEHAVIOR] MouseMove failed: {Message}", ex.Message);
             }
         }
 
-        private void OnDragOver(object sender, DragEventArgs e)
+        private void AssociatedObject_DragOver(object sender, DragEventArgs e)
         {
-            if (e.Data.GetDataPresent(typeof(QueueEntry)))
+            try
             {
+                if (!e.Data.GetDataPresent(typeof(QueueEntry)))
+                {
+                    e.Effects = DragDropEffects.None;
+                    e.Handled = true;
+                    return;
+                }
+
                 e.Effects = DragDropEffects.Move;
-            }
-            else
-            {
-                e.Effects = DragDropEffects.None;
-            }
-            e.Handled = true;
-        }
+                e.Handled = true;
 
-        private void OnDrop(object sender, DragEventArgs e)
-        {
-            if (e.Data.GetDataPresent(typeof(QueueEntry)))
-            {
-                var droppedItem = e.Data.GetData(typeof(QueueEntry)) as QueueEntry;
-                if (droppedItem != null && DropCommand?.CanExecute(droppedItem) == true)
+                if (!_hasLoggedDragOver)
                 {
-                    DropCommand.Execute(droppedItem);
+                    Log.Information("[DRAGDROP BEHAVIOR] DragOver: Effects=\"{Effects}\"", e.Effects);
+                    _hasLoggedDragOver = true;
                 }
             }
-            e.Handled = true;
+            catch (Exception ex)
+            {
+                Log.Error("[DRAGDROP BEHAVIOR] DragOver failed: {Message}", ex.Message);
+            }
+        }
+
+        private async void AssociatedObject_Drop(object sender, DragEventArgs e)
+        {
+            try
+            {
+                Log.Information("[DRAGDROP BEHAVIOR] Drop initiated");
+                if (DropCommand != null && DropCommand.CanExecute(e))
+                {
+                    await DropCommand.ExecuteAsync(e);
+                    Log.Information("[DRAGDROP BEHAVIOR] DropCommand executed");
+                }
+                _hasLoggedDragOver = false; // Reset for next drag
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DRAGDROP BEHAVIOR] Drop failed: {Message}", ex.Message);
+            }
         }
     }
 }

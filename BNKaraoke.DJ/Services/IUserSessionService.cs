@@ -1,5 +1,6 @@
-using System;
 using BNKaraoke.DJ.Models;
+using System;
+using System.Collections.Generic;
 
 namespace BNKaraoke.DJ.Services
 {
@@ -8,9 +9,10 @@ namespace BNKaraoke.DJ.Services
         bool IsAuthenticated { get; }
         string? Token { get; }
         string? FirstName { get; }
-        string? PhoneNumber { get; }
+        string? UserName { get; }
+        List<string>? Roles { get; }
         event EventHandler SessionChanged;
-        void SetSession(LoginResult loginResult);
+        void SetSession(LoginResult loginResult, string userName);
         void ClearSession();
     }
 }

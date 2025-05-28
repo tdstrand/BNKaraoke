@@ -1,6 +1,7 @@
-﻿namespace BNKaraoke.DJ.Models;
-
-public class AttendanceActionDto
+﻿namespace BNKaraoke.DJ.Models
 {
-    public string? RequestorId { get; set; }
+    public class AttendanceActionDto
+    {
+        public string RequestorId { get; set; } = string.Empty;
+    }
 }

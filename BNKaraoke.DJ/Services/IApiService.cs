@@ -17,5 +17,7 @@ namespace BNKaraoke.DJ.Services
         Task SkipAsync(string eventId, string queueId);
         Task LaunchVideoAsync(string eventId, string queueId);
         Task<List<Singer>> GetSingersAsync(string eventId);
+        Task<List<QueueEntry>> GetQueueAsync(string eventId);
+        Task ReorderQueueAsync(string eventId, List<string> queueIds);
     }
 }
