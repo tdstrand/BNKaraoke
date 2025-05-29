@@ -4,6 +4,7 @@ using BNKaraoke.DJ.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.AspNetCore.WebUtilities;
 using Serilog;
 using System;
 using System.Collections.ObjectModel;
@@ -22,6 +23,7 @@ public partial class DJScreenViewModel : ObservableObject
     private readonly IUserSessionService _userSessionService = UserSessionService.Instance;
     private readonly IApiService _apiService = new ApiService(UserSessionService.Instance, SettingsService.Instance);
     private readonly SettingsService _settingsService = SettingsService.Instance;
+    private readonly VideoCacheService? _videoCacheService;
     private string? _currentEventId;
     private HubConnection? _signalRConnection;
 
@@ -76,11 +78,12 @@ public partial class DJScreenViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<Singer> _redSingers = new();
 
-    public DJScreenViewModel()
+    public DJScreenViewModel(VideoCacheService? videoCacheService = null)
     {
         try
         {
             Log.Information("[DJSCREEN VM] Starting ViewModel constructor");
+            _videoCacheService = videoCacheService;
             _userSessionService.SessionChanged += UserSessionService_SessionChanged;
             Log.Information("[DJSCREEN VM] Subscribed to SessionChanged event");
             UpdateAuthenticationState();
@@ -100,17 +103,17 @@ public partial class DJScreenViewModel : ObservableObject
         {
             Log.Information("[DJSCREEN SIGNALR] Initializing SignalR connection for EventId={EventId}", eventId);
             _signalRConnection = new HubConnectionBuilder()
-                .WithUrl("http://localhost:7290/hubs/karaoke-dj", options =>
+                .WithUrl("http://localhost:7290/hubs/karaoke-DJ", options =>
                 {
                     options.AccessTokenProvider = () => Task.FromResult(_userSessionService.Token);
                 })
                 .WithAutomaticReconnect()
                 .Build();
 
-            _signalRConnection.On<string, string, string>("QueueUpdated", (queueId, status, youTubeUrl) =>
+            _signalRConnection.On<string, string, string>("QueueUpdated", async (queueId, status, youTubeUrl) =>
             {
                 Log.Information("[DJSCREEN SIGNALR] Received QueueUpdated: QueueId={QueueId}, Status={Status}, YouTubeUrl={YouTubeUrl}", queueId, status, youTubeUrl);
-                Application.Current.Dispatcher.Invoke(() =>
+                await Application.Current.Dispatcher.InvokeAsync(async () =>
                 {
                     try
                     {
@@ -119,7 +122,7 @@ public partial class DJScreenViewModel : ObservableObject
                             if (parsedQueueId == 0)
                             {
                                 // Full queue reload
-                                LoadQueueData().GetAwaiter().GetResult();
+                                await LoadQueueData();
                                 Log.Information("[DJSCREEN SIGNALR] Triggered full queue reload for EventId={EventId}", _currentEventId);
                             }
                             else
@@ -129,6 +132,15 @@ public partial class DJScreenViewModel : ObservableObject
                                 {
                                     queueEntry.Status = status;
                                     queueEntry.YouTubeUrl = youTubeUrl;
+                                    if (!string.IsNullOrEmpty(youTubeUrl) && _videoCacheService != null)
+                                    {
+                                        queueEntry.IsVideoCached = _videoCacheService.IsVideoCached(queueEntry.SongId);
+                                        if (!queueEntry.IsVideoCached)
+                                        {
+                                            await _videoCacheService.CacheVideoAsync(youTubeUrl, queueEntry.SongId);
+                                            queueEntry.IsVideoCached = _videoCacheService.IsVideoCached(queueEntry.SongId);
+                                        }
+                                    }
                                     Log.Information("[DJSCREEN SIGNALR] Updated queue entry: QueueId={QueueId}", queueId);
                                 }
                                 else
@@ -161,7 +173,7 @@ public partial class DJScreenViewModel : ObservableObject
         catch (Exception ex)
         {
             Log.Error("[DJSCREEN SIGNALR] Failed to initialize SignalR for EventId={EventId}: {Message}", eventId, ex.Message);
-            Application.Current.Dispatcher.Invoke(() =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 MessageBox.Show("Failed to connect to real-time updates.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             });
@@ -832,12 +844,33 @@ public partial class DJScreenViewModel : ObservableObject
             }
 
             var queueEntries = await _apiService.GetQueueAsync(_currentEventId);
-            Application.Current.Dispatcher.Invoke(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 QueueEntries.Clear();
                 foreach (var entry in queueEntries.OrderBy(q => q.Position))
                 {
+                    entry.IsVideoCached = _videoCacheService?.IsVideoCached(entry.SongId) ?? false;
                     QueueEntries.Add(entry);
+                    if (!entry.IsVideoCached && !string.IsNullOrEmpty(entry.YouTubeUrl) && _videoCacheService != null)
+                    {
+                        // Trigger caching asynchronously in background
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await _videoCacheService.CacheVideoAsync(entry.YouTubeUrl, entry.SongId);
+                                await Application.Current.Dispatcher.InvokeAsync(() =>
+                                {
+                                    entry.IsVideoCached = _videoCacheService.IsVideoCached(entry.SongId);
+                                    Log.Information("[DJSCREEN] Updated IsVideoCached for SongId={SongId}: {IsCached}", entry.SongId, entry.IsVideoCached);
+                                });
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Error("[DJSCREEN] Failed to cache video for SongId={SongId}: {Message}", entry.SongId, ex.Message);
+                            }
+                        });
+                    }
                 }
                 Log.Information("[DJSCREEN] Loaded {Count} queue entries for event {EventId}", QueueEntries.Count, _currentEventId);
             });
@@ -845,7 +878,7 @@ public partial class DJScreenViewModel : ObservableObject
         catch (Exception ex)
         {
             Log.Error("[DJSCREEN] Failed to load queue data for event: {EventId}: {Message}", _currentEventId, ex.Message);
-            Application.Current.Dispatcher.Invoke(() =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 MessageBox.Show($"Failed to load queue data: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             });
