@@ -4,16 +4,14 @@ using BNKaraoke.DJ.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.AspNetCore.WebUtilities;
 using Serilog;
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 
 namespace BNKaraoke.DJ.ViewModels;
 
@@ -23,9 +21,11 @@ public partial class DJScreenViewModel : ObservableObject
     private readonly IUserSessionService _userSessionService = UserSessionService.Instance;
     private readonly IApiService _apiService = new ApiService(UserSessionService.Instance, SettingsService.Instance);
     private readonly SettingsService _settingsService = SettingsService.Instance;
-    private readonly VideoCacheService? _videoCacheService;
+    private readonly VideoCacheService _videoCacheService;
     private string? _currentEventId;
     private HubConnection? _signalRConnection;
+    private VideoPlayerWindow? _videoPlayerWindow;
+    private bool _isLoginWindowOpen;
 
     [ObservableProperty]
     private bool _isAuthenticated;
@@ -52,7 +52,7 @@ public partial class DJScreenViewModel : ObservableObject
     private EventDto? _currentEvent;
 
     [ObservableProperty]
-    private ObservableCollection<QueueEntry> _queueEntries = new();
+    private ObservableCollection<QueueEntry> _queueEntries = [];
 
     [ObservableProperty]
     private QueueEntry? _selectedQueueEntry;
@@ -61,32 +61,58 @@ public partial class DJScreenViewModel : ObservableObject
     private bool _isPlaying;
 
     [ObservableProperty]
-    private ObservableCollection<Singer> _singers = new();
+    private ObservableCollection<Singer> _singers = [];
 
     [ObservableProperty]
     private int _nonDummySingersCount;
 
     [ObservableProperty]
-    private ObservableCollection<Singer> _greenSingers = new();
+    private ObservableCollection<Singer> _greenSingers = [];
 
     [ObservableProperty]
-    private ObservableCollection<Singer> _yellowSingers = new();
+    private ObservableCollection<Singer> _yellowSingers = [];
 
     [ObservableProperty]
-    private ObservableCollection<Singer> _orangeSingers = new();
+    private ObservableCollection<Singer> _orangeSingers = [];
 
     [ObservableProperty]
-    private ObservableCollection<Singer> _redSingers = new();
+    private ObservableCollection<Singer> _redSingers = [];
+
+    [ObservableProperty]
+    private string _showButtonText = "Start Show";
+
+    [ObservableProperty]
+    private string _showButtonColor = "#22d3ee"; // Cyan
+
+    [ObservableProperty]
+    private bool _isShowActive;
+
+    [ObservableProperty]
+    private QueueEntry? _playingQueueEntry;
+
+    [ObservableProperty]
+    private int _totalSongsPlayed;
+
+    [ObservableProperty]
+    private bool _isAutoPlayEnabled = true;
+
+    [ObservableProperty]
+    private string _autoPlayButtonText = "Auto Play: On";
+
+#pragma warning disable CS0067 // Suppress unused event warning
+    public event EventHandler? SongEnded;
+#pragma warning restore CS0067
 
     public DJScreenViewModel(VideoCacheService? videoCacheService = null)
     {
         try
         {
             Log.Information("[DJSCREEN VM] Starting ViewModel constructor");
-            _videoCacheService = videoCacheService;
+            _videoCacheService = videoCacheService ?? new VideoCacheService(_settingsService);
+            Log.Information("[DJSCREEN VM] VideoCacheService initialized, CachePath={CachePath}", _settingsService.Settings.VideoCachePath);
             _userSessionService.SessionChanged += UserSessionService_SessionChanged;
             Log.Information("[DJSCREEN VM] Subscribed to SessionChanged event");
-            UpdateAuthenticationState();
+            UpdateAuthenticationState().GetAwaiter().GetResult();
             Log.Information("[DJSCREEN VM] Called UpdateAuthenticationState in constructor");
             Log.Information("[DJSCREEN VM] ViewModel instance created: {InstanceId}", GetHashCode());
         }
@@ -103,7 +129,7 @@ public partial class DJScreenViewModel : ObservableObject
         {
             Log.Information("[DJSCREEN SIGNALR] Initializing SignalR connection for EventId={EventId}", eventId);
             _signalRConnection = new HubConnectionBuilder()
-                .WithUrl("http://localhost:7290/hubs/karaoke-DJ", options =>
+                .WithUrl("http://localhost:7290/hubs/karaoke-dj", options =>
                 {
                     options.AccessTokenProvider = () => Task.FromResult(_userSessionService.Token);
                 })
@@ -132,16 +158,19 @@ public partial class DJScreenViewModel : ObservableObject
                                 {
                                     queueEntry.Status = status;
                                     queueEntry.YouTubeUrl = youTubeUrl;
-                                    if (!string.IsNullOrEmpty(youTubeUrl) && _videoCacheService != null)
+                                    if (!string.IsNullOrEmpty(youTubeUrl))
                                     {
                                         queueEntry.IsVideoCached = _videoCacheService.IsVideoCached(queueEntry.SongId);
+                                        Log.Information("[DJSCREEN SIGNALR] Checked cache for SongId={SongId}, IsCached={IsCached}, CachePath={CachePath}",
+                                            queueEntry.SongId, queueEntry.IsVideoCached, Path.Combine(_settingsService.Settings.VideoCachePath, $"{queueEntry.SongId}.mp4"));
                                         if (!queueEntry.IsVideoCached)
                                         {
                                             await _videoCacheService.CacheVideoAsync(youTubeUrl, queueEntry.SongId);
                                             queueEntry.IsVideoCached = _videoCacheService.IsVideoCached(queueEntry.SongId);
+                                            Log.Information("[DJSCREEN SIGNALR] Cached video for SongId={SongId}, IsCached={IsCached}", queueEntry.SongId, queueEntry.IsVideoCached);
                                         }
                                     }
-                                    Log.Information("[DJSCREEN SIGNALR] Updated queue entry: QueueId={QueueId}", queueId);
+                                    Log.Information("[DJSCREEN SIGNALR] Updated queue entry: QueueId={QueueId}, IsVideoCached={IsCached}", queueId, queueEntry.IsVideoCached);
                                 }
                                 else
                                 {
@@ -277,12 +306,19 @@ public partial class DJScreenViewModel : ObservableObject
         }
     }
 
-    private void UserSessionService_SessionChanged(object? sender, EventArgs e)
+    private async void UserSessionService_SessionChanged(object? sender, EventArgs e)
     {
         try
         {
             Log.Information("[DJSCREEN] Session changed event received");
-            UpdateAuthenticationState();
+            if (!_isLoginWindowOpen)
+            {
+                await UpdateAuthenticationState();
+            }
+            else
+            {
+                Log.Information("[DJSCREEN] Skipped UpdateAuthenticationState due to open LoginWindow");
+            }
         }
         catch (Exception ex)
         {
@@ -291,7 +327,7 @@ public partial class DJScreenViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void LoginLogout()
+    private async Task LoginLogout()
     {
         Log.Information("[DJSCREEN] LoginLogout command invoked");
         if (IsAuthenticated)
@@ -305,7 +341,7 @@ public partial class DJScreenViewModel : ObservableObject
                 {
                     try
                     {
-                        _apiService.LeaveEventAsync(_currentEventId, _userSessionService.UserName ?? string.Empty).GetAwaiter().GetResult();
+                        await _apiService.LeaveEventAsync(_currentEventId, _userSessionService.UserName ?? string.Empty);
                         Log.Information("[DJSCREEN] Left event: {EventId}", _currentEventId);
                     }
                     catch (Exception ex)
@@ -315,7 +351,15 @@ public partial class DJScreenViewModel : ObservableObject
                     _currentEventId = null;
                 }
                 _userSessionService.ClearSession();
-                UpdateAuthenticationState();
+                if (_videoPlayerWindow != null)
+                {
+                    _videoPlayerWindow.Close();
+                    _videoPlayerWindow = null;
+                    IsShowActive = false;
+                    ShowButtonText = "Start Show";
+                    ShowButtonColor = "#22d3ee";
+                }
+                await UpdateAuthenticationState();
                 Log.Information("[DJSCREEN] Logout complete: IsAuthenticated={IsAuthenticated}, WelcomeMessage={WelcomeMessage}, LoginLogoutButtonText={LoginLogoutButtonText}",
                     IsAuthenticated, WelcomeMessage, LoginLogoutButtonText);
             }
@@ -323,11 +367,27 @@ public partial class DJScreenViewModel : ObservableObject
         else
         {
             Log.Information("[DJSCREEN] Showing LoginWindow");
-            var loginWindow = new LoginWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-            loginWindow.ShowDialog();
-            UpdateAuthenticationState();
-            Log.Information("[DJSCREEN] LoginWindow closed: IsAuthenticated={IsAuthenticated}, WelcomeMessage={WelcomeMessage}, LoginLogoutButtonText={LoginLogoutButtonText}",
-                IsAuthenticated, WelcomeMessage, LoginLogoutButtonText);
+            _isLoginWindowOpen = true;
+            try
+            {
+                var loginWindow = new LoginWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
+                var result = loginWindow.ShowDialog();
+                _isLoginWindowOpen = false;
+                if (result == true)
+                {
+                    await UpdateAuthenticationState();
+                    Log.Information("[DJSCREEN] LoginWindow closed with successful login: IsAuthenticated={IsAuthenticated}, WelcomeMessage={WelcomeMessage}, LoginLogoutButtonText={LoginLogoutButtonText}",
+                        IsAuthenticated, WelcomeMessage, LoginLogoutButtonText);
+                }
+                else
+                {
+                    Log.Information("[DJSCREEN] LoginWindow closed without login");
+                }
+            }
+            finally
+            {
+                _isLoginWindowOpen = false;
+            }
         }
     }
 
@@ -371,11 +431,6 @@ public partial class DJScreenViewModel : ObservableObject
                     MessageBox.Show("No live events are currently available.", "No Events", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
-            catch (HttpRequestException ex)
-            {
-                Log.Error("[DJSCREEN] Failed to join event: Status={StatusCode}, Message={Message}", ex.StatusCode, ex.Message);
-                MessageBox.Show($"Failed to join event: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN] Failed to join event: {Message}", ex.Message);
@@ -403,6 +458,15 @@ public partial class DJScreenViewModel : ObservableObject
                 OrangeSingers.Clear();
                 RedSingers.Clear();
                 NonDummySingersCount = 0;
+                if (_videoPlayerWindow != null)
+                {
+                    _videoPlayerWindow.Close();
+                    _videoPlayerWindow = null;
+                    IsShowActive = false;
+                    ShowButtonText = "Start Show";
+                    ShowButtonColor = "#22d3ee";
+                }
+                PlayingQueueEntry = null;
                 OnPropertyChanged(nameof(NonDummySingersCount));
                 if (_signalRConnection != null)
                 {
@@ -454,35 +518,74 @@ public partial class DJScreenViewModel : ObservableObject
     private async Task Play()
     {
         Log.Information("[DJSCREEN] Play/Pause command invoked");
-        if (SelectedQueueEntry != null && !string.IsNullOrEmpty(_currentEventId))
+        if (!IsShowActive)
+        {
+            Log.Information("[DJSCREEN] Play failed: Show not started");
+            MessageBox.Show("Please start the show first.", "No Show Active", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (QueueEntries.Count == 0)
+        {
+            Log.Information("[DJSCREEN] Play failed: Queue is empty");
+            MessageBox.Show("No songs in the queue.", "Empty Queue", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var targetEntry = SelectedQueueEntry ?? QueueEntries.FirstOrDefault();
+        if (targetEntry == null)
+        {
+            Log.Information("[DJSCREEN] Play failed: No queue entry selected");
+            MessageBox.Show("Please select a song to play.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!targetEntry.IsVideoCached)
+        {
+            Log.Information("[DJSCREEN] Play failed: Video not cached for SongId={SongId}", targetEntry.SongId);
+            MessageBox.Show("Video not cached. Please wait for caching to complete.", "Not Cached", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(_currentEventId))
         {
             try
             {
                 if (IsPlaying)
                 {
-                    await _apiService.PauseAsync(_currentEventId, SelectedQueueEntry.QueueId.ToString());
-                    Log.Information("[DJSCREEN] Pause request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
-                    MessageBox.Show($"Paused {SelectedQueueEntry.SongTitle}", "Pause", MessageBoxButton.OK, MessageBoxImage.Information);
+                    await _apiService.PauseAsync(_currentEventId, targetEntry.QueueId.ToString());
+                    Log.Information("[DJSCREEN] Pause request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, targetEntry.QueueId, targetEntry.SongTitle);
+                    if (_videoPlayerWindow != null)
+                    {
+                        _videoPlayerWindow.StopVideo();
+                    }
                     IsPlaying = false;
+                    PlayingQueueEntry = null;
                 }
                 else
                 {
-                    await _apiService.PlayAsync(_currentEventId, SelectedQueueEntry.QueueId.ToString());
-                    Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
-                    MessageBox.Show($"Playing {SelectedQueueEntry.SongTitle}", "Play", MessageBoxButton.OK, MessageBoxImage.Information);
+                    await _apiService.PlayAsync(_currentEventId, targetEntry.QueueId.ToString());
+                    Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, targetEntry.QueueId, targetEntry.SongTitle);
+                    string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{targetEntry.SongId}.mp4");
+                    if (_videoPlayerWindow != null)
+                    {
+                        _videoPlayerWindow.PlayVideo(videoPath);
+                    }
                     IsPlaying = true;
+                    PlayingQueueEntry = targetEntry;
+                    SelectedQueueEntry = targetEntry; // Ensure selection matches playing song
                 }
             }
             catch (Exception ex)
             {
-                Log.Error("[DJSCREEN] Failed to {Action} queue {QueueId}: {Message}", IsPlaying ? "pause" : "play", SelectedQueueEntry.QueueId, ex.Message);
+                Log.Error("[DJSCREEN] Failed to {Action} queue {QueueId}: {Message}", IsPlaying ? "pause" : "play", targetEntry.QueueId, ex.Message);
                 MessageBox.Show($"Failed to {(IsPlaying ? "pause" : "play")}: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
         else
         {
-            Log.Information("[DJSCREEN] Play/Pause failed: No queue entry selected or no event joined");
-            MessageBox.Show("Please select a song and join an event.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Log.Information("[DJSCREEN] Play/Pause failed: No event joined");
+            MessageBox.Show("Please join an event.", "No Event", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -496,8 +599,36 @@ public partial class DJScreenViewModel : ObservableObject
             {
                 await _apiService.StopAsync(_currentEventId, SelectedQueueEntry.QueueId.ToString());
                 Log.Information("[DJSCREEN] Stop request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
-                MessageBox.Show($"Stopped {SelectedQueueEntry.SongTitle}", "Stop", MessageBoxButton.OK, MessageBoxImage.Information);
+                if (_videoPlayerWindow != null)
+                {
+                    _videoPlayerWindow.StopVideo();
+                }
                 IsPlaying = false;
+
+                // Move playing song to end of queue
+                if (PlayingQueueEntry != null)
+                {
+                    var entry = QueueEntries.FirstOrDefault(q => q.QueueId == PlayingQueueEntry.QueueId);
+                    if (entry != null)
+                    {
+                        int sourceIndex = QueueEntries.IndexOf(entry);
+                        if (sourceIndex >= 0)
+                        {
+                            QueueEntries.Move(sourceIndex, QueueEntries.Count - 1);
+                            for (int i = 0; i < QueueEntries.Count; i++)
+                            {
+                                QueueEntries[i].Position = i + 1;
+                            }
+                            var queueIds = QueueEntries.Select(q => q.QueueId.ToString()).ToList();
+                            await _apiService.ReorderQueueAsync(_currentEventId, queueIds);
+                            Log.Information("[DJSCREEN] Moved stopped song to end: QueueId={QueueId}", entry.QueueId);
+                        }
+                    }
+                    TotalSongsPlayed++;
+                    OnPropertyChanged(nameof(TotalSongsPlayed));
+                    Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}", TotalSongsPlayed);
+                    PlayingQueueEntry = null;
+                }
             }
             catch (Exception ex)
             {
@@ -522,8 +653,36 @@ public partial class DJScreenViewModel : ObservableObject
             {
                 await _apiService.SkipAsync(_currentEventId, SelectedQueueEntry.QueueId.ToString());
                 Log.Information("[DJSCREEN] Skip request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
-                MessageBox.Show($"Skipped {SelectedQueueEntry.SongTitle}", "Skip", MessageBoxButton.OK, MessageBoxImage.Information);
+                if (_videoPlayerWindow != null)
+                {
+                    _videoPlayerWindow.StopVideo();
+                }
                 IsPlaying = false;
+
+                // Move playing song to end of queue
+                if (PlayingQueueEntry != null)
+                {
+                    var entry = QueueEntries.FirstOrDefault(q => q.QueueId == PlayingQueueEntry.QueueId);
+                    if (entry != null)
+                    {
+                        int sourceIndex = QueueEntries.IndexOf(entry);
+                        if (sourceIndex >= 0)
+                        {
+                            QueueEntries.Move(sourceIndex, QueueEntries.Count - 1);
+                            for (int i = 0; i < QueueEntries.Count; i++)
+                            {
+                                QueueEntries[i].Position = i + 1;
+                            }
+                            var queueIds = QueueEntries.Select(q => q.QueueId.ToString()).ToList();
+                            await _apiService.ReorderQueueAsync(_currentEventId, queueIds);
+                            Log.Information("[DJSCREEN] Moved skipped song to end: QueueId={QueueId}", entry.QueueId);
+                        }
+                    }
+                    TotalSongsPlayed++;
+                    OnPropertyChanged(nameof(TotalSongsPlayed));
+                    Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}", TotalSongsPlayed);
+                    PlayingQueueEntry = null;
+                }
                 await LoadQueueData();
             }
             catch (Exception ex)
@@ -540,27 +699,68 @@ public partial class DJScreenViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task LaunchVideo()
+    private void ToggleShow()
     {
-        Log.Information("[DJSCREEN] LaunchVideo command invoked");
-        if (SelectedQueueEntry != null && !string.IsNullOrEmpty(_currentEventId))
+        Log.Information("[DJSCREEN] ToggleShow command invoked");
+        if (!IsShowActive)
         {
             try
             {
-                await _apiService.LaunchVideoAsync(_currentEventId, SelectedQueueEntry.QueueId.ToString());
-                Log.Information("[DJSCREEN] Launch video request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
-                MessageBox.Show($"Launched video for {SelectedQueueEntry.SongTitle}", "Launch Video", MessageBoxButton.OK, MessageBoxImage.Information);
+                Log.Information("[DJSCREEN] Starting show");
+                _videoPlayerWindow = new VideoPlayerWindow();
+                _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
+                _videoPlayerWindow.Show();
+                IsShowActive = true;
+                ShowButtonText = "End Show";
+                ShowButtonColor = "#FF0000"; // Red
+                Log.Information("[DJSCREEN] Show started, VideoPlayerWindow opened");
             }
             catch (Exception ex)
             {
-                Log.Error("[DJSCREEN] Failed to launch video for queue {QueueId}: {Message}", SelectedQueueEntry.QueueId, ex.Message);
-                MessageBox.Show($"Failed to launch video: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                Log.Error("[DJSCREEN] Failed to start show: {Message}", ex.Message);
+                MessageBox.Show($"Failed to start show: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (_videoPlayerWindow != null)
+                {
+                    _videoPlayerWindow.Close();
+                    _videoPlayerWindow = null;
+                }
             }
         }
         else
         {
-            Log.Information("[DJSCREEN] Launch video failed: No queue entry selected or no event joined");
-            MessageBox.Show("Please select a song and join an event.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+            var result = MessageBox.Show("Are you sure you want to end the show?", "Confirm End Show", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    Log.Information("[DJSCREEN] Ending show");
+                    if (_videoPlayerWindow != null)
+                    {
+                        _videoPlayerWindow.Close();
+                        _videoPlayerWindow = null;
+                    }
+                    IsShowActive = false;
+                    ShowButtonText = "Start Show";
+                    ShowButtonColor = "#22d3ee"; // Cyan
+                    if (IsPlaying)
+                    {
+                        IsPlaying = false;
+                        // No API call to stop, as per requirements
+                        Log.Information("[DJSCREEN] Playback stopped due to show ending");
+                        PlayingQueueEntry = null;
+                    }
+                    Log.Information("[DJSCREEN] Show ended, VideoPlayerWindow closed");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("[DJSCREEN] Failed to end show: {Message}", ex.Message);
+                    MessageBox.Show($"Failed to end show: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            else
+            {
+                Log.Information("[DJSCREEN] End show cancelled by user");
+            }
         }
     }
 
@@ -596,7 +796,7 @@ public partial class DJScreenViewModel : ObservableObject
             Log.Error("[DJSCREEN] Drag failed: {Message}, StackTrace={StackTrace}", ex.Message, ex.StackTrace);
             Application.Current.Dispatcher.Invoke(() =>
             {
-                MessageBox.Show($"Drag failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Failed to drag: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             });
         }
     }
@@ -643,6 +843,14 @@ public partial class DJScreenViewModel : ObservableObject
                 return;
             }
 
+            if (IsPlaying && PlayingQueueEntry != null &&
+                (draggedItem.QueueId == PlayingQueueEntry.QueueId || targetItem.QueueId == PlayingQueueEntry.QueueId))
+            {
+                Log.Information("[DJSCREEN] Drop failed: Cannot reorder playing song, QueueId={QueueId}", draggedItem.QueueId);
+                MessageBox.Show("Cannot reorder the playing song.", "Reorder Blocked", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             Log.Information("[DJSCREEN] Calculating indices for queue {QueueId}", draggedItem.QueueId);
             int sourceIndex = QueueEntries.IndexOf(draggedItem);
             int targetIndex = QueueEntries.IndexOf(targetItem);
@@ -672,18 +880,18 @@ public partial class DJScreenViewModel : ObservableObject
                 Log.Information("[DJSCREEN] Queue reordered for event {EventId}, dropped {SourceQueueId} to position {TargetIndex}",
                     _currentEventId, draggedItem.QueueId, targetIndex + 1);
 
-                // Refresh queue from backend to ensure positions are correct
+                // Refresh queue from backend
                 await LoadQueueData();
                 Log.Information("[DJSCREEN] Refreshed queue data after reorder for event {EventId}", _currentEventId);
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex)
             {
-                Log.Error("[DJSCREEN] Failed to persist queue order: Status={StatusCode}, Error={Error}", ex.StatusCode, ex.Message);
+                Log.Error("[DJSCREEN] Failed to persist queue order: {Message}", ex.Message);
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     MessageBox.Show($"Failed to reorder queue: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 });
-                await LoadQueueData(); // Refresh to revert to server state
+                await LoadQueueData(); // Revert to server state
             }
         }
         catch (Exception ex)
@@ -696,7 +904,165 @@ public partial class DJScreenViewModel : ObservableObject
         }
     }
 
-    public async void UpdateAuthenticationState()
+    [RelayCommand]
+    private async Task PlayQueueItem()
+    {
+        Log.Information("[DJSCREEN] PlayQueueItem command invoked");
+        if (!IsShowActive)
+        {
+            Log.Information("[DJSCREEN] Play failed: Show not started");
+            MessageBox.Show("Please start the show first.", "No Show Active", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (QueueEntries.Count == 0)
+        {
+            Log.Information("[DJSCREEN] Play failed: Queue is empty");
+            MessageBox.Show("No songs in the queue.", "Empty Queue", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (SelectedQueueEntry == null)
+        {
+            Log.Information("[DJSCREEN] Play failed: No queue entry selected");
+            MessageBox.Show("Please select a song to play.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!SelectedQueueEntry.IsVideoCached)
+        {
+            Log.Information("[DJSCREEN] Play failed: Video not cached for SongId={SongId}", SelectedQueueEntry.SongId);
+            MessageBox.Show("Video not cached. Please wait for caching to complete.", "Not Cached", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (IsPlaying && PlayingQueueEntry != SelectedQueueEntry)
+        {
+            var result = MessageBox.Show($"Stop current song '{PlayingQueueEntry?.SongTitle}' and play '{SelectedQueueEntry.SongTitle}'?", "Confirm Song Change", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result != MessageBoxResult.Yes)
+            {
+                Log.Information("[DJSCREEN] PlayQueueItem cancelled by user");
+                return;
+            }
+
+            // Stop current song
+            try
+            {
+                if (_currentEventId != null && PlayingQueueEntry != null)
+                {
+                    await _apiService.StopAsync(_currentEventId, PlayingQueueEntry.QueueId.ToString());
+                    Log.Information("[DJSCREEN] Stop request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
+                    if (_videoPlayerWindow != null)
+                    {
+                        _videoPlayerWindow.StopVideo();
+                    }
+                    IsPlaying = false;
+                    TotalSongsPlayed++;
+                    OnPropertyChanged(nameof(TotalSongsPlayed));
+                    Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}", TotalSongsPlayed);
+                    PlayingQueueEntry = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to stop queue {QueueId}: {Message}", PlayingQueueEntry?.QueueId ?? -1, ex.Message);
+                MessageBox.Show($"Failed to stop current song: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+        }
+
+        if (_currentEventId != null)
+        {
+            try
+            {
+                await _apiService.PlayAsync(_currentEventId, SelectedQueueEntry.QueueId.ToString());
+                Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
+                string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{SelectedQueueEntry.SongId}.mp4");
+                if (_videoPlayerWindow != null)
+                {
+                    _videoPlayerWindow.PlayVideo(videoPath);
+                }
+                IsPlaying = true;
+                PlayingQueueEntry = SelectedQueueEntry;
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to play queue {QueueId}: {Message}", SelectedQueueEntry.QueueId, ex.Message);
+                MessageBox.Show($"Failed to play: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        else
+        {
+            Log.Information("[DJSCREEN] Play failed: No event joined");
+            MessageBox.Show("Please join an event.", "No Event", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleAutoPlay()
+    {
+        Log.Information("[DJSCREEN] ToggleAutoPlay command invoked");
+        IsAutoPlayEnabled = !IsAutoPlayEnabled;
+        AutoPlayButtonText = IsAutoPlayEnabled ? "Auto Play: On" : "Auto Play: Off";
+        Log.Information("[DJSCREEN] AutoPlay set to: {State}", IsAutoPlayEnabled);
+    }
+
+    public async Task HandleSongEnded()
+    {
+        Log.Information("[DJSCREEN] Handling song ended");
+        try
+        {
+            if (PlayingQueueEntry != null)
+            {
+                IsPlaying = false;
+                TotalSongsPlayed++;
+                OnPropertyChanged(nameof(TotalSongsPlayed));
+                Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}", TotalSongsPlayed);
+                PlayingQueueEntry = null;
+            }
+
+            if (IsAutoPlayEnabled && !string.IsNullOrEmpty(_currentEventId))
+            {
+                var nextEntry = QueueEntries.OrderBy(q => q.Position).FirstOrDefault();
+                if (nextEntry != null && nextEntry.IsVideoCached)
+                {
+                    SelectedQueueEntry = nextEntry;
+                    await _apiService.PlayAsync(_currentEventId, nextEntry.QueueId.ToString());
+                    Log.Information("[DJSCREEN] Auto-playing next song for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, nextEntry.QueueId, nextEntry.SongTitle);
+                    string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{nextEntry.SongId}.mp4");
+                    if (_videoPlayerWindow != null)
+                    {
+                        _videoPlayerWindow.PlayVideo(videoPath);
+                    }
+                    IsPlaying = true;
+                    PlayingQueueEntry = nextEntry;
+                }
+                else
+                {
+                    Log.Information("[DJSCREEN] No valid next song to auto-play");
+                }
+            }
+            else
+            {
+                Log.Information("[DJSCREEN] AutoPlay is disabled or no event joined");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[DJSCREEN] Failed to handle song ended: {Message}", ex.Message);
+            MessageBox.Show($"Failed to handle song end: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void VideoPlayerWindow_SongEnded(object? sender, EventArgs e)
+    {
+        Application.Current.Dispatcher.Invoke(async () =>
+        {
+            await HandleSongEnded();
+        });
+    }
+
+    public async Task UpdateAuthenticationState()
     {
         try
         {
@@ -726,6 +1092,15 @@ public partial class DJScreenViewModel : ObservableObject
                 OrangeSingers.Clear();
                 RedSingers.Clear();
                 NonDummySingersCount = 0;
+                if (_videoPlayerWindow != null)
+                {
+                    _videoPlayerWindow.Close();
+                    _videoPlayerWindow = null;
+                    IsShowActive = false;
+                    ShowButtonText = "Start Show";
+                    ShowButtonColor = "#22d3ee";
+                }
+                PlayingQueueEntry = null;
                 if (_signalRConnection != null)
                 {
                     await _signalRConnection.StopAsync();
@@ -733,7 +1108,7 @@ public partial class DJScreenViewModel : ObservableObject
                     Log.Information("[DJSCREEN SIGNALR] Disconnected from KaraokeDJHub on logout");
                 }
             }
-            else if (string.IsNullOrEmpty(_currentEventId))
+            else if (string.IsNullOrEmpty(_currentEventId) && !_isLoginWindowOpen)
             {
                 await UpdateJoinEventButtonState();
             }
@@ -755,6 +1130,10 @@ public partial class DJScreenViewModel : ObservableObject
                 OnPropertyChanged(nameof(OrangeSingers));
                 OnPropertyChanged(nameof(RedSingers));
                 OnPropertyChanged(nameof(NonDummySingersCount));
+                OnPropertyChanged(nameof(ShowButtonText));
+                OnPropertyChanged(nameof(ShowButtonColor));
+                OnPropertyChanged(nameof(IsShowActive));
+                OnPropertyChanged(nameof(PlayingQueueEntry));
             });
 
             Log.Information("[DJSCREEN] Authentication state updated: IsAuthenticated={IsAuthenticated}, WelcomeMessage={WelcomeMessage}, LoginLogoutButtonText={LoginLogoutButtonText}, IsJoinEventButtonVisible={IsJoinEventButtonVisible}",
@@ -808,16 +1187,6 @@ public partial class DJScreenViewModel : ObservableObject
                 OnPropertyChanged(nameof(JoinEventButtonColor));
             });
         }
-        catch (UnauthorizedAccessException ex)
-        {
-            Log.Error("[DJSCREEN] Authentication error updating join event button state: {Message}", ex.Message);
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                MessageBox.Show("Authentication failed. Please re-login.", "Authentication Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                _userSessionService.ClearSession();
-                UpdateAuthenticationState();
-            });
-        }
         catch (Exception ex)
         {
             Log.Error("[DJSCREEN] Failed to update join event button state: {Message}", ex.Message);
@@ -844,16 +1213,18 @@ public partial class DJScreenViewModel : ObservableObject
             }
 
             var queueEntries = await _apiService.GetQueueAsync(_currentEventId);
-            await Application.Current.Dispatcher.InvokeAsync(async () =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 QueueEntries.Clear();
                 foreach (var entry in queueEntries.OrderBy(q => q.Position))
                 {
-                    entry.IsVideoCached = _videoCacheService?.IsVideoCached(entry.SongId) ?? false;
+                    entry.IsVideoCached = _videoCacheService.IsVideoCached(entry.SongId);
+                    Log.Information("[DJSCREEN] Checked cache for SongId={SongId}, IsCached={IsCached}, CachePath={CachePath}",
+                        entry.SongId, entry.IsVideoCached, Path.Combine(_settingsService.Settings.VideoCachePath, $"{entry.SongId}.mp4"));
                     QueueEntries.Add(entry);
-                    if (!entry.IsVideoCached && !string.IsNullOrEmpty(entry.YouTubeUrl) && _videoCacheService != null)
+                    if (!entry.IsVideoCached && !string.IsNullOrEmpty(entry.YouTubeUrl))
                     {
-                        // Trigger caching asynchronously in background
+                        // Trigger caching asynchronously
                         _ = Task.Run(async () =>
                         {
                             try
@@ -862,7 +1233,7 @@ public partial class DJScreenViewModel : ObservableObject
                                 await Application.Current.Dispatcher.InvokeAsync(() =>
                                 {
                                     entry.IsVideoCached = _videoCacheService.IsVideoCached(entry.SongId);
-                                    Log.Information("[DJSCREEN] Updated IsVideoCached for SongId={SongId}: {IsCached}", entry.SongId, entry.IsVideoCached);
+                                    Log.Information("[DJSCREEN] Cached video for SongId={SongId}, IsCached={IsCached}", entry.SongId, entry.IsVideoCached);
                                 });
                             }
                             catch (Exception ex)
@@ -871,6 +1242,11 @@ public partial class DJScreenViewModel : ObservableObject
                             }
                         });
                     }
+                }
+                // Select first item if none selected
+                if (SelectedQueueEntry == null && QueueEntries.Any())
+                {
+                    SelectedQueueEntry = QueueEntries.First();
                 }
                 Log.Information("[DJSCREEN] Loaded {Count} queue entries for event {EventId}", QueueEntries.Count, _currentEventId);
             });
@@ -920,7 +1296,7 @@ public partial class DJScreenViewModel : ObservableObject
         catch (Exception ex)
         {
             Log.Error("[DJSCREEN] Failed to load singers for event: {EventId}: {Message}", _currentEventId, ex.Message);
-            Application.Current.Dispatcher.Invoke(() =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 MessageBox.Show($"Failed to load singers: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             });

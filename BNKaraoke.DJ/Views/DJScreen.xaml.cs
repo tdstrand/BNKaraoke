@@ -1,11 +1,11 @@
 using BNKaraoke.DJ.Models;
-using BNKaraoke.DJ.Services;
 using BNKaraoke.DJ.ViewModels;
-using Serilog;
+using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace BNKaraoke.DJ.Views;
 
@@ -14,26 +14,33 @@ public partial class DJScreen : Window
     public DJScreen()
     {
         InitializeComponent();
-        DataContext = new DJScreenViewModel(new VideoCacheService(SettingsService.Instance));
-        Log.Information("[DJSCREEN] Initializing window");
+        try
+        {
+            DataContext = new DJScreenViewModel();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to initialize DJScreen: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Close();
+        }
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
-            Log.Information("[DJSCREEN] Window loaded");
-            if (DataContext is DJScreenViewModel viewModel)
+            var viewModel = DataContext as DJScreenViewModel;
+            if (viewModel == null)
             {
-                viewModel.UpdateAuthenticationState();
-                Log.Information("[DJSCREEN] Forced UpdateAuthenticationState on load");
-                InvalidateVisual();
-                Log.Information("[DJSCREEN] Forced UI refresh with InvalidateVisual");
+                MessageBox.Show("Failed to load ViewModel.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                Close();
+                return;
             }
         }
         catch (Exception ex)
         {
-            Log.Error("[DJSCREEN] Window load failed: {Message}, StackTrace={StackTrace}", ex.Message, ex.StackTrace);
+            MessageBox.Show($"Failed to load DJScreen: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Close();
         }
     }
 
@@ -41,46 +48,38 @@ public partial class DJScreen : Window
     {
         try
         {
-            Log.Information("[DJSCREEN] PreviewMouseLeftButtonDown triggered");
-            if (sender is ListViewItem item && item.DataContext is QueueEntry queueEntry)
+            if (sender is ListViewItem item && item.IsSelected)
             {
-                if (DataContext is DJScreenViewModel viewModel)
+                var queueEntry = item.DataContext as QueueEntry;
+                if (queueEntry != null)
                 {
-                    viewModel.StartDragCommand.Execute(queueEntry);
+                    var viewModel = DataContext as DJScreenViewModel;
+                    viewModel?.StartDragCommand.Execute(queueEntry);
                 }
-                else
-                {
-                    Log.Error("[DJSCREEN] Drag failed: DataContext is not DJScreenViewModel");
-                }
-            }
-            else
-            {
-                Log.Error("[DJSCREEN] Drag failed: Invalid sender or DataContext, SenderType={SenderType}", sender?.GetType().Name);
             }
         }
         catch (Exception ex)
         {
-            Log.Error("[DJSCREEN] PreviewMouseLeftButtonDown failed: {Message}, StackTrace={StackTrace}", ex.Message, ex.StackTrace);
+            MessageBox.Show($"Failed to initiate drag: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
-    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    private void ListViewItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         try
         {
-            Log.Information("[DJSCREEN] Window closing");
-            if (DataContext is DJScreenViewModel viewModel && viewModel.IsAuthenticated)
+            if (sender is ListViewItem item && item.IsSelected)
             {
-                Log.Information("[DJSCREEN] User is authenticated, initiating logout");
-                // Execute logout command to leave event and clear session
-                viewModel.LoginLogoutCommand.Execute(null);
-                Log.Information("[DJSCREEN] Logout command executed");
+                var viewModel = DataContext as DJScreenViewModel;
+                if (viewModel?.PlayQueueItemCommand is IRelayCommand command && command.CanExecute(null))
+                {
+                    command.Execute(null);
+                }
             }
-            base.OnClosing(e);
         }
         catch (Exception ex)
         {
-            Log.Error("[DJSCREEN] Window closing failed: {Message}, StackTrace={StackTrace}", ex.Message, ex.StackTrace);
+            MessageBox.Show($"Failed to handle double-click: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }
