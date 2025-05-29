@@ -134,7 +134,7 @@ builder.Services.AddAuthorization(options =>
         policy.RequireAuthenticatedUser();
         policy.RequireRole("Singer");
     });
-    options.AddPolicy("SongController", policy =>
+    options.AddPolicy("SongManager", policy =>
     {
         policy.RequireAuthenticatedUser();
         policy.RequireRole("Song Manager");
