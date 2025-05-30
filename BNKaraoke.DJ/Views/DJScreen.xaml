@@ -8,9 +8,12 @@
         WindowState="Maximized" Title="DJ Console"
         Loaded="Window_Loaded">
     <Window.Resources>
-        <local:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <local:PlayPauseConverter x:Key="PlayPauseIconConverter" />
+        <local:BooleanToVisibilityConverter x:Key="BooleanToVisibility" />
+        <local:PlayPauseConverter x:Key="PlayPauseIcon" />
         <local:SingerStatusToColorConverter x:Key="SingerStatusToColorConverter" />
+        <local:VideoLengthConverter x:Key="VideoLengthConverter" />
+        <local:UpNextConverter x:Key="UpNextConverter" />
+        <local:TimeRemainingConverter x:Key="TimeRemainingConverter" />
         <LinearGradientBrush x:Key="WindowBackground" StartPoint="0,0" EndPoint="0,1">
             <GradientStop Color="#1e3a8a" Offset="0"/>
             <GradientStop Color="#3b82f6" Offset="1"/>
@@ -42,7 +45,7 @@
                 <Button x:Name="JoinEventButton" Width="150" Height="40" Margin="5,0,5,0"
                         Content="{Binding JoinEventButtonText, UpdateSourceTrigger=PropertyChanged}"
                         Background="{Binding JoinEventButtonColor, UpdateSourceTrigger=PropertyChanged}"
-                        Visibility="{Binding IsJoinEventButtonVisible, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}"
+                        Visibility="{Binding IsJoinEventButtonVisible, Converter={StaticResource BooleanToVisibility}, UpdateSourceTrigger=PropertyChanged}"
                         Command="{Binding JoinLiveEventCommand}"/>
             </DockPanel>
         </Grid>
@@ -50,9 +53,28 @@
         <DockPanel>
             <!-- Control Area (Bottom) -->
             <DockPanel DockPanel.Dock="Bottom" Height="80" Background="#1E3A5F">
+                <Border Width="120" Height="40" BorderBrush="White" BorderThickness="1" Margin="10,0" Padding="5" DockPanel.Dock="Right">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="Green"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding TimeRemainingSeconds, Converter={StaticResource TimeRemainingConverter}, ConverterParameter=30}" Value="True">
+                                    <Setter Property="Background" Value="#FFA500"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding TimeRemainingSeconds, Converter={StaticResource TimeRemainingConverter}, ConverterParameter=15}" Value="True">
+                                    <Setter Property="Background" Value="Red"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsPlaying}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding TimeRemaining}" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                </Border>
                 <StackPanel Orientation="Horizontal" Margin="10">
                     <Button Width="80" Height="40" Margin="5" Command="{Binding PlayCommand}" Background="#22d3ee" Foreground="Black" FontWeight="Bold">
-                        <TextBlock Text="{Binding IsPlaying, Converter={StaticResource PlayPauseIconConverter}}" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding IsPlaying, Converter={StaticResource PlayPauseIcon}}" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                     </Button>
                     <Button Width="80" Height="40" Margin="5" Command="{Binding StopCommand}" Background="#22d3ee" Foreground="Black" FontWeight="Bold">
                         <TextBlock Text="⏹" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"/>
@@ -67,10 +89,16 @@
                     <Button Width="120" Height="40" Margin="5" Command="{Binding ToggleAutoPlayCommand}" 
                             Content="{Binding AutoPlayButtonText, UpdateSourceTrigger=PropertyChanged}"
                             Background="#22d3ee" Foreground="Black" FontWeight="Bold"/>
-                    <TextBlock Text="Now Playing: [Placeholder]" FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
-                    <TextBlock Text="Up Next: [Placeholder]" FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
-                    <TextBlock Text="Timer: [Placeholder]" FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
-                    <TextBlock Text="Warning: [Placeholder]" FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
+                    <TextBlock FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0">
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{StaticResource VideoLengthConverter}" FallbackValue="Timer: --:-- / --:--">
+                                <Binding Path="CurrentVideoPosition" />
+                                <Binding Path="PlayingQueueEntry.VideoLength" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <TextBlock Text="{Binding QueueEntries[0], StringFormat=Up Next: {0} by {1}, FallbackValue='Up Next: None', Converter={StaticResource UpNextConverter}}" 
+                               FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
                 </StackPanel>
             </DockPanel>
             <!-- DJQueue and Singers Detail -->
@@ -111,8 +139,8 @@
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="50"/>
+                                    <ColumnDefinition Width="250"/>
                                     <ColumnDefinition Width="200"/>
-                                    <ColumnDefinition Width="150"/>
                                     <ColumnDefinition Width="150"/>
                                     <ColumnDefinition Width="80"/>
                                     <ColumnDefinition Width="50"/>
@@ -134,8 +162,8 @@
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="Pos" Width="50" DisplayMemberBinding="{Binding Position}"/>
-                                    <GridViewColumn Header="Song Title" Width="200" DisplayMemberBinding="{Binding SongTitle}"/>
-                                    <GridViewColumn Header="Artist" Width="150" DisplayMemberBinding="{Binding SongArtist}"/>
+                                    <GridViewColumn Header="Song Title" Width="250" DisplayMemberBinding="{Binding SongTitle}"/>
+                                    <GridViewColumn Header="Artist" Width="200" DisplayMemberBinding="{Binding SongArtist}"/>
                                     <GridViewColumn Header="Requestor" Width="150" DisplayMemberBinding="{Binding RequestorDisplayName}"/>
                                     <GridViewColumn Header="Length" Width="80" DisplayMemberBinding="{Binding VideoLength}"/>
                                     <GridViewColumn Header="Cached" Width="50">
@@ -193,8 +221,8 @@
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Position}" FontSize="18" Width="50"/>
-                                        <TextBlock Text="{Binding SongTitle}" FontSize="18" Width="200"/>
-                                        <TextBlock Text="{Binding SongArtist}" FontSize="18" Width="150"/>
+                                        <TextBlock Text="{Binding SongTitle}" FontSize="18" Width="250"/>
+                                        <TextBlock Text="{Binding SongArtist}" FontSize="18" Width="200"/>
                                         <TextBlock Text="{Binding RequestorDisplayName}" FontSize="18" Width="150"/>
                                         <TextBlock Text="{Binding VideoLength}" FontSize="18" Width="80"/>
                                         <CheckBox IsChecked="{Binding IsVideoCached}" IsEnabled="False" Width="50"/>

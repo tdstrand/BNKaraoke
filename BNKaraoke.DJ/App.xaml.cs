@@ -29,7 +29,6 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            // Log to console as fallback before Serilog is configured
             System.Diagnostics.Debug.WriteLine($"[APP START] Failed to load settings: {ex.Message}");
             MessageBox.Show($"Failed to initialize settings: {ex.Message}. Using defaults.", "Startup Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
@@ -53,7 +52,7 @@ public partial class App : Application
         {
             try
             {
-                Directory.CreateDirectory(logDir); // Ensure directory exists
+                Directory.CreateDirectory(logDir);
             }
             catch (Exception ex)
             {
@@ -83,6 +82,15 @@ public partial class App : Application
             MessageBox.Show($"Failed to initialize logging: {ex.Message}. Check console for details.", "Startup Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
+        // Add global exception handler
+        DispatcherUnhandledException += (s, args) =>
+        {
+            Log.Error("[APP] Unhandled dispatcher exception: {Message}, StackTrace={StackTrace}",
+                args.Exception.Message, args.Exception.StackTrace);
+            MessageBox.Show($"An unexpected error occurred: {args.Exception.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            args.Handled = true;
+        };
+
         base.OnStartup(e);
 
         var userSessionService = UserSessionService.Instance;
@@ -90,29 +98,31 @@ public partial class App : Application
 
         Log.Information("[APP START] Checking session: IsAuthenticated={IsAuthenticated}", userSessionService.IsAuthenticated);
 
-        mainWindow.Show();
+        mainWindow.Show(); // Show DJScreen first
 
         if (!userSessionService.IsAuthenticated)
         {
-            var loginWindow = new LoginWindow { Owner = mainWindow, WindowStartupLocation = WindowStartupLocation.CenterOwner };
             Log.Information("[APP START] Showing LoginWindow as dialog");
-            loginWindow.ShowDialog();
-            if (!userSessionService.IsAuthenticated)
+            var loginWindow = new LoginWindow { Owner = mainWindow, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+            var result = loginWindow.ShowDialog();
+            if (result != true)
             {
                 Log.Information("[APP START] Login canceled, shutting down");
                 Shutdown();
                 return;
             }
             Log.Information("[APP START] Login succeeded");
-            // Trigger DJScreenViewModel refresh
-            if (mainWindow.DataContext is DJScreenViewModel viewModel)
-            {
-                viewModel.UpdateAuthenticationState();
-                Log.Information("[APP START] Triggered DJScreenViewModel refresh post-login");
-            }
+        }
+
+        // Trigger DJScreenViewModel refresh
+        if (mainWindow.DataContext is DJScreenViewModel viewModel)
+        {
+            await viewModel.UpdateAuthenticationState();
+            Log.Information("[APP START] Triggered DJScreenViewModel refresh post-login");
         }
 
         Log.Information("[APP START] Activating DJScreen");
+        MainWindow = mainWindow; // Set after login to ensure proper WPF lifecycle
         mainWindow.Activate();
     }
 
