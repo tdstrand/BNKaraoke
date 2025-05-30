@@ -1,4 +1,5 @@
-﻿using BNKaraoke.DJ.Services;
+﻿using BNKaraoke.DJ.Models;
+using BNKaraoke.DJ.Services;
 using BNKaraoke.DJ.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -212,28 +213,28 @@ public partial class SettingsWindowViewModel : ObservableObject
                 }
             }
 
-            // Update settings
-            _settingsService.Settings.ApiUrl = ApiUrl;
-            _settingsService.Settings.DefaultDJName = DefaultDJName;
-            _settingsService.Settings.PreferredAudioDevice = PreferredAudioDevice?.ID ?? "";
-            _settingsService.Settings.KaraokeVideoDevice = KaraokeVideoDevice?.Screen.DeviceName ?? "";
-            _settingsService.Settings.EnableVideoCaching = EnableVideoCaching;
-            _settingsService.Settings.VideoCachePath = VideoCachePath;
-            _settingsService.Settings.CacheSizeGB = CacheSizeGB;
-            _settingsService.Settings.EnableSignalRSync = EnableSignalRSync;
-            _settingsService.Settings.SignalRHubUrl = SignalRHubUrl;
-            _settingsService.Settings.ReconnectIntervalMs = ReconnectIntervalMs;
-            _settingsService.Settings.Theme = Theme;
-            _settingsService.Settings.ShowDebugConsole = ShowDebugConsole;
-            _settingsService.Settings.MaximizedOnStart = MaximizedOnStart;
-            _settingsService.Settings.LogFilePath = LogFilePath;
-            _settingsService.Settings.EnableVerboseLogging = EnableVerboseLogging;
-
-            // Log saved values
-            Log.Information("[SETTINGS VM] Saved settings: PreferredAudioDevice={AudioDevice}, KaraokeVideoDevice={VideoDevice}", _settingsService.Settings.PreferredAudioDevice, _settingsService.Settings.KaraokeVideoDevice);
+            // Create DjSettings object
+            var settings = new DjSettings
+            {
+                ApiUrl = ApiUrl,
+                DefaultDJName = DefaultDJName,
+                PreferredAudioDevice = PreferredAudioDevice?.ID ?? "",
+                KaraokeVideoDevice = KaraokeVideoDevice?.Screen.DeviceName ?? "",
+                EnableVideoCaching = EnableVideoCaching,
+                VideoCachePath = VideoCachePath,
+                CacheSizeGB = CacheSizeGB,
+                EnableSignalRSync = EnableSignalRSync,
+                SignalRHubUrl = SignalRHubUrl,
+                ReconnectIntervalMs = ReconnectIntervalMs,
+                Theme = Theme,
+                ShowDebugConsole = ShowDebugConsole,
+                MaximizedOnStart = MaximizedOnStart,
+                LogFilePath = LogFilePath,
+                EnableVerboseLogging = EnableVerboseLogging
+            };
 
             // Save to settings.json
-            await _settingsService.SaveSettingsAsync();
+            await _settingsService.SaveSettingsAsync(settings);
             Log.Information("[SETTINGS VM] Settings saved successfully");
 
             // Close windows safely

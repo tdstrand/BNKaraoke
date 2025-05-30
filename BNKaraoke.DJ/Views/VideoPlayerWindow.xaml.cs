@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace BNKaraoke.DJ.Views;
 
@@ -16,6 +17,10 @@ public partial class VideoPlayerWindow : Window
     private readonly LibVLC? _libVLC;
     public LibVLCSharp.Shared.MediaPlayer? MediaPlayer { get; private set; }
     private bool _isDisposing;
+    private string? _currentVideoPath;
+    private long _currentPosition;
+    private DispatcherTimer? _hideVideoViewTimer;
+    private bool _isShowEnding;
 
     public event EventHandler? SongEnded;
     public event EventHandler<MediaPlayerTimeChangedEventArgs>? TimeChanged;
@@ -48,12 +53,13 @@ public partial class VideoPlayerWindow : Window
             _libVLC = new LibVLC("--no-video-title-show", "--no-osd", "--no-video-deco");
             MediaPlayer = new LibVLCSharp.Shared.MediaPlayer(_libVLC);
             ShowInTaskbar = true;
-            Owner = null; // Prevent parenting to primary monitor
+            Owner = null;
             WindowStartupLocation = WindowStartupLocation.Manual;
             InitializeComponent();
             VideoPlayer.MediaPlayer = MediaPlayer;
             SourceInitialized += VideoPlayerWindow_SourceInitialized;
             Loaded += VideoPlayerWindow_Loaded;
+            _settingsService.AudioDeviceChanged += SettingsService_AudioDeviceChanged;
             Log.Information("[VIDEO PLAYER] Video player window initialized successfully");
         }
         catch (Exception ex)
@@ -64,6 +70,40 @@ public partial class VideoPlayerWindow : Window
         }
     }
 
+    private void SettingsService_AudioDeviceChanged(object? sender, string deviceId)
+    {
+        try
+        {
+            Log.Information("[VIDEO PLAYER] Audio device changed: {DeviceId}", deviceId);
+            if (MediaPlayer != null && !string.IsNullOrEmpty(_currentVideoPath) && _libVLC != null)
+            {
+                _currentPosition = MediaPlayer.Time;
+                bool wasPlaying = MediaPlayer.IsPlaying;
+                MediaPlayer.Stop();
+                VideoPlayer.Visibility = Visibility.Visible;
+                using var media = new Media(_libVLC, new Uri(_currentVideoPath), $"--directx-device={_settingsService.Settings.KaraokeVideoDevice}", $"--audio-device={deviceId}", "--no-video-title-show", "--no-osd", "--no-video-deco");
+                MediaPlayer.Play(media);
+                MediaPlayer.Time = _currentPosition;
+                if (!wasPlaying)
+                {
+                    MediaPlayer.Pause();
+                }
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    WindowStyle = WindowStyle.None;
+                    WindowState = WindowState.Maximized;
+                    SetDisplayDevice();
+                });
+                Log.Information("[VIDEO PLAYER] Switched audio device, resumed at position: {Position}ms", _currentPosition);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[VIDEO PLAYER] Failed to switch audio device: {Message}", ex.Message);
+            MessageBox.Show($"Failed to switch audio device: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void VideoPlayerWindow_SourceInitialized(object? sender, EventArgs e)
     {
         try
@@ -71,7 +111,7 @@ public partial class VideoPlayerWindow : Window
             Log.Information("[VIDEO PLAYER] Source initialized, setting display");
             SetDisplayDevice();
             Show();
-            Activate(); // Ensure visibility and focus
+            Activate();
             Log.Information("[VIDEO PLAYER] Window visibility after SourceInitialized: {Visibility}, ShowInTaskbar: {ShowInTaskbar}", Visibility, ShowInTaskbar);
         }
         catch (Exception ex)
@@ -90,24 +130,38 @@ public partial class VideoPlayerWindow : Window
             WindowState = WindowState.Maximized;
             ShowActivated = true;
 
-            // Verify bounds and reposition if incorrect
-            var hwnd = new WindowInteropHelper(this).Handle;
-            var currentScreen = System.Windows.Forms.Screen.FromHandle(hwnd);
-            if (Left < 0 || Top < 0 || currentScreen.DeviceName != _settingsService.Settings.KaraokeVideoDevice)
-            {
-                Log.Warning("[VIDEO PLAYER] Incorrect bounds or screen: Left={Left}, Top={Top}, Screen={Screen}, repositioning", Left, Top, currentScreen.DeviceName);
-                SetDisplayDevice();
-            }
-
             if (MediaPlayer != null)
             {
                 MediaPlayer.EndReached += MediaPlayerEnded;
                 MediaPlayer.TimeChanged += MediaPlayer_TimeChanged;
+                Log.Information("[VIDEO PLAYER] MediaPlayer initialized, IsPlaying={IsPlaying}, State={State}", MediaPlayer.IsPlaying, MediaPlayer.State);
             }
 
             Visibility = Visibility.Visible;
+            VideoPlayer.Visibility = Visibility.Visible;
             Show();
-            Activate(); // Ensure window is active
+            Activate();
+
+            _hideVideoViewTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(3),
+                IsEnabled = true
+            };
+            _hideVideoViewTimer.Tick += (s, args) =>
+            {
+                VideoPlayer.Visibility = Visibility.Collapsed;
+                _hideVideoViewTimer.Stop();
+                Log.Information("[VIDEO PLAYER] VideoView hidden after initial delay");
+            };
+            _hideVideoViewTimer.Start();
+
+            var hwnd = new WindowInteropHelper(this).Handle;
+            var currentScreen = System.Windows.Forms.Screen.FromHandle(hwnd);
+            if (currentScreen.DeviceName != _settingsService.Settings.KaraokeVideoDevice)
+            {
+                Log.Warning("[VIDEO PLAYER] Incorrect screen: {Screen}, repositioning to {Target}", currentScreen.DeviceName, _settingsService.Settings.KaraokeVideoDevice);
+                SetDisplayDevice();
+            }
 
             Log.Information("[VIDEO PLAYER] Current screen: {DeviceName}, Bounds: {Left}x{Top} {Width}x{Height}, Primary: {Primary}",
                 currentScreen.DeviceName, currentScreen.Bounds.Left, currentScreen.Bounds.Top, currentScreen.Bounds.Width, currentScreen.Bounds.Height, currentScreen.Primary);
@@ -130,19 +184,41 @@ public partial class VideoPlayerWindow : Window
         {
             Log.Information("[VIDEO PLAYER] Attempting to play video: {VideoPath}", videoPath);
             if (_libVLC == null || MediaPlayer == null) throw new InvalidOperationException("Media player not initialized");
-            string device = _settingsService.Settings.KaraokeVideoDevice; // \\.\DISPLAY4
-            using var media = new Media(_libVLC, new Uri(videoPath), $"--directx-device={device}", "--no-video-title-show", "--no-osd", "--no-video-deco");
-            MediaPlayer.Play(media);
+            string device = _settingsService.Settings.KaraokeVideoDevice;
+            _currentVideoPath = videoPath;
+            if (_hideVideoViewTimer != null)
+            {
+                _hideVideoViewTimer.Stop();
+                Log.Information("[VIDEO PLAYER] Stopped hide timer for playback");
+            }
+            VideoPlayer.Visibility = Visibility.Visible;
+            if (MediaPlayer.IsPlaying || MediaPlayer.State == VLCState.Paused)
+            {
+                MediaPlayer.Play();
+                Log.Information("[VIDEO PLAYER] Resuming video from paused state");
+            }
+            else
+            {
+                using var media = new Media(_libVLC, new Uri(videoPath), $"--directx-device={device}", "--no-video-title-show", "--no-osd", "--no-video-deco");
+                MediaPlayer.Play(media);
+                Log.Information("[VIDEO PLAYER] Starting new video");
+            }
             Visibility = Visibility.Visible;
             Show();
-            Activate(); // Ensure visibility during playback
+            Activate();
             Application.Current.Dispatcher.Invoke(() =>
             {
                 WindowStyle = WindowStyle.None;
                 WindowState = WindowState.Maximized;
+                SetDisplayDevice();
+                var hwnd = new WindowInteropHelper(this).Handle;
+                var currentScreen = System.Windows.Forms.Screen.FromHandle(hwnd);
+                Log.Information("[VIDEO PLAYER] VLC state: IsPlaying={IsPlaying}, State={State}, Fullscreen={Fullscreen}",
+                    MediaPlayer.IsPlaying, MediaPlayer.State, MediaPlayer.Fullscreen);
+                Log.Information("[VIDEO PLAYER] Window bounds after play: Left={Left}, Top={Top}, Width={Width}, Height={Height}, Screen={Screen}",
+                    Left, Top, Width, Height, currentScreen.DeviceName);
+                Log.Information("[VIDEO PLAYER] WindowStyle={WindowStyle}, ShowInTaskbar={ShowInTaskbar}", WindowStyle, ShowInTaskbar);
             });
-            Log.Information("[VIDEO PLAYER] VLC state: IsPlaying={IsPlaying}, Fullscreen={Fullscreen}",
-                MediaPlayer.IsPlaying, MediaPlayer.Fullscreen);
         }
         catch (Exception ex)
         {
@@ -151,23 +227,64 @@ public partial class VideoPlayerWindow : Window
         }
     }
 
+    public void PauseVideo()
+    {
+        try
+        {
+            Log.Information("[VIDEO PLAYER] Pausing video");
+            if (MediaPlayer != null && MediaPlayer.IsPlaying)
+            {
+                MediaPlayer.Pause();
+                Visibility = Visibility.Visible;
+                Show();
+                Activate();
+                Log.Information("[VIDEO PLAYER] VLC state: IsPlaying={IsPlaying}, State={State}, Fullscreen={Fullscreen}",
+                    MediaPlayer.IsPlaying, MediaPlayer.State, MediaPlayer.Fullscreen);
+            }
+            else
+            {
+                Log.Information("[VIDEO PLAYER] No video playing to pause");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[VIDEO PLAYER] Failed to pause video: {Message}", ex.Message);
+            MessageBox.Show($"Failed to pause video: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     public void StopVideo()
     {
         try
         {
             Log.Information("[VIDEO PLAYER] Stopping video");
-            if (MediaPlayer?.IsPlaying == true)
+            if (MediaPlayer != null && (MediaPlayer.IsPlaying || MediaPlayer.State == VLCState.Paused))
             {
                 MediaPlayer.Stop();
+                VideoPlayer.Visibility = Visibility.Collapsed;
+                Visibility = Visibility.Visible;
+                Show();
+                Activate();
+                SetDisplayDevice();
+                Log.Information("[VIDEO PLAYER] Video stopped");
             }
-            Visibility = Visibility.Visible;
-            Show();
-            Activate();
+            else
+            {
+                Log.Information("[VIDEO PLAYER] No video playing or paused to stop");
+            }
+            _currentVideoPath = null;
+            _currentPosition = 0;
         }
         catch (Exception ex)
         {
             Log.Error("[VIDEO PLAYER] Failed to stop video: {Message}", ex.Message);
         }
+    }
+
+    public void EndShow()
+    {
+        _isShowEnding = true;
+        Close();
     }
 
     internal void SetDisplayDevice()
@@ -232,12 +349,16 @@ public partial class VideoPlayerWindow : Window
                 if (MediaPlayer != null)
                 {
                     MediaPlayer.Stop();
+                    VideoPlayer.Visibility = Visibility.Collapsed;
                 }
                 Visibility = Visibility.Visible;
                 Show();
                 Activate();
+                SetDisplayDevice();
                 Log.Information("[VIDEO PLAYER] Invoking SongEnded event");
                 SongEnded?.Invoke(this, EventArgs.Empty);
+                _currentVideoPath = null;
+                _currentPosition = 0;
             });
         }
         catch (Exception ex)
@@ -262,12 +383,24 @@ public partial class VideoPlayerWindow : Window
         }
     }
 
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (!_isShowEnding)
+        {
+            e.Cancel = true;
+            Log.Information("[VIDEO PLAYER] Prevented window closing; show not ended");
+            return;
+        }
+        base.OnClosing(e);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         _isDisposing = true;
         try
         {
             Log.Information("[VIDEO PLAYER] Closing video player window");
+            _hideVideoViewTimer?.Stop();
             if (MediaPlayer != null)
             {
                 MediaPlayer.Stop();
@@ -277,6 +410,7 @@ public partial class VideoPlayerWindow : Window
                 MediaPlayer = null;
             }
             _libVLC?.Dispose();
+            _settingsService.AudioDeviceChanged -= SettingsService_AudioDeviceChanged;
         }
         catch (Exception ex)
         {

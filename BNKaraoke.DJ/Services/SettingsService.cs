@@ -4,78 +4,105 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
-using System.Windows;
 
-namespace BNKaraoke.DJ.Services;
-
-public class SettingsService
+namespace BNKaraoke.DJ.Services
 {
-    private static readonly Lazy<SettingsService> _instance = new Lazy<SettingsService>(() => new SettingsService());
-    public static SettingsService Instance => _instance.Value;
-
-    private readonly string _settingsPath;
-
-    public DjSettings Settings { get; private set; }
-
-    private SettingsService()
+    public class SettingsService
     {
-        _settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BNKaraoke", "settings.json");
-        Settings = new DjSettings();
-    }
+        private static readonly Lazy<SettingsService> _instance = new Lazy<SettingsService>(() => new SettingsService());
+        public static SettingsService Instance => _instance.Value;
 
-    public async Task LoadSettingsAsync()
-    {
-        try
+        private readonly string _settingsPath;
+        public DjSettings Settings { get; private set; }
+
+        public event EventHandler<string>? AudioDeviceChanged;
+
+        private SettingsService()
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
-            if (File.Exists(_settingsPath))
-            {
-                var json = await File.ReadAllTextAsync(_settingsPath);
-                Settings = JsonSerializer.Deserialize<DjSettings>(json) ?? new DjSettings();
-                Log.Information("[SETTINGS SERVICE] Loaded settings from {SettingsPath}", _settingsPath);
-            }
-            else
-            {
-                Settings = new DjSettings();
-                await SaveSettingsAsync();
-                Log.Information("[SETTINGS SERVICE] Created new settings file with defaults at {SettingsPath}", _settingsPath);
-            }
+            _settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BNKaraoke", "settings.json");
+            Settings = LoadSettings();
         }
-        catch (Exception ex)
+
+        private DjSettings LoadSettings()
         {
-            Settings = new DjSettings();
-            Log.Error("[SETTINGS SERVICE] Failed to load settings from {SettingsPath}: {Message}", _settingsPath, ex.Message);
-            System.Diagnostics.Debug.WriteLine($"[SETTINGS SERVICE] Failed to load settings from {_settingsPath}: {ex.Message}");
-            MessageBox.Show($"Settings file {_settingsPath} is corrupt or inaccessible. Default settings applied. Please review Settings.",
-                "Settings Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
             try
             {
-                await SaveSettingsAsync();
+                if (File.Exists(_settingsPath))
+                {
+                    var json = File.ReadAllText(_settingsPath);
+                    var settings = JsonSerializer.Deserialize<DjSettings>(json);
+                    if (settings != null)
+                    {
+                        Log.Information("[SETTINGS SERVICE] Loaded settings from {Path}", _settingsPath);
+                        return settings;
+                    }
+                }
             }
-            catch (Exception saveEx)
+            catch (Exception ex)
             {
-                Log.Error("[SETTINGS SERVICE] Failed to create default settings file: {Message}", saveEx.Message);
-                System.Diagnostics.Debug.WriteLine($"[SETTINGS SERVICE] Failed to create default settings file: {saveEx.Message}");
+                Log.Error("[SETTINGS SERVICE] Failed to load settings: {Message}", ex.Message);
+            }
+
+            var defaultSettings = new DjSettings
+            {
+                ApiUrl = "http://localhost:7290",
+                DefaultDJName = "DJ Ted",
+                PreferredAudioDevice = "Focusrite USB Audio",
+                KaraokeVideoDevice = @"\\.\DISPLAY1",
+                EnableVideoCaching = true,
+                VideoCachePath = @"C:\BNKaraoke\Cache\",
+                CacheSizeGB = 10.0,
+                EnableSignalRSync = true,
+                SignalRHubUrl = "/hubs/queue",
+                ReconnectIntervalMs = 5000,
+                Theme = "Dark",
+                ShowDebugConsole = true,
+                MaximizedOnStart = true,
+                LogFilePath = @"C:\BNKaraoke_Logs\DJ.log",
+                EnableVerboseLogging = true
+            };
+            Log.Information("[SETTINGS SERVICE] Using default settings");
+            return defaultSettings;
+        }
+
+        public async Task<DjSettings> LoadSettingsAsync()
+        {
+            await Task.CompletedTask; // Simulate async for compatibility
+            return LoadSettings();
+        }
+
+        public void SaveSettings(DjSettings settings)
+        {
+            try
+            {
+                var directory = Path.GetDirectoryName(_settingsPath);
+                if (!Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory!);
+                }
+
+                var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(_settingsPath, json);
+                var previousAudioDevice = Settings.PreferredAudioDevice;
+                Settings = settings;
+                Log.Information("[SETTINGS SERVICE] Saved settings to {Path}", _settingsPath);
+
+                if (previousAudioDevice != settings.PreferredAudioDevice && !string.IsNullOrEmpty(settings.PreferredAudioDevice))
+                {
+                    AudioDeviceChanged?.Invoke(this, settings.PreferredAudioDevice);
+                    Log.Information("[SETTINGS SERVICE] Notified audio device change: {DeviceId}", settings.PreferredAudioDevice);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[SETTINGS SERVICE] Failed to save settings: {Message}", ex.Message);
+                throw;
             }
         }
-    }
 
-    public async Task SaveSettingsAsync()
-    {
-        try
+        public async Task SaveSettingsAsync(DjSettings settings)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
-            var json = JsonSerializer.Serialize(Settings, new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(_settingsPath, json);
-            Log.Information("[SETTINGS SERVICE] Saved settings to {SettingsPath}", _settingsPath);
-        }
-        catch (Exception ex)
-        {
-            Log.Error("[SETTINGS SERVICE] Failed to save settings to {SettingsPath}: {Message}", _settingsPath, ex.Message);
-            System.Diagnostics.Debug.WriteLine($"[SETTINGS SERVICE] Failed to save settings to {_settingsPath}: {ex.Message}");
-            MessageBox.Show($"Failed to save settings to {_settingsPath}. Changes may not persist.",
-                "Settings Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            throw;
+            await Task.Run(() => SaveSettings(settings));
         }
     }
 }

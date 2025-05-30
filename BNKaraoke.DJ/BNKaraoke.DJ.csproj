@@ -11,6 +11,7 @@
   <ItemGroup>
     <None Remove="Assets\TwoSingerMnt.png" />
     <None Remove="Assets\gear3.png" />
+    <None Remove="Assets\bnk-qr-code.png" />
     <None Remove="Tools\yt-dlp.exe" />
     <None Remove="Tools\ffmpeg.exe" />
     <None Remove="Tools\libvlc.dll" />
@@ -46,6 +47,9 @@
     </Resource>
     <Resource Include="Assets\gear3.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Assets\bnk-qr-code.png">
+       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
   </ItemGroup>
 

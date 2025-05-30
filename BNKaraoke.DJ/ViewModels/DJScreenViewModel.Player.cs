@@ -154,7 +154,7 @@ public partial class DJScreenViewModel
             {
                 if (IsPlaying && _videoPlayerWindow?.MediaPlayer != null)
                 {
-                    _videoPlayerWindow.MediaPlayer.Pause();
+                    _videoPlayerWindow.PauseVideo();
                     IsVideoPaused = true;
                     IsPlaying = false;
                     await _apiService.PauseAsync(_currentEventId, targetEntry.QueueId.ToString());
@@ -226,8 +226,6 @@ public partial class DJScreenViewModel
                 if (_videoPlayerWindow != null)
                 {
                     _videoPlayerWindow.StopVideo();
-                    _videoPlayerWindow.Close();
-                    _videoPlayerWindow = null;
                 }
                 IsPlaying = false;
                 IsVideoPaused = false;
@@ -294,8 +292,6 @@ public partial class DJScreenViewModel
                 if (_videoPlayerWindow != null)
                 {
                     _videoPlayerWindow.StopVideo();
-                    _videoPlayerWindow.Close();
-                    _videoPlayerWindow = null;
                 }
                 IsPlaying = false;
                 IsVideoPaused = false;
@@ -359,11 +355,14 @@ public partial class DJScreenViewModel
             try
             {
                 Log.Information("[DJSCREEN] Starting show");
-                _videoPlayerWindow = new VideoPlayerWindow();
-                _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
-                _videoPlayerWindow.TimeChanged += VideoPlayerWindow_TimeChanged;
-                _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
-                Log.Information("[DJSCREEN] Subscribed to SongEnded, TimeChanged, and Closed events for VideoPlayerWindow");
+                if (_videoPlayerWindow == null)
+                {
+                    _videoPlayerWindow = new VideoPlayerWindow();
+                    _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
+                    _videoPlayerWindow.TimeChanged += VideoPlayerWindow_TimeChanged;
+                    _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
+                    Log.Information("[DJSCREEN] Subscribed to SongEnded, TimeChanged, and Closed events for VideoPlayerWindow");
+                }
                 _videoPlayerWindow.Show();
                 IsShowActive = true;
                 ShowButtonText = "End Show";
@@ -376,7 +375,7 @@ public partial class DJScreenViewModel
                 SetWarningMessage($"Failed to start show: {ex.Message}");
                 if (_videoPlayerWindow != null)
                 {
-                    _videoPlayerWindow.Close();
+                    _videoPlayerWindow.EndShow();
                     _videoPlayerWindow = null;
                 }
             }
@@ -391,7 +390,7 @@ public partial class DJScreenViewModel
                     Log.Information("[DJSCREEN] Ending show");
                     if (_videoPlayerWindow != null)
                     {
-                        _videoPlayerWindow.Close();
+                        _videoPlayerWindow.EndShow();
                         _videoPlayerWindow = null;
                     }
                     IsShowActive = false;
@@ -473,8 +472,6 @@ public partial class DJScreenViewModel
                     if (_videoPlayerWindow != null)
                     {
                         _videoPlayerWindow.StopVideo();
-                        _videoPlayerWindow.Close();
-                        _videoPlayerWindow = null;
                     }
                     IsPlaying = false;
                     IsVideoPaused = false;
@@ -572,8 +569,6 @@ public partial class DJScreenViewModel
             if (_videoPlayerWindow != null)
             {
                 _videoPlayerWindow.StopVideo();
-                _videoPlayerWindow.Close();
-                _videoPlayerWindow = null;
             }
 
             if (IsAutoPlayEnabled && !string.IsNullOrEmpty(_currentEventId))
@@ -612,27 +607,11 @@ public partial class DJScreenViewModel
                 else
                 {
                     Log.Information("[DJSCREEN] No valid next song to auto-play");
-                    if (_videoPlayerWindow == null && IsShowActive)
-                    {
-                        _videoPlayerWindow = new VideoPlayerWindow();
-                        _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
-                        _videoPlayerWindow.TimeChanged += VideoPlayerWindow_TimeChanged;
-                        _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
-                        _videoPlayerWindow.Show();
-                    }
                 }
             }
             else
             {
                 Log.Information("[DJSCREEN] AutoPlay is disabled or no event joined");
-                if (IsShowActive && _videoPlayerWindow == null)
-                {
-                    _videoPlayerWindow = new VideoPlayerWindow();
-                    _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
-                    _videoPlayerWindow.TimeChanged += VideoPlayerWindow_TimeChanged;
-                    _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
-                    _videoPlayerWindow.Show();
-                }
             }
         }
         catch (Exception ex)
@@ -734,7 +713,7 @@ public partial class DJScreenViewModel
                 _videoPlayerWindow.SongEnded -= VideoPlayerWindow_SongEnded;
                 _videoPlayerWindow.TimeChanged -= VideoPlayerWindow_TimeChanged;
                 _videoPlayerWindow.Closed -= VideoPlayerWindow_Closed;
-                _videoPlayerWindow.Close();
+                _videoPlayerWindow.EndShow();
                 _videoPlayerWindow = null;
             }
         }
