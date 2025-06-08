@@ -11,11 +11,11 @@ namespace BNKaraoke.Api.Dtos
         public string? SongTitle { get; set; }
         public string? SongArtist { get; set; }
         public string? RequestorDisplayName { get; set; }
-        public string? VideoLength { get; set; }
+        public string VideoLength { get; set; } = string.Empty;
         public int Position { get; set; }
-        public string? Status { get; set; }
+        public string Status { get; set; } = string.Empty;
         public string? RequestorUserName { get; set; }
-        public List<string>? Singers { get; set; }
+        public List<string> Singers { get; set; } = new List<string>();
         public bool IsActive { get; set; }
         public bool WasSkipped { get; set; }
         public bool IsCurrentlyPlaying { get; set; }
@@ -25,5 +25,6 @@ namespace BNKaraoke.Api.Dtos
         public string? YouTubeUrl { get; set; }
         public bool IsVideoCached { get; set; }
         public bool IsOnBreak { get; set; }
+        public int SongsCompleted { get; set; } // Added
     }
 }

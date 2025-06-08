@@ -9,7 +9,7 @@ public class UpNextConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        if (value is QueueEntry entry && !string.IsNullOrEmpty(entry.SongTitle) && !string.IsNullOrEmpty(entry.RequestorDisplayName))
+        if (value is QueueEntry entry && entry.IsUpNext && !string.IsNullOrEmpty(entry.SongTitle) && !string.IsNullOrEmpty(entry.RequestorDisplayName))
         {
             return $"Up Next: {entry.SongTitle} by {entry.RequestorDisplayName}";
         }

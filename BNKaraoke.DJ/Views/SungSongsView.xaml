@@ -1,0 +1,35 @@
+<Window x:Class="BNKaraoke.DJ.Views.SungSongsView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sung Songs" Width="600" Height="400" Background="#2D2D2D"
+        WindowStyle="SingleBorderWindow" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="{Binding SungCount, StringFormat=Sung Songs: {0}}" 
+                   FontSize="16" Foreground="#22d3ee" Margin="0,0,0,10"/>
+        <ListView Grid.Row="1" ItemsSource="{Binding SungSongs}" Margin="0,0,0,10">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Song Title" Width="200" DisplayMemberBinding="{Binding SongTitle}"/>
+                    <GridViewColumn Header="Artist" Width="150" DisplayMemberBinding="{Binding SongArtist}"/>
+                    <GridViewColumn Header="Singer" Width="100" DisplayMemberBinding="{Binding RequestorDisplayName}"/>
+                    <GridViewColumn Header="Sung At" Width="120" DisplayMemberBinding="{Binding SungAt, StringFormat='{}{0:MM/dd/yyyy HH:mm}'}"/>
+                </GridView>
+            </ListView.View>
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="Foreground" Value="#ddd"/>
+                    <Setter Property="Background" Value="#2D2D2D"/>
+                    <Setter Property="FontSize" Value="14"/>
+                </Style>
+            </ListView.ItemContainerStyle>
+        </ListView>
+        <Button Grid.Row="2" Content="Close" Width="100" Height="40" HorizontalAlignment="Center"
+                Background="#22d3ee" Foreground="Black" Command="{Binding CloseCommand}"/>
+    </Grid>
+</Window>

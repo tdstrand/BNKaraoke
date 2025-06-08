@@ -1,4 +1,6 @@
-﻿using BNKaraoke.DJ.Views;
+﻿using BNKaraoke.DJ.Models;
+using BNKaraoke.DJ.Views;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LibVLCSharp.Shared;
 using Serilog;
@@ -8,718 +10,764 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Timers;
 using System.Windows;
+using System.Windows.Threading;
 
-namespace BNKaraoke.DJ.ViewModels;
-
-public partial class DJScreenViewModel
+namespace BNKaraoke.DJ.ViewModels
 {
-    private Timer? _warningTimer;
-    private Timer? _countdownTimer;
-    private bool _isDisposing;
-    private TimeSpan? _totalDuration;
-    private bool _countdownStarted;
-
-    public void SetWarningMessage(string message)
+    public partial class DJScreenViewModel
     {
-        if (_isDisposing) return;
-        try
-        {
-            WarningMessage = message;
-            WarningExpirationTime = DateTime.Now.AddSeconds(30);
-            if (_warningTimer == null)
-            {
-                _warningTimer = new Timer(1000);
-                _warningTimer.Elapsed += WarningTimer_Elapsed;
-                _warningTimer.Start();
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error("[DJSCREEN] Failed to set warning message: {Message}", ex.Message);
-        }
-    }
+        private Timer? _warningTimer;
+        private Timer? _countdownTimer;
+        private DispatcherTimer? _updateTimer;
+        private bool _isDisposing;
+        private TimeSpan? _totalDuration;
+        private bool _countdownStarted;
+        private bool _isSeeking;
+        private bool _isInitialPlayback;
+        private bool _wasPlaying;
 
-    private void WarningTimer_Elapsed(object? sender, ElapsedEventArgs e)
-    {
-        if (_isDisposing) return;
-        try
-        {
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                if (WarningExpirationTime == null || DateTime.Now >= WarningExpirationTime)
-                {
-                    WarningMessage = "";
-                    WarningExpirationTime = null;
-                    if (_warningTimer != null)
-                    {
-                        _warningTimer.Stop();
-                        _warningTimer.Dispose();
-                        _warningTimer = null;
-                    }
-                }
-                OnPropertyChanged(nameof(WarningExpirationTime));
-            });
-        }
-        catch (Exception ex)
-        {
-            Log.Error("[DJSCREEN] Failed to process warning timer: {Message}", ex.Message);
-        }
-    }
+        [ObservableProperty]
+        private double _sliderPosition;
 
-    private void CountdownTimer_Elapsed(object? sender, ElapsedEventArgs e)
-    {
-        if (_isDisposing) return;
-        try
+        public void SetWarningMessage(string message)
         {
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                if (IsPlaying && _totalDuration.HasValue && _videoPlayerWindow?.MediaPlayer != null)
-                {
-                    var currentTime = TimeSpan.FromMilliseconds(_videoPlayerWindow.MediaPlayer.Time);
-                    var remaining = _totalDuration.Value - currentTime;
-                    var seconds = (int)Math.Max(0, remaining.TotalSeconds);
-                    TimeRemainingSeconds = seconds;
-                    TimeRemaining = TimeSpan.FromSeconds(seconds).ToString(@"m\:ss");
-                    if (!_countdownStarted)
-                    {
-                        Log.Information("[DJSCREEN] Countdown started: {TimeRemaining}", TimeRemaining);
-                        _countdownStarted = true;
-                    }
-                    CurrentVideoPosition = currentTime.ToString(@"m\:ss");
-                    OnPropertyChanged(nameof(CurrentVideoPosition));
-                    Log.Information("[DJSCREEN] Updated CurrentVideoPosition: {Position}", CurrentVideoPosition);
-                    if (seconds == 0)
-                    {
-                        Log.Information("[DJSCREEN] Countdown ended");
-                        _countdownStarted = false;
-                    }
-                    OnPropertyChanged(nameof(TimeRemaining));
-                    OnPropertyChanged(nameof(TimeRemainingSeconds));
-                }
-                else
-                {
-                    TimeRemainingSeconds = 0;
-                    TimeRemaining = "0:00";
-                    CurrentVideoPosition = "--:--";
-                    OnPropertyChanged(nameof(CurrentVideoPosition));
-                    _countdownStarted = false;
-                    OnPropertyChanged(nameof(TimeRemaining));
-                    OnPropertyChanged(nameof(TimeRemainingSeconds));
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            Log.Error("[DJSCREEN] Failed to process countdown timer: {Message}", ex.Message);
-        }
-    }
-
-    [RelayCommand]
-    private async Task Play()
-    {
-        Log.Information("[DJSCREEN] Play/Pause command invoked");
-        if (_isDisposing) return;
-        if (!IsShowActive)
-        {
-            Log.Information("[DJSCREEN] Play failed: Show not started");
-            SetWarningMessage("Please start the show first.");
-            return;
-        }
-
-        if (QueueEntries.Count == 0)
-        {
-            Log.Information("[DJSCREEN] Play failed: Queue is empty");
-            SetWarningMessage("No songs in the queue.");
-            return;
-        }
-
-        var targetEntry = SelectedQueueEntry ?? QueueEntries.FirstOrDefault();
-        if (targetEntry == null)
-        {
-            Log.Information("[DJSCREEN] Play failed: No queue entry selected");
-            SetWarningMessage("Please select a song to play.");
-            return;
-        }
-
-        if (!targetEntry.IsVideoCached)
-        {
-            Log.Information("[DJSCREEN] Play failed: Video not cached for SongId={SongId}", targetEntry.SongId);
-            SetWarningMessage("Video not cached. Please wait for caching to complete.");
-            return;
-        }
-
-        if (!string.IsNullOrEmpty(_currentEventId))
-        {
+            if (_isDisposing) return;
             try
             {
-                if (IsPlaying && _videoPlayerWindow?.MediaPlayer != null)
+                WarningMessage = message;
+                WarningExpirationTime = DateTime.Now.AddSeconds(30);
+                if (_warningTimer == null)
                 {
-                    _videoPlayerWindow.PauseVideo();
-                    IsVideoPaused = true;
-                    IsPlaying = false;
-                    await _apiService.PauseAsync(_currentEventId, targetEntry.QueueId.ToString());
-                    Log.Information("[DJSCREEN] Pause request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, targetEntry.QueueId, targetEntry.SongTitle);
+                    _warningTimer = new Timer(1000);
+                    _warningTimer.Elapsed += WarningTimer_Elapsed;
+                    _warningTimer.Start();
                 }
-                else
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to set warning message: {Message}", ex.Message);
+            }
+        }
+
+        private void WarningTimer_Elapsed(object? sender, ElapsedEventArgs e)
+        {
+            if (_isDisposing) return;
+            try
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (WarningExpirationTime == null || DateTime.Now >= WarningExpirationTime)
+                    {
+                        WarningMessage = "";
+                        WarningExpirationTime = null;
+                        if (_warningTimer != null)
+                        {
+                            _warningTimer.Stop();
+                            _warningTimer.Dispose();
+                            _warningTimer = null;
+                        }
+                    }
+                    OnPropertyChanged(nameof(WarningExpirationTime));
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to process warning timer: {Message}", ex.Message);
+            }
+        }
+
+        private void CountdownTimer_Elapsed(object? sender, ElapsedEventArgs e)
+        {
+            if (_isDisposing) return;
+            try
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if ((IsPlaying || IsVideoPaused) && _totalDuration.HasValue && _videoPlayerWindow?.MediaPlayer != null)
+                    {
+                        var currentTime = TimeSpan.FromMilliseconds(_videoPlayerWindow.MediaPlayer.Time);
+                        var remaining = _totalDuration.Value - currentTime;
+                        var seconds = (int)Math.Max(0, remaining.TotalSeconds);
+                        TimeRemainingSeconds = seconds;
+                        TimeRemaining = TimeSpan.FromSeconds(seconds).ToString(@"m\:ss");
+                        if (!_countdownStarted)
+                        {
+                            Log.Information("[DJSCREEN] Countdown started: {TimeRemaining}", TimeRemaining);
+                            _countdownStarted = true;
+                        }
+                        CurrentVideoPosition = currentTime.ToString(@"m\:ss");
+                        OnPropertyChanged(nameof(CurrentVideoPosition));
+                        OnPropertyChanged(nameof(TimeRemaining));
+                        OnPropertyChanged(nameof(TimeRemainingSeconds));
+                        if (seconds == 0)
+                        {
+                            Log.Information("[DJSCREEN] Countdown ended");
+                            _countdownStarted = false;
+                        }
+                    }
+                    else
+                    {
+                        TimeRemainingSeconds = 0;
+                        TimeRemaining = "0:00";
+                        CurrentVideoPosition = "--:--";
+                        SliderPosition = 0;
+                        OnPropertyChanged(nameof(SliderPosition));
+                        OnPropertyChanged(nameof(CurrentVideoPosition));
+                        OnPropertyChanged(nameof(TimeRemaining));
+                        OnPropertyChanged(nameof(TimeRemainingSeconds));
+                        _countdownStarted = false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to process countdown timer: {Message}", ex.Message);
+            }
+        }
+
+        private void UpdateTimer_Tick(object? sender, EventArgs e)
+        {
+            if (_isDisposing || _isSeeking || _isInitialPlayback || _videoPlayerWindow?.MediaPlayer == null || !IsPlaying || _videoPlayerWindow.MediaPlayer.State == VLCState.Stopped) return;
+            try
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (_videoPlayerWindow.MediaPlayer != null)
+                    {
+                        var currentTime = TimeSpan.FromMilliseconds(_videoPlayerWindow.MediaPlayer.Time);
+                        CurrentVideoPosition = currentTime.ToString(@"m\:ss");
+                        if (!_isSeeking)
+                        {
+                            SliderPosition = currentTime.TotalSeconds;
+                            OnPropertyChanged(nameof(SliderPosition));
+                        }
+                        OnPropertyChanged(nameof(CurrentVideoPosition));
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to update position: {Message}", ex.Message);
+            }
+        }
+
+        [RelayCommand]
+        private void StartSeeking()
+        {
+            if (_isDisposing || _videoPlayerWindow?.MediaPlayer == null) return;
+            try
+            {
+                _isSeeking = true;
+                _wasPlaying = _videoPlayerWindow.MediaPlayer.IsPlaying;
+                if (_wasPlaying)
+                {
+                    _videoPlayerWindow.MediaPlayer.Pause();
+                    Log.Information("[DJSCREEN] Paused video for seeking");
+                }
+                Log.Information("[DJSCREEN] Started seeking");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to start seeking: {Message}", ex.Message);
+            }
+        }
+
+        [RelayCommand]
+        private void StopSeeking()
+        {
+            if (_isDisposing || _videoPlayerWindow?.MediaPlayer == null) return;
+            try
+            {
+                _isSeeking = false;
+                if (_wasPlaying)
+                {
+                    _videoPlayerWindow.MediaPlayer.Play();
+                    Log.Information("[DJSCREEN] Resumed video after seeking");
+                }
+                Log.Information("[DJSCREEN] Stopped seeking");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to stop seeking: {Message}", ex.Message);
+            }
+        }
+
+        [RelayCommand]
+        private void SeekSong(double position)
+        {
+            if (_isDisposing || _videoPlayerWindow?.MediaPlayer == null || _isInitialPlayback || _videoPlayerWindow.MediaPlayer.State == VLCState.Stopped)
+            {
+                Log.Information("[DJSCREEN] SeekSong skipped: Disposing={Disposing}, MediaPlayer={MediaPlayer}, InitialPlayback={InitialPlayback}, State={State}",
+                    _isDisposing, _videoPlayerWindow?.MediaPlayer != null, _isInitialPlayback, _videoPlayerWindow?.MediaPlayer?.State);
+                return;
+            }
+            try
+            {
+                var currentTime = _videoPlayerWindow.MediaPlayer.Time / 1000.0;
+                if (!_isSeeking && Math.Abs(position - currentTime) < 2.0) // Increased threshold
+                {
+                    Log.Information("[DJSCREEN] SeekSong skipped: Position={Position} too close to current time={CurrentTime}", position, currentTime);
+                    return;
+                }
+                Log.Information("[DJSCREEN] SeekSong invoked with position: {Position}, IsSeeking={IsSeeking}, MediaState={State}",
+                    position, _isSeeking, _videoPlayerWindow.MediaPlayer.State);
+                _isSeeking = true;
+                _videoPlayerWindow.MediaPlayer.Pause();
+                SliderPosition = position;
+                CurrentVideoPosition = TimeSpan.FromSeconds(position).ToString(@"m\:ss");
+                OnPropertyChanged(nameof(SliderPosition));
+                OnPropertyChanged(nameof(CurrentVideoPosition));
+                _videoPlayerWindow.MediaPlayer.Time = (long)(position * 1000);
+                if (_wasPlaying)
+                {
+                    _videoPlayerWindow.MediaPlayer.Play();
+                }
+                _isSeeking = false;
+                Log.Information("[DJSCREEN] Seeked to position: {Position}", position);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to seek song: {Message}", ex.Message);
+                SetWarningMessage($"Failed to seek song: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private async Task Play()
+        {
+            Log.Information("[DJSCREEN] Play/Pause command invoked");
+            if (_isDisposing) return;
+            if (!IsShowActive)
+            {
+                Log.Information("[DJSCREEN] Play failed: Show not started");
+                SetWarningMessage("Please start the show first.");
+                return;
+            }
+
+            if (QueueEntries.Count == 0)
+            {
+                Log.Information("[DJSCREEN] Play failed: Queue is empty");
+                SetWarningMessage("No songs in the queue.");
+                return;
+            }
+
+            var targetEntry = PlayingQueueEntry ?? SelectedQueueEntry ?? QueueEntries.FirstOrDefault();
+            if (targetEntry == null)
+            {
+                Log.Information("[DJSCREEN] Play failed: No queue entry selected");
+                SetWarningMessage("Please select a song to play.");
+                return;
+            }
+
+            if (!targetEntry.IsVideoCached)
+            {
+                Log.Information("[DJSCREEN] Play failed: Video not cached for SongId={SongId}", targetEntry.SongId);
+                SetWarningMessage("Video not cached. Please wait for caching to complete.");
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(_currentEventId))
+            {
+                try
                 {
                     if (_videoPlayerWindow == null)
                     {
                         _videoPlayerWindow = new VideoPlayerWindow();
                         _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
-                        _videoPlayerWindow.TimeChanged += VideoPlayerWindow_TimeChanged;
                         _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
                         Log.Information("[DJSCREEN] Created new VideoPlayerWindow for playback");
                     }
-                    string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{targetEntry.SongId}.mp4");
-                    if (IsVideoPaused && _videoPlayerWindow.MediaPlayer != null)
+
+                    // Resume paused song
+                    if (IsVideoPaused && PlayingQueueEntry != null)
                     {
                         _videoPlayerWindow.MediaPlayer.Play();
                         IsVideoPaused = false;
-                    }
-                    else
-                    {
-                        _videoPlayerWindow.PlayVideo(videoPath);
-                        if (TimeSpan.TryParseExact(targetEntry.VideoLength, @"m\:ss", null, out var duration))
+                        IsPlaying = true;
+                        StopRestartButtonColor = "#22d3ee";
+                        OnPropertyChanged(nameof(StopRestartButtonColor));
+                        Log.Information("[DJSCREEN] Resumed video for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
+                        try
                         {
-                            _totalDuration = duration;
-                            Log.Information("[DJSCREEN] Set total duration: {Duration}", duration);
+                            await _apiService.PlayAsync(_currentEventId, PlayingQueueEntry.QueueId.ToString());
+                            Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
                         }
+                        catch (Exception apiEx)
+                        {
+                            Log.Error("[DJSCREEN] Failed to send play request for queue {QueueId}: {Message}", PlayingQueueEntry.QueueId, apiEx.Message);
+                            SetWarningMessage($"Failed to play API: {apiEx.Message}");
+                        }
+                        if (_updateTimer == null)
+                        {
+                            _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
+                            _updateTimer.Tick += UpdateTimer_Tick;
+                            _updateTimer.Start();
+                        }
+                        return;
                     }
-                    _videoPlayerWindow.Show();
-                    IsPlaying = true;
+
+                    // Pause playing song
+                    if (IsPlaying && _videoPlayerWindow.MediaPlayer != null)
+                    {
+                        _videoPlayerWindow.PauseVideo();
+                        IsVideoPaused = true;
+                        IsPlaying = false;
+                        StopRestartButtonColor = "#FF0000";
+                        OnPropertyChanged(nameof(StopRestartButtonColor));
+                        try
+                        {
+                            await _apiService.PauseAsync(_currentEventId, targetEntry.QueueId.ToString());
+                            Log.Information("[DJSCREEN] Pause request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, targetEntry.QueueId, targetEntry.SongTitle);
+                        }
+                        catch (Exception apiEx)
+                        {
+                            Log.Error("[DJSCREEN] Failed to send pause request for queue {QueueId}: {Message}", targetEntry.QueueId, apiEx.Message);
+                            SetWarningMessage($"Failed to pause API: {apiEx.Message}");
+                        }
+                        return;
+                    }
+
+                    // Play new song
+                    string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{targetEntry.SongId}.mp4");
+                    _isInitialPlayback = true;
+                    _videoPlayerWindow.PlayVideo(videoPath);
+                    if (TimeSpan.TryParseExact(targetEntry.VideoLength, @"m\:ss", null, out var duration))
+                    {
+                        _totalDuration = duration;
+                        SongDuration = duration;
+                        OnPropertyChanged(nameof(SongDuration));
+                        Log.Information("[DJSCREEN] Set total duration: {Duration}", duration);
+                    }
                     PlayingQueueEntry = targetEntry;
                     SelectedQueueEntry = targetEntry;
-                    await _apiService.PlayAsync(_currentEventId, targetEntry.QueueId.ToString());
-                    Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, targetEntry.QueueId, targetEntry.SongTitle);
+                    OnPropertyChanged(nameof(PlayingQueueEntry));
+                    OnPropertyChanged(nameof(SelectedQueueEntry));
+                    IsPlaying = true;
+                    IsVideoPaused = false;
+                    StopRestartButtonColor = "#22d3ee";
+                    OnPropertyChanged(nameof(StopRestartButtonColor));
+                    try
+                    {
+                        await _apiService.PlayAsync(_currentEventId, targetEntry.QueueId.ToString());
+                        Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, targetEntry.QueueId, targetEntry.SongTitle);
+                    }
+                    catch (Exception apiEx)
+                    {
+                        Log.Error("[DJSCREEN] Failed to send play request for queue {QueueId}: {Message}", targetEntry.QueueId, apiEx.Message);
+                        SetWarningMessage($"Failed to play API: {apiEx.Message}");
+                    }
+                    QueueEntries.Remove(targetEntry);
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        for (int i = 0; i < QueueEntries.Count; i++)
+                        {
+                            QueueEntries[i].IsUpNext = i == 0;
+                        }
+                        OnPropertyChanged(nameof(QueueEntries));
+                    });
+
+                    _videoPlayerWindow.Show();
                     if (_countdownTimer == null)
                     {
                         _countdownTimer = new Timer(1000);
                         _countdownTimer.Elapsed += CountdownTimer_Elapsed;
                         _countdownTimer.Start();
                     }
+                    if (_updateTimer == null)
+                    {
+                        _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
+                        _updateTimer.Tick += UpdateTimer_Tick;
+                        _updateTimer.Start();
+                    }
+                    await Task.Delay(1000); // Reduced delay
+                    _isInitialPlayback = false;
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("[DJSCREEN] Failed to {Action} queue {QueueId}: {Message}", IsPlaying ? "pause" : "play", targetEntry.QueueId, ex.Message);
+                    SetWarningMessage($"Failed to {(IsPlaying ? "pause" : "play")}: {ex.Message}");
+                    _isInitialPlayback = false;
                 }
             }
-            catch (Exception ex)
+            else
             {
-                Log.Error("[DJSCREEN] Failed to {Action} queue {QueueId}: {Message}", IsPlaying ? "pause" : "play", targetEntry.QueueId, ex.Message);
-                SetWarningMessage($"Failed to {(IsPlaying ? "pause" : "play")}: {ex.Message}");
+                Log.Information("[DJSCREEN] Play/Pause failed: No event joined");
+                SetWarningMessage("Please join an event.");
             }
         }
-        else
-        {
-            Log.Information("[DJSCREEN] Play/Pause failed: No event joined");
-            SetWarningMessage("Please join an event.");
-        }
-    }
 
-    [RelayCommand]
-    private async Task Stop()
-    {
-        Log.Information("[DJSCREEN] Stop command invoked");
-        if (_isDisposing) return;
-        if (SelectedQueueEntry != null && !string.IsNullOrEmpty(_currentEventId))
+        [RelayCommand]
+        private async Task StopRestart()
         {
-            try
+            Log.Information("[DJSCREEN] StopRestart command invoked");
+            if (_isDisposing) return;
+
+            var targetEntry = PlayingQueueEntry ?? SelectedQueueEntry;
+            if (targetEntry == null || string.IsNullOrEmpty(_currentEventId))
             {
-                await _apiService.StopAsync(_currentEventId, SelectedQueueEntry.QueueId.ToString());
-                Log.Information("[DJSCREEN] Stop request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
+                Log.Information("[DJSCREEN] StopRestart failed: No queue entry playing/selected or no event joined, PlayingQueueEntry={Playing}, SelectedQueueEntry={Selected}, EventId={EventId}",
+                    PlayingQueueEntry?.QueueId ?? -1, SelectedQueueEntry?.QueueId ?? -1, _currentEventId ?? "null");
+                SetWarningMessage("Please select a song and join an event.");
                 if (_videoPlayerWindow != null)
                 {
                     _videoPlayerWindow.StopVideo();
-                }
-                IsPlaying = false;
-                IsVideoPaused = false;
-                CurrentVideoPosition = "--:--";
-                TimeRemainingSeconds = 0;
-                TimeRemaining = "0:00";
-
-                if (PlayingQueueEntry != null)
-                {
-                    var entry = QueueEntries.FirstOrDefault(q => q.QueueId == PlayingQueueEntry.QueueId);
-                    if (entry != null)
+                    Log.Information("[DJSCREEN] Video playback stopped due to no valid queue entry");
+                    IsPlaying = false;
+                    IsVideoPaused = false;
+                    SliderPosition = 0;
+                    CurrentVideoPosition = "--:--";
+                    TimeRemainingSeconds = 0;
+                    TimeRemaining = "0:00";
+                    StopRestartButtonColor = "#22d3ee";
+                    OnPropertyChanged(nameof(SliderPosition));
+                    OnPropertyChanged(nameof(CurrentVideoPosition));
+                    OnPropertyChanged(nameof(TimeRemaining));
+                    OnPropertyChanged(nameof(TimeRemainingSeconds));
+                    OnPropertyChanged(nameof(StopRestartButtonColor));
+                    if (_updateTimer != null)
                     {
-                        int sourceIndex = QueueEntries.IndexOf(entry);
-                        if (sourceIndex >= 0)
-                        {
-                            QueueEntries.Move(sourceIndex, QueueEntries.Count - 1);
-                            for (int i = 0; i < QueueEntries.Count; i++)
-                            {
-                                QueueEntries[i].Position = i + 1;
-                            }
-                            var queueIds = QueueEntries.Select(q => q.QueueId.ToString()).ToList();
-                            Log.Information("[DJSCREEN] Reordering queue for event {EventId}, QueueIds={QueueIds}", _currentEventId, string.Join(",", queueIds));
-                            try
-                            {
-                                await _apiService.ReorderQueueAsync(_currentEventId, queueIds);
-                                Log.Information("[DJSCREEN] Moved stopped song to end: QueueId={QueueId}", entry.QueueId);
-                            }
-                            catch (Exception reorderEx)
-                            {
-                                Log.Error("[DJSCREEN] Failed to reorder queue for QueueId={QueueId}: {Message}", entry.QueueId, reorderEx.Message);
-                            }
-                        }
+                        _updateTimer.Stop();
+                        Log.Information("[DJSCREEN] Stopped update timer due to no valid queue entry");
                     }
-                    TotalSongsPlayed++;
-                    OnPropertyChanged(nameof(TotalSongsPlayed));
-                    Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}", TotalSongsPlayed);
-                    PlayingQueueEntry = null;
                 }
+                return;
             }
-            catch (Exception ex)
-            {
-                Log.Error("[DJSCREEN] Failed to stop queue {QueueId}: {Message}", SelectedQueueEntry.QueueId, ex.Message);
-                SetWarningMessage($"Failed to stop: {ex.Message}");
-            }
-        }
-        else
-        {
-            Log.Information("[DJSCREEN] Stop failed: No queue entry selected or no event joined");
-            SetWarningMessage("Please select a song and join an event.");
-        }
-    }
 
-    [RelayCommand]
-    private async Task Skip()
-    {
-        Log.Information("[DJSCREEN] Skip command invoked");
-        if (_isDisposing) return;
-        if (SelectedQueueEntry != null && !string.IsNullOrEmpty(_currentEventId))
-        {
             try
             {
-                await _apiService.SkipAsync(_currentEventId, SelectedQueueEntry.QueueId.ToString());
-                Log.Information("[DJSCREEN] Skip request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
-                if (_videoPlayerWindow != null)
+                if (IsVideoPaused && _videoPlayerWindow?.MediaPlayer != null && PlayingQueueEntry != null)
                 {
-                    _videoPlayerWindow.StopVideo();
-                }
-                IsPlaying = false;
-                IsVideoPaused = false;
-                CurrentVideoPosition = "--:--";
-                TimeRemainingSeconds = 0;
-                TimeRemaining = "0:00";
-
-                if (PlayingQueueEntry != null)
-                {
-                    var entry = QueueEntries.FirstOrDefault(q => q.QueueId == PlayingQueueEntry.QueueId);
-                    if (entry != null)
+                    // Restart: Replay the same song from the beginning
+                    string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{PlayingQueueEntry.SongId}.mp4");
+                    _videoPlayerWindow.PlayVideo(videoPath);
+                    SliderPosition = 0;
+                    CurrentVideoPosition = "0:00";
+                    IsPlaying = true;
+                    IsVideoPaused = false;
+                    StopRestartButtonColor = "#22d3ee";
+                    OnPropertyChanged(nameof(SliderPosition));
+                    OnPropertyChanged(nameof(CurrentVideoPosition));
+                    OnPropertyChanged(nameof(StopRestartButtonColor));
+                    if (_updateTimer == null)
                     {
-                        int sourceIndex = QueueEntries.IndexOf(entry);
-                        if (sourceIndex >= 0)
-                        {
-                            QueueEntries.Move(sourceIndex, QueueEntries.Count - 1);
-                            for (int i = 0; i < QueueEntries.Count; i++)
-                            {
-                                QueueEntries[i].Position = i + 1;
-                            }
-                            var queueIds = QueueEntries.Select(q => q.QueueId.ToString()).ToList();
-                            Log.Information("[DJSCREEN] Reordering queue for event {EventId}, QueueIds={QueueIds}", _currentEventId, string.Join(",", queueIds));
-                            try
-                            {
-                                await _apiService.ReorderQueueAsync(_currentEventId, queueIds);
-                                Log.Information("[DJSCREEN] Moved skipped song to end: QueueId={QueueId}", entry.QueueId);
-                            }
-                            catch (Exception reorderEx)
-                            {
-                                Log.Error("[DJSCREEN] Failed to reorder queue for QueueId={QueueId}: {Message}", entry.QueueId, reorderEx.Message);
-                            }
-                        }
+                        _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
+                        _updateTimer.Tick += UpdateTimer_Tick;
+                        _updateTimer.Start();
                     }
-                    TotalSongsPlayed++;
-                    OnPropertyChanged(nameof(TotalSongsPlayed));
-                    Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}", TotalSongsPlayed);
-                    PlayingQueueEntry = null;
+                    Log.Information("[DJSCREEN] Restarted video for QueueId={QueueId}: {SongTitle}", PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
                 }
-                await LoadQueueData();
+                else
+                {
+                    // Stop: Pause playback, keep song in Now Playing
+                    if (_videoPlayerWindow != null)
+                    {
+                        _videoPlayerWindow.StopVideo();
+                        Log.Information("[DJSCREEN] Video playback stopped for QueueId={QueueId}", targetEntry.QueueId);
+                    }
+                    IsPlaying = false;
+                    IsVideoPaused = true;
+                    SliderPosition = 0;
+                    CurrentVideoPosition = "--:--";
+                    TimeRemainingSeconds = 0;
+                    TimeRemaining = "0:00";
+                    StopRestartButtonColor = "#FF0000";
+                    OnPropertyChanged(nameof(SliderPosition));
+                    OnPropertyChanged(nameof(CurrentVideoPosition));
+                    OnPropertyChanged(nameof(TimeRemaining));
+                    OnPropertyChanged(nameof(TimeRemainingSeconds));
+                    OnPropertyChanged(nameof(StopRestartButtonColor));
+                    if (_updateTimer != null)
+                    {
+                        _updateTimer.Stop();
+                        Log.Information("[DJSCREEN] Stopped update timer for QueueId={QueueId}", targetEntry.QueueId);
+                    }
+                    Log.Information("[DJSCREEN] Stopped video, retained in Now Playing: QueueId={QueueId}: {SongTitle}", targetEntry.QueueId, targetEntry.SongTitle);
+                }
             }
             catch (Exception ex)
             {
-                Log.Error("[DJSCREEN] Failed to skip queue {QueueId}: {Message}", SelectedQueueEntry.QueueId, ex.Message);
-                SetWarningMessage($"Failed to skip: {ex.Message}");
+                Log.Error("[DJSCREEN] Failed to stop/restart queue {QueueId}: {Message}", targetEntry.QueueId, ex.Message);
+                SetWarningMessage($"Failed to stop/restart: {ex.Message}");
             }
         }
-        else
-        {
-            Log.Information("[DJSCREEN] Skip failed: No queue entry selected or no event joined");
-            SetWarningMessage("Please select a song and join an event.");
-        }
-    }
 
-    [RelayCommand]
-    private void ToggleShow()
-    {
-        Log.Information("[DJSCREEN] ToggleShow command invoked");
-        if (_isDisposing) return;
-        if (!IsShowActive)
+        [RelayCommand]
+        private void ToggleShow()
         {
-            try
-            {
-                Log.Information("[DJSCREEN] Starting show");
-                if (_videoPlayerWindow == null)
-                {
-                    _videoPlayerWindow = new VideoPlayerWindow();
-                    _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
-                    _videoPlayerWindow.TimeChanged += VideoPlayerWindow_TimeChanged;
-                    _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
-                    Log.Information("[DJSCREEN] Subscribed to SongEnded, TimeChanged, and Closed events for VideoPlayerWindow");
-                }
-                _videoPlayerWindow.Show();
-                IsShowActive = true;
-                ShowButtonText = "End Show";
-                ShowButtonColor = "#FF0000";
-                Log.Information("[DJSCREEN] Show started, VideoPlayerWindow shown with idle title");
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[DJSCREEN] Failed to start show: {Message}", ex.Message);
-                SetWarningMessage($"Failed to start show: {ex.Message}");
-                if (_videoPlayerWindow != null)
-                {
-                    _videoPlayerWindow.EndShow();
-                    _videoPlayerWindow = null;
-                }
-            }
-        }
-        else
-        {
-            var result = MessageBox.Show("Are you sure you want to end the show?", "Confirm End Show", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (result == MessageBoxResult.Yes)
+            Log.Information("[DJSCREEN] ToggleShow command invoked");
+            if (_isDisposing) return;
+            if (!IsShowActive)
             {
                 try
                 {
-                    Log.Information("[DJSCREEN] Ending show");
+                    Log.Information("[DJSCREEN] Starting show");
+                    if (_videoPlayerWindow == null)
+                    {
+                        _videoPlayerWindow = new VideoPlayerWindow();
+                        _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
+                        _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
+                        Log.Information("[DJSCREEN] Subscribed to SongEnded and Closed events for VideoPlayerWindow");
+                    }
+                    _videoPlayerWindow.Show();
+                    IsShowActive = true;
+                    ShowButtonText = "End Show";
+                    ShowButtonColor = "#FF0000";
+                    Log.Information("[DJSCREEN] Show started, VideoPlayerWindow shown with idle title");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("[DJSCREEN] Failed to start show: {Message}", ex.Message);
+                    SetWarningMessage($"Failed to start show: {ex.Message}");
                     if (_videoPlayerWindow != null)
                     {
                         _videoPlayerWindow.EndShow();
                         _videoPlayerWindow = null;
                     }
-                    IsShowActive = false;
-                    ShowButtonText = "Start Show";
-                    ShowButtonColor = "#22d3ee";
-                    if (IsPlaying)
-                    {
-                        IsPlaying = false;
-                        IsVideoPaused = false;
-                        CurrentVideoPosition = "--:--";
-                        TimeRemainingSeconds = 0;
-                        TimeRemaining = "0:00";
-                        Log.Information("[DJSCREEN] Playback stopped due to show ending");
-                        PlayingQueueEntry = null;
-                    }
-                    Log.Information("[DJSCREEN] Show ended, VideoPlayerWindow closed");
-                }
-                catch (Exception ex)
-                {
-                    Log.Error("[DJSCREEN] Failed to end show: {Message}", ex.Message);
-                    SetWarningMessage($"Failed to end show: {ex.Message}");
                 }
             }
             else
             {
-                Log.Information("[DJSCREEN] End show cancelled by user");
-            }
-        }
-    }
-
-    [RelayCommand]
-    private async Task PlayQueueItem()
-    {
-        Log.Information("[DJSCREEN] PlayQueueItem command invoked");
-        if (_isDisposing) return;
-        if (!IsShowActive)
-        {
-            Log.Information("[DJSCREEN] Play failed: Show not started");
-            SetWarningMessage("Please start the show first.");
-            return;
-        }
-
-        if (QueueEntries.Count == 0)
-        {
-            Log.Information("[DJSCREEN] Play failed: Queue is empty");
-            SetWarningMessage("No songs in the queue.");
-            return;
-        }
-
-        if (SelectedQueueEntry == null)
-        {
-            Log.Information("[DJSCREEN] Play failed: No queue entry selected");
-            SetWarningMessage("Please select a song to play.");
-            return;
-        }
-
-        if (!SelectedQueueEntry.IsVideoCached)
-        {
-            Log.Information("[DJSCREEN] Play failed: Video not cached for SongId={SongId}", SelectedQueueEntry.SongId);
-            SetWarningMessage("Video not cached. Please wait for caching to complete.");
-            return;
-        }
-
-        if (IsPlaying && PlayingQueueEntry != SelectedQueueEntry)
-        {
-            var result = MessageBox.Show($"Stop current song '{PlayingQueueEntry?.SongTitle}' and play '{SelectedQueueEntry.SongTitle}'?", "Confirm Song Change", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (result != MessageBoxResult.Yes)
-            {
-                Log.Information("[DJSCREEN] PlayQueueItem cancelled by user");
-                return;
-            }
-
-            try
-            {
-                if (_currentEventId != null && PlayingQueueEntry != null)
+                var result = MessageBox.Show("Are you sure you want to end the show?", "Confirm End Show", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (result == MessageBoxResult.Yes)
                 {
-                    await _apiService.StopAsync(_currentEventId, PlayingQueueEntry.QueueId.ToString());
-                    Log.Information("[DJSCREEN] Stop request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
-                    if (_videoPlayerWindow != null)
+                    try
                     {
-                        _videoPlayerWindow.StopVideo();
+                        Log.Information("[DJSCREEN] Ending show");
+                        if (_videoPlayerWindow != null)
+                        {
+                            _videoPlayerWindow.EndShow();
+                            _videoPlayerWindow = null;
+                        }
+                        IsShowActive = false;
+                        ShowButtonText = "Start Show";
+                        ShowButtonColor = "#22d3ee";
+                        if (IsPlaying || IsVideoPaused)
+                        {
+                            IsPlaying = false;
+                            IsVideoPaused = false;
+                            SliderPosition = 0;
+                            CurrentVideoPosition = "--:--";
+                            TimeRemainingSeconds = 0;
+                            TimeRemaining = "0:00";
+                            StopRestartButtonColor = "#22d3ee";
+                            OnPropertyChanged(nameof(SliderPosition));
+                            OnPropertyChanged(nameof(CurrentVideoPosition));
+                            OnPropertyChanged(nameof(TimeRemaining));
+                            OnPropertyChanged(nameof(TimeRemainingSeconds));
+                            OnPropertyChanged(nameof(StopRestartButtonColor));
+                            PlayingQueueEntry = null;
+                            OnPropertyChanged(nameof(PlayingQueueEntry));
+                            if (_updateTimer != null)
+                            {
+                                _updateTimer.Stop();
+                                Log.Information("[DJSCREEN] Stopped update timer due to show ending");
+                            }
+                            Log.Information("[DJSCREEN] Playback stopped due to show ending");
+                        }
+                        Log.Information("[DJSCREEN] Show ended, VideoPlayerWindow closed");
                     }
-                    IsPlaying = false;
-                    IsVideoPaused = false;
-                    CurrentVideoPosition = "--:--";
-                    TimeRemainingSeconds = 0;
-                    TimeRemaining = "0:00";
-                    TotalSongsPlayed++;
-                    OnPropertyChanged(nameof(TotalSongsPlayed));
-                    Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}", TotalSongsPlayed);
-                    PlayingQueueEntry = null;
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[DJSCREEN] Failed to stop queue {QueueId}: {Message}", PlayingQueueEntry?.QueueId ?? -1, ex.Message);
-                SetWarningMessage($"Failed to stop current song: {ex.Message}");
-                return;
-            }
-        }
-
-        if (_currentEventId != null)
-        {
-            try
-            {
-                if (_videoPlayerWindow == null)
-                {
-                    _videoPlayerWindow = new VideoPlayerWindow();
-                    _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
-                    _videoPlayerWindow.TimeChanged += VideoPlayerWindow_TimeChanged;
-                    _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
-                    Log.Information("[DJSCREEN] Subscribed to SongEnded, TimeChanged, and Closed events for new VideoPlayerWindow");
-                }
-                string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{SelectedQueueEntry.SongId}.mp4");
-                _videoPlayerWindow.PlayVideo(videoPath);
-                _videoPlayerWindow.Show();
-                IsPlaying = true;
-                IsVideoPaused = false;
-                PlayingQueueEntry = SelectedQueueEntry;
-                await _apiService.PlayAsync(_currentEventId, SelectedQueueEntry.QueueId.ToString());
-                Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
-                if (TimeSpan.TryParseExact(SelectedQueueEntry.VideoLength, @"m\:ss", null, out var duration))
-                {
-                    _totalDuration = duration;
-                    Log.Information("[DJSCREEN] Set total duration: {Duration}", duration);
-                }
-                if (_countdownTimer == null)
-                {
-                    _countdownTimer = new Timer(1000);
-                    _countdownTimer.Elapsed += CountdownTimer_Elapsed;
-                    _countdownTimer.Start();
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[DJSCREEN] Failed to play queue {QueueId}: {Message}", SelectedQueueEntry.QueueId, ex.Message);
-                SetWarningMessage($"Failed to play: {ex.Message}");
-            }
-        }
-        else
-        {
-            Log.Information("[DJSCREEN] Play failed: No event joined");
-            SetWarningMessage("Please join an event.");
-        }
-    }
-
-    [RelayCommand]
-    private void ToggleAutoPlay()
-    {
-        Log.Information("[DJSCREEN] ToggleAutoPlay command invoked");
-        if (_isDisposing) return;
-        IsAutoPlayEnabled = !IsAutoPlayEnabled;
-        AutoPlayButtonText = IsAutoPlayEnabled ? "Auto Play is ON" : "Auto Play is OFF";
-        Log.Information("[DJSCREEN] AutoPlay set to: {State}", IsAutoPlayEnabled);
-    }
-
-    public async Task HandleSongEnded()
-    {
-        Log.Information("[DJSCREEN] Handling song ended");
-        if (_isDisposing) return;
-        try
-        {
-            if (PlayingQueueEntry != null)
-            {
-                IsPlaying = false;
-                IsVideoPaused = false;
-                CurrentVideoPosition = "--:--";
-                TimeRemainingSeconds = 0;
-                TimeRemaining = "0:00";
-                TotalSongsPlayed++;
-                OnPropertyChanged(nameof(TotalSongsPlayed));
-                Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}", TotalSongsPlayed);
-                PlayingQueueEntry = null;
-            }
-
-            if (_videoPlayerWindow != null)
-            {
-                _videoPlayerWindow.StopVideo();
-            }
-
-            if (IsAutoPlayEnabled && !string.IsNullOrEmpty(_currentEventId))
-            {
-                var nextEntry = QueueEntries.OrderBy(q => q.Position).FirstOrDefault();
-                if (nextEntry != null && nextEntry.IsVideoCached)
-                {
-                    SelectedQueueEntry = nextEntry;
-                    await _apiService.PlayAsync(_currentEventId, nextEntry.QueueId.ToString());
-                    Log.Information("[DJSCREEN] Auto-playing next song for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, nextEntry.QueueId, nextEntry.SongTitle);
-                    string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{nextEntry.SongId}.mp4");
-                    if (_videoPlayerWindow == null)
+                    catch (Exception ex)
                     {
-                        _videoPlayerWindow = new VideoPlayerWindow();
-                        _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
-                        _videoPlayerWindow.TimeChanged += VideoPlayerWindow_TimeChanged;
-                        _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
-                        Log.Information("[DJSCREEN] Subscribed to SongEnded, TimeChanged, and Closed events for auto-play");
-                    }
-                    _videoPlayerWindow.PlayVideo(videoPath);
-                    _videoPlayerWindow.Show();
-                    IsPlaying = true;
-                    PlayingQueueEntry = nextEntry;
-                    if (TimeSpan.TryParseExact(nextEntry.VideoLength, @"m\:ss", null, out var duration))
-                    {
-                        _totalDuration = duration;
-                        Log.Information("[DJSCREEN] Set total duration: {Duration}", duration);
-                    }
-                    if (_countdownTimer == null)
-                    {
-                        _countdownTimer = new Timer(1000);
-                        _countdownTimer.Elapsed += CountdownTimer_Elapsed;
-                        _countdownTimer.Start();
+                        Log.Error("[DJSCREEN] Failed to end show: {Message}", ex.Message);
+                        SetWarningMessage($"Failed to end show: {ex.Message}");
                     }
                 }
                 else
                 {
-                    Log.Information("[DJSCREEN] No valid next song to auto-play");
+                    Log.Information("[DJSCREEN] End show cancelled by user");
                 }
             }
-            else
+        }
+
+        [RelayCommand]
+        private async Task ViewSungSongs()
+        {
+            Log.Information("[DJSCREEN] ViewSungSongs command invoked");
+            if (_isDisposing) return;
+            try
             {
-                Log.Information("[DJSCREEN] AutoPlay is disabled or no event joined");
+                var sungWindow = new SungSongsView { DataContext = new SungSongsViewModel(_apiService, _currentEventId ?? "3") };
+                sungWindow.ShowDialog();
+                Log.Information("[DJSCREEN] SungSongsView shown for EventId={EventId}", _currentEventId);
+                await Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to show SungSongsView: {Message}", ex.Message);
+                SetWarningMessage($"Failed to view sung songs: {ex.Message}");
             }
         }
-        catch (Exception ex)
-        {
-            Log.Error("[DJSCREEN] Failed to handle song ended: {Message}", ex.Message);
-            SetWarningMessage($"Failed to handle song end: {ex.Message}");
-        }
-    }
 
-    private void VideoPlayerWindow_SongEnded(object? sender, EventArgs e)
-    {
-        Log.Information("[DJSCREEN] SongEnded event received");
-        if (_isDisposing) return;
-        try
+        public async Task HandleSongEnded()
         {
-            Application.Current.Dispatcher.InvokeAsync(async () =>
+            Log.Information("[DJSCREEN] Handling song ended");
+            if (_isDisposing) return;
+            try
             {
-                await HandleSongEnded();
-            }).Wait();
-        }
-        catch (Exception ex)
-        {
-            Log.Error("[DJSCREEN] Failed to process SongEnded event: {Message}, StackTrace={StackTrace}", ex.Message, ex.StackTrace);
-        }
-    }
+                if (_updateTimer != null)
+                {
+                    _updateTimer.Stop();
+                    Log.Information("[DJSCREEN] Stopped update timer on song end");
+                }
 
-    private void VideoPlayerWindow_TimeChanged(object? sender, MediaPlayerTimeChangedEventArgs e)
-    {
-        if (_isDisposing) return;
-        try
-        {
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                CurrentVideoPosition = TimeSpan.FromMilliseconds(e.Time).ToString(@"m\:ss");
+                if (PlayingQueueEntry != null && !string.IsNullOrEmpty(_currentEventId))
+                {
+                    await _apiService.CompleteSongAsync(_currentEventId, PlayingQueueEntry.QueueId);
+                    Log.Information("[DJSCREEN] Completed song for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
+                    QueueEntries.Remove(PlayingQueueEntry);
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        for (int i = 0; i < QueueEntries.Count; i++)
+                        {
+                            QueueEntries[i].IsUpNext = i == 0;
+                        }
+                        OnPropertyChanged(nameof(QueueEntries));
+                    });
+                }
+
+                IsPlaying = false;
+                IsVideoPaused = false;
+                SliderPosition = 0;
+                CurrentVideoPosition = "--:--";
+                TimeRemainingSeconds = 0;
+                TimeRemaining = "0:00";
+                StopRestartButtonColor = "#22d3ee";
+                OnPropertyChanged(nameof(SliderPosition));
                 OnPropertyChanged(nameof(CurrentVideoPosition));
-            });
-        }
-        catch (Exception ex)
-        {
-            Log.Error("[DJSCREEN] Failed to process TimeChanged event: {Message}", ex.Message);
-        }
-    }
+                OnPropertyChanged(nameof(TimeRemaining));
+                OnPropertyChanged(nameof(TimeRemainingSeconds));
+                OnPropertyChanged(nameof(StopRestartButtonColor));
+                TotalSongsPlayed++;
+                SungCount++;
+                OnPropertyChanged(nameof(TotalSongsPlayed));
+                OnPropertyChanged(nameof(SungCount));
+                Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}, SungCount: {SungCount}", TotalSongsPlayed, SungCount);
 
-    private void VideoPlayerWindow_Closed(object? sender, EventArgs e)
-    {
-        Log.Information("[DJSCREEN] VideoPlayerWindow closed");
-        if (_isDisposing) return;
-        try
-        {
-            Application.Current.Dispatcher.Invoke(() =>
+                if (_videoPlayerWindow != null)
+                {
+                    _videoPlayerWindow.StopVideo();
+                }
+
+                PlayingQueueEntry = null;
+                OnPropertyChanged(nameof(PlayingQueueEntry));
+
+                if (IsAutoPlayEnabled && !string.IsNullOrEmpty(_currentEventId))
+                {
+                    await PlayNextAutoPlaySong();
+                }
+                else
+                {
+                    Log.Information("[DJSCREEN] AutoPlay is disabled or no event joined, IsAutoPlayEnabled={State}", IsAutoPlayEnabled);
+                    await LoadQueueData();
+                    await LoadSungCountAsync();
+                }
+            }
+            catch (Exception ex)
             {
+                Log.Error("[DJSCREEN] Failed to handle song ended: {Message}", ex.Message);
+                SetWarningMessage($"Failed to handle song end: {ex.Message}");
+            }
+        }
+
+        private void VideoPlayerWindow_SongEnded(object? sender, EventArgs e)
+        {
+            Log.Information("[DJSCREEN] SongEnded event received");
+            if (_isDisposing) return;
+            try
+            {
+                Application.Current.Dispatcher.InvokeAsync(async () =>
+                {
+                    await HandleSongEnded();
+                }).Wait();
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to process SongEnded event: {Message}, StackTrace={StackTrace}", ex.Message, ex.StackTrace);
+            }
+        }
+
+        private void VideoPlayerWindow_Closed(object? sender, EventArgs e)
+        {
+            Log.Information("[DJSCREEN] VideoPlayerWindow closed");
+            if (_isDisposing) return;
+            try
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (_videoPlayerWindow != null)
+                    {
+                        _videoPlayerWindow.SongEnded -= VideoPlayerWindow_SongEnded;
+                        _videoPlayerWindow.Closed -= VideoPlayerWindow_Closed;
+                        _videoPlayerWindow = null;
+                    }
+                    IsShowActive = false;
+                    ShowButtonText = "Start Show";
+                    ShowButtonColor = "#22d3ee";
+                    if (IsPlaying || IsVideoPaused)
+                    {
+                        IsPlaying = false;
+                        IsVideoPaused = false;
+                        SliderPosition = 0;
+                        CurrentVideoPosition = "--:--";
+                        TimeRemainingSeconds = 0;
+                        TimeRemaining = "0:00";
+                        StopRestartButtonColor = "#22d3ee";
+                        OnPropertyChanged(nameof(SliderPosition));
+                        OnPropertyChanged(nameof(CurrentVideoPosition));
+                        OnPropertyChanged(nameof(TimeRemaining));
+                        OnPropertyChanged(nameof(TimeRemainingSeconds));
+                        OnPropertyChanged(nameof(StopRestartButtonColor));
+                        PlayingQueueEntry = null;
+                        OnPropertyChanged(nameof(PlayingQueueEntry));
+                        if (_updateTimer != null)
+                        {
+                            _updateTimer.Stop();
+                            Log.Information("[DJSCREEN] Stopped update timer due to VideoPlayerWindow close");
+                        }
+                    }
+                    Log.Information("[DJSCREEN] Show state reset due to VideoPlayerWindow close");
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to process VideoPlayerWindow close: {Message}", ex.Message);
+            }
+        }
+
+        public void Dispose()
+        {
+            _isDisposing = true;
+            try
+            {
+                if (_warningTimer != null)
+                {
+                    _warningTimer.Stop();
+                    _warningTimer.Dispose();
+                    _warningTimer = null;
+                }
+                if (_countdownTimer != null)
+                {
+                    _countdownTimer.Stop();
+                    _countdownTimer.Dispose();
+                    _countdownTimer = null;
+                }
+                if (_updateTimer != null)
+                {
+                    _updateTimer.Stop();
+                    _updateTimer = null;
+                }
                 if (_videoPlayerWindow != null)
                 {
                     _videoPlayerWindow.SongEnded -= VideoPlayerWindow_SongEnded;
-                    _videoPlayerWindow.TimeChanged -= VideoPlayerWindow_TimeChanged;
                     _videoPlayerWindow.Closed -= VideoPlayerWindow_Closed;
+                    _videoPlayerWindow.EndShow();
                     _videoPlayerWindow = null;
                 }
-                IsShowActive = false;
-                ShowButtonText = "Start Show";
-                ShowButtonColor = "#22d3ee";
-                if (IsPlaying)
-                {
-                    IsPlaying = false;
-                    IsVideoPaused = false;
-                    CurrentVideoPosition = "--:--";
-                    TimeRemainingSeconds = 0;
-                    TimeRemaining = "0:00";
-                    PlayingQueueEntry = null;
-                }
-                Log.Information("[DJSCREEN] Show state reset due to VideoPlayerWindow close");
-            });
-        }
-        catch (Exception ex)
-        {
-            Log.Error("[DJSCREEN] Failed to process VideoPlayerWindow close: {Message}", ex.Message);
-        }
-    }
-
-    public void Dispose()
-    {
-        _isDisposing = true;
-        try
-        {
-            if (_warningTimer != null)
-            {
-                _warningTimer.Stop();
-                _warningTimer.Dispose();
-                _warningTimer = null;
             }
-            if (_countdownTimer != null)
+            catch (Exception ex)
             {
-                _countdownTimer.Stop();
-                _countdownTimer.Dispose();
-                _countdownTimer = null;
+                Log.Error("[DJSCREEN] Failed to dispose resources: {Message}", ex.Message);
             }
-            if (_videoPlayerWindow != null)
-            {
-                _videoPlayerWindow.SongEnded -= VideoPlayerWindow_SongEnded;
-                _videoPlayerWindow.TimeChanged -= VideoPlayerWindow_TimeChanged;
-                _videoPlayerWindow.Closed -= VideoPlayerWindow_Closed;
-                _videoPlayerWindow.EndShow();
-                _videoPlayerWindow = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error("[DJSCREEN] Failed to dispose resources: {Message}", ex.Message);
         }
     }
 }

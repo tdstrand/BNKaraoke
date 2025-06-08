@@ -1,236 +1,203 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using Serilog;
 
-namespace BNKaraoke.DJ.Models;
-
-public class QueueEntry : INotifyPropertyChanged
+namespace BNKaraoke.DJ.Models
 {
-    private int _queueId;
-    private int _eventId;
-    private int _songId;
-    private string? _songTitle;
-    private string? _songArtist;
-    private string? _requestorDisplayName;
-    private string? _videoLength;
-    private int _position;
-    private string? _status;
-    private string? _requestorUserName;
-    private List<string>? _singers;
-    private bool _isActive;
-    private bool _wasSkipped;
-    private bool _isCurrentlyPlaying;
-    private DateTime? _sungAt;
-    private string? _genre;
-    private string? _decade;
-    private string? _youTubeUrl;
-    private bool _isVideoCached;
-    private bool _isOnBreak;
-
-    public int QueueId
+    public class QueueEntry : INotifyPropertyChanged
     {
-        get => _queueId;
-        set
+        private int _queueId;
+        private int _eventId;
+        private int _songId;
+        private string? _songTitle;
+        private string? _songArtist;
+        private string? _requestorDisplayName;
+        private string? _videoLength;
+        private int _position;
+        private string? _status;
+        private string? _requestorUserName;
+        private List<string>? _singers;
+        private bool _isActive;
+        private bool _wasSkipped;
+        private bool _isCurrentlyPlaying;
+        private DateTime? _sungAt;
+        private string? _genre;
+        private string? _decade;
+        private string? _youTubeUrl;
+        private bool _isVideoCached;
+        private bool _isOnBreak;
+        private bool _isOnHold;
+        private bool _isUpNext;
+        private string? _holdReason;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
-            _queueId = value;
-            OnPropertyChanged(nameof(QueueId));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            if (propertyName == nameof(IsUpNext) || propertyName == nameof(IsOnHold) || propertyName == nameof(RequestorDisplayName))
+            {
+                Log.Information("[QUEUE ENTRY] {PropertyName} changed for SongId={SongId}: {Value}", propertyName, SongId, GetPropertyValue(propertyName));
+            }
         }
-    }
 
-    public int EventId
-    {
-        get => _eventId;
-        set
+        private object? GetPropertyValue(string propertyName)
         {
-            _eventId = value;
-            OnPropertyChanged(nameof(EventId));
+            return propertyName switch
+            {
+                nameof(IsUpNext) => IsUpNext,
+                nameof(IsOnHold) => IsOnHold,
+                nameof(RequestorDisplayName) => RequestorDisplayName ?? "null",
+                _ => null
+            };
         }
-    }
 
-    public int SongId
-    {
-        get => _songId;
-        set
+        protected bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
         {
-            _songId = value;
-            OnPropertyChanged(nameof(SongId));
+            if (Equals(field, value)) return false;
+            field = value;
+            OnPropertyChanged(propertyName);
+            return true;
         }
-    }
 
-    public string? SongTitle
-    {
-        get => _songTitle;
-        set
+        public int QueueId
         {
-            _songTitle = value;
-            OnPropertyChanged(nameof(SongTitle));
+            get => _queueId;
+            set => SetProperty(ref _queueId, value);
         }
-    }
 
-    public string? SongArtist
-    {
-        get => _songArtist;
-        set
+        public int EventId
         {
-            _songArtist = value;
-            OnPropertyChanged(nameof(SongArtist));
+            get => _eventId;
+            set => SetProperty(ref _eventId, value);
         }
-    }
 
-    public string? RequestorDisplayName
-    {
-        get => _requestorDisplayName;
-        set
+        public int SongId
         {
-            _requestorDisplayName = value;
-            OnPropertyChanged(nameof(RequestorDisplayName));
+            get => _songId;
+            set => SetProperty(ref _songId, value);
         }
-    }
 
-    public string? VideoLength
-    {
-        get => _videoLength;
-        set
+        public string? SongTitle
         {
-            _videoLength = value;
-            OnPropertyChanged(nameof(VideoLength));
+            get => _songTitle;
+            set => SetProperty(ref _songTitle, value);
         }
-    }
 
-    public int Position
-    {
-        get => _position;
-        set
+        public string? SongArtist
         {
-            _position = value;
-            OnPropertyChanged(nameof(Position));
+            get => _songArtist;
+            set => SetProperty(ref _songArtist, value);
         }
-    }
 
-    public string? Status
-    {
-        get => _status;
-        set
+        public string? RequestorDisplayName
         {
-            _status = value;
-            OnPropertyChanged(nameof(Status));
+            get => _requestorDisplayName;
+            set => SetProperty(ref _requestorDisplayName, value);
         }
-    }
 
-    public string? RequestorUserName
-    {
-        get => _requestorUserName;
-        set
+        public string? VideoLength
         {
-            _requestorUserName = value;
-            OnPropertyChanged(nameof(RequestorUserName));
+            get => _videoLength;
+            set => SetProperty(ref _videoLength, value);
         }
-    }
 
-    public List<string>? Singers
-    {
-        get => _singers;
-        set
+        public int Position
         {
-            _singers = value;
-            OnPropertyChanged(nameof(Singers));
+            get => _position;
+            set => SetProperty(ref _position, value);
         }
-    }
 
-    public bool IsActive
-    {
-        get => _isActive;
-        set
+        public string? Status
         {
-            _isActive = value;
-            OnPropertyChanged(nameof(IsActive));
+            get => _status;
+            set => SetProperty(ref _status, value);
         }
-    }
 
-    public bool WasSkipped
-    {
-        get => _wasSkipped;
-        set
+        public string? RequestorUserName
         {
-            _wasSkipped = value;
-            OnPropertyChanged(nameof(WasSkipped));
+            get => _requestorUserName;
+            set => SetProperty(ref _requestorUserName, value);
         }
-    }
 
-    public bool IsCurrentlyPlaying
-    {
-        get => _isCurrentlyPlaying;
-        set
+        public List<string>? Singers
         {
-            _isCurrentlyPlaying = value;
-            OnPropertyChanged(nameof(IsCurrentlyPlaying));
+            get => _singers;
+            set => SetProperty(ref _singers, value);
         }
-    }
 
-    public DateTime? SungAt
-    {
-        get => _sungAt;
-        set
+        public bool IsActive
         {
-            _sungAt = value;
-            OnPropertyChanged(nameof(SungAt));
+            get => _isActive;
+            set => SetProperty(ref _isActive, value);
         }
-    }
 
-    public string? Genre
-    {
-        get => _genre;
-        set
+        public bool WasSkipped
         {
-            _genre = value;
-            OnPropertyChanged(nameof(Genre));
+            get => _wasSkipped;
+            set => SetProperty(ref _wasSkipped, value);
         }
-    }
 
-    public string? Decade
-    {
-        get => _decade;
-        set
+        public bool IsCurrentlyPlaying
         {
-            _decade = value;
-            OnPropertyChanged(nameof(Decade));
+            get => _isCurrentlyPlaying;
+            set => SetProperty(ref _isCurrentlyPlaying, value);
         }
-    }
 
-    public string? YouTubeUrl
-    {
-        get => _youTubeUrl;
-        set
+        public DateTime? SungAt
         {
-            _youTubeUrl = value;
-            OnPropertyChanged(nameof(YouTubeUrl));
+            get => _sungAt;
+            set => SetProperty(ref _sungAt, value);
         }
-    }
 
-    public bool IsVideoCached
-    {
-        get => _isVideoCached;
-        set
+        public string? Genre
         {
-            _isVideoCached = value;
-            OnPropertyChanged(nameof(IsVideoCached));
+            get => _genre;
+            set => SetProperty(ref _genre, value);
         }
-    }
 
-    public bool IsOnBreak
-    {
-        get => _isOnBreak;
-        set
+        public string? Decade
         {
-            _isOnBreak = value;
-            OnPropertyChanged(nameof(IsOnBreak));
+            get => _decade;
+            set => SetProperty(ref _decade, value);
         }
-    }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+        public string? YouTubeUrl
+        {
+            get => _youTubeUrl;
+            set => SetProperty(ref _youTubeUrl, value);
+        }
 
-    protected virtual void OnPropertyChanged(string propertyName)
-    {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        public bool IsVideoCached
+        {
+            get => _isVideoCached;
+            set => SetProperty(ref _isVideoCached, value);
+        }
+
+        public bool IsOnBreak
+        {
+            get => _isOnBreak;
+            set => SetProperty(ref _isOnBreak, value);
+        }
+
+        public bool IsOnHold
+        {
+            get => _isOnHold;
+            set => SetProperty(ref _isOnHold, value);
+        }
+
+        public bool IsUpNext
+        {
+            get => _isUpNext;
+            set => SetProperty(ref _isUpNext, value);
+        }
+
+        public string? HoldReason
+        {
+            get => _holdReason;
+            set => SetProperty(ref _holdReason, value);
+        }
     }
 }
