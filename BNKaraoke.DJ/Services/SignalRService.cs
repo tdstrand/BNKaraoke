@@ -1,127 +1,153 @@
-﻿using Microsoft.AspNetCore.SignalR.Client;
+﻿using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.Http.Connections.Client;
+using Microsoft.AspNetCore.SignalR.Client;
 using Serilog;
 using System;
+using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BNKaraoke.DJ.Services
 {
     public class SignalRService
     {
-        private readonly HubConnection _connection;
-        private readonly Action<int, string, int?, bool?> _queueUpdated;
-        private readonly Action<string, bool, bool, bool> _singerStatusUpdated;
         private readonly IUserSessionService _userSessionService;
-        private const int MaxRetries = 3;
-        private const int RetryDelayMs = 5000;
+        private readonly Action<int, string, int?, bool?> _queueUpdatedCallback;
+        private readonly Action<string, bool, bool, bool> _singerStatusUpdatedCallback;
+        private readonly SettingsService _settingsService;
+        private HubConnection? _connection;
+        private int _currentEventId;
+        private const int MaxRetries = 5;
+        private readonly int[] _retryDelays = { 5000, 10000, 15000, 20000, 25000 };
+        private const string HubPath = "/hubs/karaoke-dj";
 
         public SignalRService(
             IUserSessionService userSessionService,
-            Action<int, string, int?, bool?> queueUpdated,
-            Action<string, bool, bool, bool> singerStatusUpdated)
+            Action<int, string, int?, bool?> queueUpdatedCallback,
+            Action<string, bool, bool, bool> singerStatusUpdatedCallback)
         {
             _userSessionService = userSessionService;
-            _queueUpdated = queueUpdated;
-            _singerStatusUpdated = singerStatusUpdated;
-
-            _connection = new HubConnectionBuilder()
-                .WithUrl("https://api.bnkaraoke.com/hubs/karaoke-dj", options =>
-                {
-#pragma warning disable CS1998 // Suppress async method lacks await warning
-                    options.AccessTokenProvider = () => Task.FromResult(_userSessionService.Token);
-#pragma warning restore CS1998
-                })
-                .WithAutomaticReconnect()
-                .Build();
-
-            _connection.On<int, string, int?, bool?>(
-                "QueueUpdated", async (queueId, action, position, isOnBreak) =>
-                {
-                    try
-                    {
-                        Log.Information("[SIGNALR] QueueUpdated: QueueId={QueueId}, Action={Action}, Position={Position}, IsOnBreak={IsOnBreak}", queueId, action, position, isOnBreak);
-                        _queueUpdated(queueId, action, position, isOnBreak);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error("[SIGNALR] Failed to process QueueUpdated for QueueId={QueueId}: {Message}", queueId, ex.Message);
-                    }
-                });
-
-            _connection.On<string, bool, bool, bool>(
-                "SingerStatusUpdated", (requestorUserName, isLoggedIn, isJoined, isOnBreak) =>
-                {
-                    try
-                    {
-                        Log.Information("[SIGNALR] SingerStatusUpdated: RequestorUserName={RequestorUserName}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
-                            requestorUserName, isLoggedIn, isJoined, isOnBreak);
-                        _singerStatusUpdated(requestorUserName, isLoggedIn, isJoined, isOnBreak);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error("[SIGNALR] Failed to process SingerStatusUpdated for RequestorUserName={RequestorUserName}: {Message}", requestorUserName, ex.Message);
-                    }
-                });
-
-            _connection.On<int, int>("QueuePlaying", (queueId, eventId) =>
-                Log.Information("[SIGNALR] QueuePlaying ignored: QueueId={QueueId}, EventId={EventId}", queueId, eventId));
+            _settingsService = SettingsService.Instance;
+            _queueUpdatedCallback = queueUpdatedCallback;
+            _singerStatusUpdatedCallback = singerStatusUpdatedCallback;
         }
 
         public async Task StartAsync(int eventId)
         {
+            if (_connection != null && _connection.State != HubConnectionState.Disconnected)
+            {
+                Log.Information("[SIGNALR] Stopping existing connection for EventId={EventId}, CurrentState={State}", _currentEventId, _connection.State);
+                await StopAsync(_currentEventId);
+            }
+
+            _currentEventId = eventId;
+            string apiUrl = _settingsService.Settings.ApiUrl?.TrimEnd('/') ?? "http://localhost:7290";
+            string hubUrl = $"{apiUrl}{HubPath}";
+
+            Log.Information("[SIGNALR] Settings: ApiUrl={ApiUrl} for EventId={EventId}", apiUrl, eventId);
+            Log.Information("[SIGNALR] Constructing hub URL: {HubUrl} for EventId={EventId}", hubUrl, eventId);
+
             try
             {
-                Log.Information("[SIGNALR] Starting connection for EventId={EventId}", eventId);
+                _connection = new HubConnectionBuilder()
+                    .WithUrl(hubUrl, options =>
+                    {
+                        options.AccessTokenProvider = () =>
+                        {
+                            var token = _userSessionService.Token;
+                            Log.Information("[SIGNALR] Providing access token for EventId={EventId}, TokenExists={TokenExists}", eventId, !string.IsNullOrEmpty(token));
+#pragma warning disable CS8603 // Token may be null, but logged
+                            return Task.FromResult(token);
+#pragma warning restore CS8603
+                        };
+                        options.HttpMessageHandlerFactory = (message) =>
+                        {
+                            if (message is HttpClientHandler clientHandler)
+                            {
+                                clientHandler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+                            }
+                            return message;
+                        };
+                        options.Transports = HttpTransportType.WebSockets | HttpTransportType.LongPolling;
+                    })
+                    .WithAutomaticReconnect()
+                    .Build();
+
+                _connection.On<int, string, int?, bool?>("QueueUpdated", _queueUpdatedCallback);
+                _connection.On<string, bool, bool, bool>("SingerStatusUpdated", _singerStatusUpdatedCallback);
+
                 for (int attempt = 1; attempt <= MaxRetries; attempt++)
                 {
                     try
                     {
-                        await _connection.StartAsync();
-                        await _connection.InvokeAsync("AddToGroup", $"Event_{eventId}");
-                        Log.Information("[SIGNALR] Joined group Event_{EventId} on attempt {Attempt}", eventId, attempt);
+                        Log.Information("[SIGNALR] Starting connection for EventId={EventId}, CurrentState={State}, Attempt={Attempt}", eventId, _connection.State, attempt);
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                        await _connection.StartAsync(cts.Token);
+                        Log.Information("[SIGNALR] Connected to hub for EventId={EventId}, ConnectionId={ConnectionId}", eventId, _connection.ConnectionId);
+                        Log.Information("[SIGNALR] Attempting to join group Event_{EventId} for EventId={EventId}", eventId, eventId);
+                        await _connection.InvokeAsync("JoinEventGroup", eventId, cts.Token);
+                        Log.Information("[SIGNALR] Joined group Event_{EventId} for EventId={EventId}", eventId, eventId);
                         return;
                     }
-                    catch (Exception ex)
+                    catch (HttpRequestException ex)
                     {
-                        Log.Error("[SIGNALR] Failed to start connection for EventId={EventId} on attempt {Attempt}: {Message}", eventId, attempt, ex.Message);
-                        if (attempt == MaxRetries) throw;
-                        await Task.Delay(RetryDelayMs);
+                        Log.Error("[SIGNALR] Failed to start connection for EventId={EventId} on attempt {Attempt}: {Message}, StackTrace={StackTrace}", eventId, attempt, ex.Message, ex.StackTrace);
+                        if (attempt == MaxRetries)
+                        {
+                            throw new SignalRException($"Failed to connect after {MaxRetries} attempts: {ex.Message}", ex);
+                        }
+                        int delay = _retryDelays[attempt - 1];
+                        Log.Information("[SIGNALR] Retrying after {Delay}ms for EventId={EventId}", delay, eventId);
+                        await Task.Delay(delay, CancellationToken.None);
+                    }
+                    catch (OperationCanceledException ex)
+                    {
+                        Log.Error("[SIGNALR] Connection timed out for EventId={EventId} on attempt {Attempt}: {Message}", eventId, attempt, ex.Message);
+                        if (attempt == MaxRetries)
+                        {
+                            throw new SignalRException($"Connection timed out after {MaxRetries} attempts: {ex.Message}", ex);
+                        }
+                        int delay = _retryDelays[attempt - 1];
+                        Log.Information("[SIGNALR] Retrying after {Delay}ms for EventId={EventId}", delay, eventId);
+                        await Task.Delay(delay, CancellationToken.None);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Log.Error("[SIGNALR] Failed to start connection after {MaxRetries} attempts for EventId={EventId}: {Message}", MaxRetries, eventId, ex.Message);
-                throw;
+                Log.Error("[SIGNALR] Failed to start connection for EventId={EventId}: {Message}, StackTrace={StackTrace}", eventId, ex.Message, ex.StackTrace);
+                throw new SignalRException($"Failed to start SignalR connection: {ex.Message}", ex);
             }
         }
 
         public async Task StopAsync(int eventId)
         {
+            if (_connection == null || _connection.State == HubConnectionState.Disconnected)
+            {
+                Log.Information("[SIGNALR] Connection already stopped for EventId={EventId}", eventId);
+                return;
+            }
+
             try
             {
-                Log.Information("[SIGNALR] Stopping connection for EventId={EventId}", eventId);
-                for (int attempt = 1; attempt <= MaxRetries; attempt++)
-                {
-                    try
-                    {
-                        await _connection.InvokeAsync("RemoveFromGroup", $"Event_{eventId}");
-                        await _connection.StopAsync();
-                        Log.Information("[SIGNALR] Stopped connection for EventId={EventId} on attempt {Attempt}", eventId, attempt);
-                        return;
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error("[SIGNALR] Failed to stop connection for EventId={EventId} on attempt {Attempt}: {Message}", eventId, attempt, ex.Message);
-                        if (attempt == MaxRetries) throw;
-                        await Task.Delay(RetryDelayMs);
-                    }
-                }
+                Log.Information("[SIGNALR] Stopping connection for EventId={EventId}, CurrentState={State}", eventId, _connection.State);
+                await _connection.StopAsync();
+                Log.Information("[SIGNALR] Connection stopped for EventId={EventId}", eventId);
             }
             catch (Exception ex)
             {
-                Log.Error("[SIGNALR] Failed to stop connection after {MaxRetries} attempts for EventId={EventId}: {Message}", MaxRetries, eventId, ex.Message);
-                throw;
+                Log.Error("[SIGNALR] Failed to stop connection for EventId={EventId}: {Message}, StackTrace={StackTrace}", eventId, ex.Message, ex.StackTrace);
+            }
+            finally
+            {
+                _connection = null;
+                _currentEventId = 0;
             }
         }
+    }
+
+    public class SignalRException : Exception
+    {
+        public SignalRException(string message, Exception innerException) : base(message, innerException) { }
     }
 }
