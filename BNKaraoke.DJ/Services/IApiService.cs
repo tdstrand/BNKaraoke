@@ -1,12 +1,13 @@
 using BNKaraoke.DJ.Models;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BNKaraoke.DJ.Services
 {
     public interface IApiService
     {
-        Task<List<EventDto>> GetLiveEventsAsync();
+        Task<List<EventDto>> GetLiveEventsAsync(CancellationToken cancellationToken = default);
         Task JoinEventAsync(string eventId, string requestorUserName);
         Task LeaveEventAsync(string eventId, string requestorId);
         Task<string> GetDiagnosticAsync();

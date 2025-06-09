@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 
@@ -21,7 +22,11 @@ namespace BNKaraoke.DJ.Services
         {
             _userSessionService = userSessionService;
             _settingsService = settingsService;
-            _httpClient = new HttpClient { BaseAddress = new Uri(_settingsService.Settings.ApiUrl) };
+            _httpClient = new HttpClient
+            {
+                BaseAddress = new Uri(_settingsService.Settings.ApiUrl),
+                Timeout = TimeSpan.FromSeconds(10)
+            };
             ConfigureAuthorizationHeader();
         }
 
@@ -39,15 +44,21 @@ namespace BNKaraoke.DJ.Services
             }
         }
 
-        public async Task<List<EventDto>> GetLiveEventsAsync()
+        public async Task<List<EventDto>> GetLiveEventsAsync(CancellationToken cancellationToken = default)
         {
+            if (!_userSessionService.IsAuthenticated)
+            {
+                Log.Information("[APISERVICE] Skipping GetLiveEventsAsync: User not authenticated");
+                return new List<EventDto>();
+            }
+
             try
             {
                 ConfigureAuthorizationHeader();
                 Log.Information("[APISERVICE] Attempting to fetch live events");
-                var response = await _httpClient.GetAsync("/api/events?status=active");
+                var response = await _httpClient.GetAsync("/api/events?status=active", cancellationToken);
                 response.EnsureSuccessStatusCode();
-                var events = await response.Content.ReadFromJsonAsync<List<EventDto>>();
+                var events = await response.Content.ReadFromJsonAsync<List<EventDto>>(cancellationToken);
                 Log.Information("[APISERVICE] Fetched {Count} live events", events?.Count ?? 0);
                 return events ?? new List<EventDto>();
             }
@@ -58,13 +69,18 @@ namespace BNKaraoke.DJ.Services
             }
             catch (HttpRequestException ex)
             {
-                Log.Error("[APISERVICE] Failed to fetch live events: Status={StatusCode}, Message={Message}", ex.StatusCode, ex.Message);
-                throw;
+                Log.Error("[APISERVICE] Failed to fetch live events: Status={StatusCode}, Message={Message}, InnerException={InnerException}", ex.StatusCode, ex.Message, ex.InnerException?.Message);
+                return new List<EventDto>();
+            }
+            catch (TaskCanceledException ex)
+            {
+                Log.Error("[APISERVICE] Fetch live events timed out or was canceled: {Message}", ex.Message);
+                return new List<EventDto>();
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to fetch live events: {Message}", ex.Message);
-                throw;
+                Log.Error("[APISERVICE] Failed to fetch live events: {Message}, InnerException={InnerException}", ex.Message, ex.InnerException?.Message);
+                return new List<EventDto>();
             }
         }
 
@@ -264,12 +280,12 @@ namespace BNKaraoke.DJ.Services
             }
             catch (JsonException ex)
             {
-                Log.Error("[APISERVICE] Failed to deserialize sung queue for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[APISERVICE] Failed to deserialize sung queue for EventId={EventId}: {Message}", ex.Message);
                 return new List<QueueEntry>();
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to fetch sung queue for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[APISERVICE] Failed to fetch sung queue for EventId={EventId}: {Message}", ex.Message);
                 throw;
             }
         }
@@ -300,14 +316,30 @@ namespace BNKaraoke.DJ.Services
             {
                 ConfigureAuthorizationHeader();
                 var intQueueIds = queueIds.Select(id => int.Parse(id)).ToList();
-                Log.Information("[APISERVICE] Reordering queue for EventId={EventId}, QueueIds={QueueIds}", eventId, string.Join(",", queueIds));
-                var response = await _httpClient.PutAsJsonAsync($"/api/dj/{eventId}/queue/reorder", new { QueueIds = intQueueIds });
-                response.EnsureSuccessStatusCode();
+                var jsonPayload = JsonSerializer.Serialize(intQueueIds);
+                Log.Information("[APISERVICE] Reordering queue for EventId={EventId}, QueueIds={QueueIds}, Payload={Payload}", eventId, string.Join(",", queueIds), jsonPayload);
+                var response = await _httpClient.PutAsJsonAsync($"/api/dj/{eventId}/queue/reorder", intQueueIds);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Log.Error("[APISERVICE] Failed to reorder queue for EventId={EventId}: Status={StatusCode}, Error={ErrorContent}", eventId, response.StatusCode, errorContent);
+                    throw new HttpRequestException($"Failed to reorder queue: {response.StatusCode} - {errorContent}");
+                }
                 Log.Information("[APISERVICE] Successfully reordered queue for EventId={EventId}", eventId);
+            }
+            catch (FormatException ex)
+            {
+                Log.Error("[APISERVICE] Failed to parse queue IDs for EventId={EventId}: {Message}, QueueIds={QueueIds}", eventId, ex.Message, string.Join(",", queueIds));
+                throw new ArgumentException("Invalid queue ID format", nameof(queueIds), ex);
+            }
+            catch (HttpRequestException ex)
+            {
+                Log.Error("[APISERVICE] Failed to reorder queue for EventId={EventId}: {Message}", eventId, ex.Message);
+                throw;
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to reorder queue for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[APISERVICE] Failed to reorder queue for EventId={EventId}: {Message}, InnerException={InnerException}", eventId, ex.Message, ex.InnerException?.Message);
                 throw;
             }
         }
@@ -342,7 +374,6 @@ namespace BNKaraoke.DJ.Services
         public async Task PauseAsync(string eventId, string queueId)
         {
             Log.Information("[APISERVICE] PauseAsync called for EventId={EventId}, QueueId={QueueId}. Handled locally, no API call.", eventId, queueId);
-            // No API call per API Grok's notes; pause is handled locally in DJScreenViewModel
             await Task.CompletedTask;
         }
 
@@ -454,11 +485,11 @@ namespace BNKaraoke.DJ.Services
                 Log.Information("[APISERVICE] Sending toggle break request for EventId={EventId}, QueueId={QueueId}, IsOnBreak={IsOnBreak}, Payload={Payload}", eventId, queueId, isOnBreak, JsonSerializer.Serialize(request));
                 var response = await _httpClient.PostAsJsonAsync($"/api/dj/break", request);
                 response.EnsureSuccessStatusCode();
-                Log.Information("[APISERVICE] Successfully toggled break for QueueId={QueueId} for EventId={EventId}", queueId, eventId);
+                Log.Information("[DJSCREEN] Successfully toggled break for songId={QueueId} for EventId={EventId}", queueId, eventId);
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to toggle break for QueueId={QueueId} for EventId={EventId}: {Message}", queueId, eventId, ex.Message);
+                Log.Error("[DJSCREEN] Failed to toggle break for songId={QueueId} for EventId={EventId}: {Message}", queueId, eventId);
                 throw;
             }
         }
@@ -469,14 +500,14 @@ namespace BNKaraoke.DJ.Services
             {
                 ConfigureAuthorizationHeader();
                 var request = new { EventId = int.Parse(eventId), RequestorUserName = requestorUserName, IsLoggedIn = isLoggedIn, IsJoined = isJoined, IsOnBreak = isOnBreak };
-                Log.Information("[APISERVICE] Sending update singer status request for EventId={EventId}, RequestorUserName={RequestorUserName}, Payload={Payload}", eventId, requestorUserName, JsonSerializer.Serialize(request));
-                var response = await _httpClient.PostAsJsonAsync($"/api/dj/singer/update", request);
+                Log.Information("[DJSCREEN] Sending update singer status request for EventId={EventId}, RequestorUserName={RequestorUserName}, Payload={Payload}", eventId, requestorUserName, JsonSerializer.Serialize(request));
+                var response = await _httpClient.PostAsJsonAsync("/api/singer/update", request);
                 response.EnsureSuccessStatusCode();
-                Log.Information("[APISERVICE] Successfully updated singer status for EventId={EventId}, RequestorUserName={RequestorUserName}", eventId, requestorUserName);
+                Log.Information("[DJSCREEN] Successfully updated singer status for EventId={EventId}, RequestorUserName={RequestorUserName}", eventId, requestorUserName);
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to update singer status for EventId={EventId}, RequestorUserName={RequestorUserName}: {Message}", eventId, requestorUserName, ex.Message);
+                Log.Error("[DJSCREEN] Failed to update singer status for EventId={EventId}, RequestorUserName={RequestorUserName}: {Message}", eventId, requestorUserName, ex.Message);
                 throw;
             }
         }
@@ -488,9 +519,9 @@ namespace BNKaraoke.DJ.Services
                 ConfigureAuthorizationHeader();
                 var request = new { SongId = songId, RequestorUserName = requestorUserName, Singers = singers };
                 Log.Information("[APISERVICE] Sending add song request for EventId={EventId}, SongId={SongId}, RequestorUserName={RequestorUserName}, Payload={Payload}", eventId, songId, requestorUserName, JsonSerializer.Serialize(request));
-                var response = await _httpClient.PostAsJsonAsync($"/api/dj/{eventId}/queue", request);
+                var response = await _httpClient.PostAsJsonAsync($"/api/dj/{eventId}/song", request);
                 response.EnsureSuccessStatusCode();
-                Log.Information("[APISERVICE] Successfully added song for EventId={EventId}, SongId={SongId}", eventId, songId);
+                Log.Information("[APISERVICE] Adding song for EventId={EventId}, SongId={SongId}", eventId, songId);
             }
             catch (Exception ex)
             {

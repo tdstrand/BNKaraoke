@@ -83,7 +83,7 @@ namespace BNKaraoke.DJ.ViewModels
             {
                 Application.Current.Dispatcher.Invoke(() =>
                 {
-                    if ((IsPlaying || IsVideoPaused) && _totalDuration.HasValue && _videoPlayerWindow?.MediaPlayer != null)
+                    if ((IsPlaying || IsVideoPaused) && _totalDuration.HasValue && _videoPlayerWindow?.MediaPlayer != null) // Fixed CS8602
                     {
                         var currentTime = TimeSpan.FromMilliseconds(_videoPlayerWindow.MediaPlayer.Time);
                         var remaining = _totalDuration.Value - currentTime;
@@ -173,7 +173,7 @@ namespace BNKaraoke.DJ.ViewModels
         }
 
         [RelayCommand]
-        private void StopSeeking()
+        private void StopSeeking() // Fixed CS1998 by making non-async
         {
             if (_isDisposing || _videoPlayerWindow?.MediaPlayer == null) return;
             try
@@ -492,94 +492,6 @@ namespace BNKaraoke.DJ.ViewModels
         }
 
         [RelayCommand]
-        private void ToggleShow()
-        {
-            Log.Information("[DJSCREEN] ToggleShow command invoked");
-            if (_isDisposing) return;
-            if (!IsShowActive)
-            {
-                try
-                {
-                    Log.Information("[DJSCREEN] Starting show");
-                    if (_videoPlayerWindow == null)
-                    {
-                        _videoPlayerWindow = new VideoPlayerWindow();
-                        _videoPlayerWindow.SongEnded += VideoPlayerWindow_SongEnded;
-                        _videoPlayerWindow.Closed += VideoPlayerWindow_Closed;
-                        Log.Information("[DJSCREEN] Subscribed to SongEnded and Closed events for VideoPlayerWindow");
-                    }
-                    _videoPlayerWindow.Show();
-                    IsShowActive = true;
-                    ShowButtonText = "End Show";
-                    ShowButtonColor = "#FF0000";
-                    Log.Information("[DJSCREEN] Show started, VideoPlayerWindow shown with idle title");
-                }
-                catch (Exception ex)
-                {
-                    Log.Error("[DJSCREEN] Failed to start show: {Message}", ex.Message);
-                    SetWarningMessage($"Failed to start show: {ex.Message}");
-                    if (_videoPlayerWindow != null)
-                    {
-                        _videoPlayerWindow.EndShow();
-                        _videoPlayerWindow = null;
-                    }
-                }
-            }
-            else
-            {
-                var result = MessageBox.Show("Are you sure you want to end the show?", "Confirm End Show", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (result == MessageBoxResult.Yes)
-                {
-                    try
-                    {
-                        Log.Information("[DJSCREEN] Ending show");
-                        if (_videoPlayerWindow != null)
-                        {
-                            _videoPlayerWindow.EndShow();
-                            _videoPlayerWindow = null;
-                        }
-                        IsShowActive = false;
-                        ShowButtonText = "Start Show";
-                        ShowButtonColor = "#22d3ee";
-                        if (IsPlaying || IsVideoPaused)
-                        {
-                            IsPlaying = false;
-                            IsVideoPaused = false;
-                            SliderPosition = 0;
-                            CurrentVideoPosition = "--:--";
-                            TimeRemainingSeconds = 0;
-                            TimeRemaining = "0:00";
-                            StopRestartButtonColor = "#22d3ee";
-                            OnPropertyChanged(nameof(SliderPosition));
-                            OnPropertyChanged(nameof(CurrentVideoPosition));
-                            OnPropertyChanged(nameof(TimeRemaining));
-                            OnPropertyChanged(nameof(TimeRemainingSeconds));
-                            OnPropertyChanged(nameof(StopRestartButtonColor));
-                            PlayingQueueEntry = null;
-                            OnPropertyChanged(nameof(PlayingQueueEntry));
-                            if (_updateTimer != null)
-                            {
-                                _updateTimer.Stop();
-                                Log.Information("[DJSCREEN] Stopped update timer due to show ending");
-                            }
-                            Log.Information("[DJSCREEN] Playback stopped due to show ending");
-                        }
-                        Log.Information("[DJSCREEN] Show ended, VideoPlayerWindow closed");
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error("[DJSCREEN] Failed to end show: {Message}", ex.Message);
-                        SetWarningMessage($"Failed to end show: {ex.Message}");
-                    }
-                }
-                else
-                {
-                    Log.Information("[DJSCREEN] End show cancelled by user");
-                }
-            }
-        }
-
-        [RelayCommand]
         private async Task ViewSungSongs()
         {
             Log.Information("[DJSCREEN] ViewSungSongs command invoked");
@@ -760,7 +672,7 @@ namespace BNKaraoke.DJ.ViewModels
                 {
                     _videoPlayerWindow.SongEnded -= VideoPlayerWindow_SongEnded;
                     _videoPlayerWindow.Closed -= VideoPlayerWindow_Closed;
-                    _videoPlayerWindow.EndShow();
+                    _videoPlayerWindow.Close(); // Changed from EndShow to Close
                     _videoPlayerWindow = null;
                 }
             }
