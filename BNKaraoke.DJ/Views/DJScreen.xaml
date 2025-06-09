@@ -12,7 +12,6 @@
         <local:PlayPauseConverter x:Key="PlayPause" />
         <local:SingerStatusToColorConverter x:Key="SingerStatusToColorConverter" />
         <local:VideoLengthConverter x:Key="VideoLength" />
-        <local:UpNextConverter x:Key="SongQueueConverter" />
         <local:TimeRemainingConverter x:Key="TimeRemainingConverter" />
         <local:EqualityConverter x:Key="EqualityConverter" />
         <local:BooleanToStringConverter x:Key="BooleanToStringConverter" />
@@ -83,7 +82,6 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="300"/>
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -122,10 +120,8 @@
                     </Slider>
                     <TextBlock Grid.Column="5" Grid.Row="0" Text="{Binding CurrentVideoPosition, FallbackValue='--:--'}" FontSize="24" Foreground="White" HorizontalAlignment="Left" Margin="5,15,0,5" Background="#80000000" Padding="2"/>
                     <TextBlock Grid.Column="5" Grid.Row="0" Text="{Binding SongDuration, StringFormat={}{0:m\\:ss}, FallbackValue='--:--'}" FontSize="24" Foreground="White" HorizontalAlignment="Right" Margin="0,15,5,5" Background="#80000000" Padding="2"/>
-                    <!-- Up Next and Sung Songs -->
-                    <TextBlock Grid.Column="6" Grid.Row="0" Text="{Binding QueueEntries.FirstOrDefault, Converter={StaticResource SongQueueConverter}, FallbackValue='Up Next: None'}" 
-                               FontSize="16" Foreground="White" VerticalAlignment="Center" Margin="10,0"/>
-                    <Button Grid.Column="7" Grid.Row="0" Width="120" Height="40" Margin="5" Command="{Binding ViewSungSongsCommand}" 
+                    <!-- Sung Songs -->
+                    <Button Grid.Column="6" Grid.Row="0" Width="120" Height="40" Margin="5" Command="{Binding ViewSungSongsCommand}" 
                             Content="View Sung Songs" Background="#22d3ee" Foreground="Black" FontWeight="Bold"/>
                 </Grid>
             </DockPanel>
@@ -168,9 +164,9 @@
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="50"/>
-                                    <ColumnDefinition Width="250"/>
-                                    <ColumnDefinition Width="200"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="280"/>
+                                    <ColumnDefinition Width="230"/>
+                                    <ColumnDefinition Width="180"/>
                                     <ColumnDefinition Width="80"/>
                                     <ColumnDefinition Width="50"/>
                                 </Grid.ColumnDefinitions>
@@ -191,9 +187,9 @@
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="Pos" Width="50" DisplayMemberBinding="{Binding Position}"/>
-                                    <GridViewColumn Header="Song Title" Width="250" DisplayMemberBinding="{Binding SongTitle}"/>
-                                    <GridViewColumn Header="Artist" Width="200" DisplayMemberBinding="{Binding SongArtist}"/>
-                                    <GridViewColumn Header="Requestor" Width="150" DisplayMemberBinding="{Binding RequestorDisplayName}"/>
+                                    <GridViewColumn Header="Song Title" Width="280" DisplayMemberBinding="{Binding SongTitle}"/>
+                                    <GridViewColumn Header="Artist" Width="230" DisplayMemberBinding="{Binding SongArtist}"/>
+                                    <GridViewColumn Header="Requestor" Width="180" DisplayMemberBinding="{Binding RequestorDisplayName}"/>
                                     <GridViewColumn Header="Length" Width="80" DisplayMemberBinding="{Binding VideoLength}"/>
                                     <GridViewColumn Header="Cached" Width="50">
                                         <GridViewColumn.CellTemplate>
@@ -214,6 +210,8 @@
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsUpNext, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" Value="True">
                                             <Setter Property="Background" Value="#FFFFE0"/>
+                                            <Setter Property="BorderBrush" Value="#800080"/>
+                                            <Setter Property="BorderThickness" Value="2"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsOnHold, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" Value="True">
                                             <Setter Property="Background" Value="#FFB6C1"/>
@@ -235,6 +233,8 @@
                                                 <Condition Binding="{Binding IsUpNext, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" Value="True"/>
                                             </MultiDataTrigger.Conditions>
                                             <Setter Property="Background" Value="#FFFFE0"/>
+                                            <Setter Property="BorderBrush" Value="#800080"/>
+                                            <Setter Property="BorderThickness" Value="2"/>
                                         </MultiDataTrigger>
                                         <MultiDataTrigger>
                                             <MultiDataTrigger.Conditions>
@@ -242,6 +242,24 @@
                                                 <Condition Binding="{Binding IsOnHold, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" Value="True"/>
                                             </MultiDataTrigger.Conditions>
                                             <Setter Property="Background" Value="#FFB6C1"/>
+                                        </MultiDataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsUpNext, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" Value="True"/>
+                                                <Condition Binding="{Binding IsSelected}" Value="True"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Background" Value="#FFFFE0"/>
+                                            <Setter Property="BorderBrush" Value="#800080"/>
+                                            <Setter Property="BorderThickness" Value="2"/>
+                                        </MultiDataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsUpNext, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" Value="True"/>
+                                                <Condition Binding="{Binding IsMouseOver}" Value="True"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Background" Value="#FFFFE0"/>
+                                            <Setter Property="BorderBrush" Value="#800080"/>
+                                            <Setter Property="BorderThickness" Value="2"/>
                                         </MultiDataTrigger>
                                         <Trigger Property="IsMouseOver" Value="True">
                                             <Setter Property="Background" Value="#e0e0e0"/>
