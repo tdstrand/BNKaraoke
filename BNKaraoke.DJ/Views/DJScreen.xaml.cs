@@ -3,14 +3,19 @@ using BNKaraoke.DJ.ViewModels;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using BNKaraoke.DJ.Converters;
 
 namespace BNKaraoke.DJ.Views
 {
     public partial class DJScreen : Window
     {
+        private readonly SingerStatusToColorConverter _colorConverter = new SingerStatusToColorConverter();
+
         public DJScreen()
         {
             InitializeComponent();
@@ -95,7 +100,7 @@ namespace BNKaraoke.DJ.Views
                         Log.Warning("[DJSCREEN] Double-click ignored: ViewModel is null");
                         return;
                     }
-                    viewModel.SelectedQueueEntry = queueEntry; // Ensure selection
+                    viewModel.SelectedQueueEntry = queueEntry;
                     Log.Information("[DJSCREEN] Selected QueueId={QueueId}", queueEntry.QueueId);
                     var command = viewModel.PlayQueueItemCommand as IRelayCommand;
                     if (command != null && command.CanExecute(null))
@@ -119,6 +124,133 @@ namespace BNKaraoke.DJ.Views
             {
                 Log.Error("[DJSCREEN] Failed to handle double-click: {Message}, StackTrace={StackTrace}", ex.Message, ex.StackTrace);
                 MessageBox.Show($"Failed to handle double-click: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void SingersContextMenu_Opening(object sender, ContextMenuEventArgs e)
+        {
+            try
+            {
+                if (sender is ListView listView && listView.SelectedItem is Singer selectedSinger)
+                {
+                    var viewModel = DataContext as DJScreenViewModel;
+                    if (viewModel == null)
+                    {
+                        Log.Warning("[DJSCREEN] Singers ContextMenu: ViewModel is null");
+                        e.Handled = true;
+                        return;
+                    }
+
+                    var contextMenu = listView.ContextMenu;
+                    if (contextMenu == null)
+                    {
+                        Log.Warning("[DJSCREEN] Singers ContextMenu: ContextMenu is null");
+                        e.Handled = true;
+                        return;
+                    }
+
+                    // Ensure UI thread and refresh bindings
+                    Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        listView.Items.Refresh();
+                        listView.UpdateLayout();
+                        listView.ItemsSource = null; // Clear ItemsSource
+                        listView.ItemsSource = viewModel.Singers; // Rebind
+                        Log.Information("[DJSCREEN] ListView ItemsSource rebound: Count={Count}", viewModel.Singers.Count);
+                    }).Wait();
+
+                    // Clone Singer to ensure fresh data
+                    var singer = viewModel.Singers.FirstOrDefault(s => s.UserId == selectedSinger.UserId);
+                    if (singer == null)
+                    {
+                        Log.Warning("[DJSCREEN] Singers ContextMenu: Singer not found in viewModel.Singers for UserId={UserId}", selectedSinger.UserId);
+                        e.Handled = true;
+                        return;
+                    }
+                    var clonedSinger = new Singer
+                    {
+                        UserId = singer.UserId,
+                        DisplayName = singer.DisplayName,
+                        IsLoggedIn = singer.IsLoggedIn,
+                        IsJoined = singer.IsJoined,
+                        IsOnBreak = singer.IsOnBreak
+                    };
+
+                    Log.Information("[DJSCREEN] Singer state before color conversion: UserId={UserId}, DisplayName={DisplayName}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
+                        clonedSinger.UserId, clonedSinger.DisplayName, clonedSinger.IsLoggedIn, clonedSinger.IsJoined, clonedSinger.IsOnBreak);
+                    Log.Information("[DJSCREEN] Singers collection state: Count={Count}, Names={Names}",
+                        viewModel.Singers.Count, string.Join(", ", viewModel.Singers.Select(s => s.DisplayName)));
+
+                    var previousColor = _colorConverter.Convert(clonedSinger, typeof(Brush), null, System.Globalization.CultureInfo.InvariantCulture) as SolidColorBrush;
+                    var previousColorHex = previousColor != null ? $"#{previousColor.Color.R:X2}{previousColor.Color.G:X2}{previousColor.Color.B:X2}" : "Unknown";
+
+                    foreach (var item in contextMenu.Items)
+                    {
+                        if (item is MenuItem menuItem)
+                        {
+                            menuItem.Click -= (s, args) => { };
+                            menuItem.Click += (s, args) =>
+                            {
+                                try
+                                {
+                                    Log.Information("[DJSCREEN] MenuItem clicked: Name={Name}", menuItem.Name);
+                                    string status;
+                                    switch (menuItem.Name)
+                                    {
+                                        case "SetAvailableMenuItem":
+                                            status = "Active";
+                                            break;
+                                        case "SetOnBreakMenuItem":
+                                            status = "OnBreak";
+                                            break;
+                                        case "SetNotJoinedMenuItem":
+                                            status = "NotJoined";
+                                            break;
+                                        case "SetLoggedOutMenuItem":
+                                            status = "LoggedOut";
+                                            break;
+                                        default:
+                                            status = string.Empty;
+                                            Log.Warning("[DJSCREEN] Unknown MenuItem: {Name}", menuItem.Name);
+                                            break;
+                                    }
+
+                                    if (!string.IsNullOrEmpty(status))
+                                    {
+                                        var parameter = $"{status}|{singer.UserId}";
+                                        Log.Information("[DJSCREEN] Right-click operation: User={DisplayName}, UserId={UserId}, PreviousColor={PreviousColor}, NewStatus={Status}",
+                                            singer.DisplayName, singer.UserId, previousColorHex, status);
+                                        viewModel.UpdateSingerStatusCommand.Execute(parameter);
+                                        Application.Current.Dispatcher.InvokeAsync(() =>
+                                        {
+                                            listView.Items.Refresh();
+                                            listView.UpdateLayout();
+                                            listView.ItemsSource = null;
+                                            listView.ItemsSource = viewModel.Singers;
+                                            Log.Information("[DJSCREEN] ListView refreshed after status update: UserId={UserId}, Status={Status}", singer.UserId, status);
+                                        });
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Log.Error("[DJSCREEN] Failed to handle MenuItem click: {Message}", ex.Message);
+                                    MessageBox.Show($"Failed to update singer status: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                                }
+                            };
+                        }
+                    }
+                }
+                else
+                {
+                    Log.Information("[DJSCREEN] Singers ContextMenu: No singer selected or invalid sender");
+                    e.Handled = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to open Singers ContextMenu: {Message}", ex.Message);
+                MessageBox.Show($"Failed to open context menu: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                e.Handled = true;
             }
         }
     }

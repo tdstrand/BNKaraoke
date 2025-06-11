@@ -17,4 +17,5 @@ public class DjSettings
     public bool MaximizedOnStart { get; set; } = true;
     public string LogFilePath { get; set; } = @"C:\BNKaraoke_Logs\DJ.log";
     public bool EnableVerboseLogging { get; set; } = true;
+    public bool TestMode { get; set; } = false; // Default to Production
 }

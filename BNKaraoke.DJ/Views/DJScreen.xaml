@@ -3,15 +3,16 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:BNKaraoke.DJ.Converters"
+        xmlns:services="clr-namespace:BNKaraoke.DJ.Services"
         xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
         xmlns:behaviors="clr-namespace:BNKaraoke.DJ.Behaviors"
         WindowState="Maximized" Title="DJ Console"
         Loaded="Window_Loaded">
     <Window.Resources>
-        <local:BooleanToVisibilityConverter x:Key="BooleanToVisibility" />
-        <local:PlayPauseConverter x:Key="PlayPause" />
+        <local:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <local:PlayPauseConverter x:Key="PlayPauseConverter" />
         <local:SingerStatusToColorConverter x:Key="SingerStatusToColorConverter" />
-        <local:VideoLengthConverter x:Key="VideoLength" />
+        <local:VideoLengthConverter x:Key="VideoLengthConverter" />
         <local:TimeRemainingConverter x:Key="TimeRemainingConverter" />
         <local:EqualityConverter x:Key="EqualityConverter" />
         <local:BooleanToStringConverter x:Key="BooleanToStringConverter" />
@@ -46,7 +47,7 @@
                 <Button x:Name="JoinEventButton" Width="150" Height="40" Margin="5,0,5,0"
                         Content="{Binding JoinEventButtonText, UpdateSourceTrigger=PropertyChanged}"
                         Background="{Binding JoinEventButtonColor, UpdateSourceTrigger=PropertyChanged}"
-                        Visibility="{Binding IsJoinEventButtonVisible, Converter={StaticResource BooleanToVisibility}, UpdateSourceTrigger=PropertyChanged}"
+                        Visibility="{Binding IsJoinEventButtonVisible, Converter={StaticResource BooleanToVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}"
                         Command="{Binding JoinLiveEventCommand}"/>
             </DockPanel>
         </Grid>
@@ -89,7 +90,7 @@
                     </Grid.RowDefinitions>
                     <!-- Buttons -->
                     <Button Grid.Column="0" Grid.Row="0" Width="80" Height="40" Margin="5" Command="{Binding PlayCommand}" Background="#22d3ee" Foreground="Black" FontWeight="Bold">
-                        <TextBlock Text="{Binding IsPlaying, Converter={StaticResource PlayPause}}" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding IsPlaying, Converter={StaticResource PlayPauseConverter}}" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                     </Button>
                     <Button Grid.Column="1" Grid.Row="0" Width="80" Height="40" Margin="5" Command="{Binding StopRestartCommand}" Background="{Binding StopRestartButtonColor}" Foreground="Black" FontWeight="Bold">
                         <TextBlock Text="{Binding IsVideoPaused, Converter={StaticResource BooleanToStringConverter}, ConverterParameter='⏹;↻'}" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"/>
@@ -125,7 +126,7 @@
                             Content="View Sung Songs" Background="#22d3ee" Foreground="Black" FontWeight="Bold"/>
                 </Grid>
             </DockPanel>
-            <!-- DJQueue and Singers Detail -->
+            <!-- Grid for Queue and Singers -->
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="3*"/>
@@ -180,7 +181,9 @@
                             </Grid>
                         </Border>
                         <ListView x:Name="QueueListView" ItemsSource="{Binding QueueEntries}" Margin="5"
-                                  SelectedItem="{Binding SelectedQueueEntry}" AllowDrop="True">
+                                  SelectedItem="{Binding SelectedQueueEntry}" AllowDrop="True"
+                                  PreviewMouseLeftButtonDown="ListViewItem_PreviewMouseLeftButtonDown"
+                                  MouseDoubleClick="ListViewItem_MouseDoubleClick">
                             <i:Interaction.Behaviors>
                                 <behaviors:DragDropBehavior DropCommand="{Binding DropCommand}"/>
                             </i:Interaction.Behaviors>
@@ -286,78 +289,44 @@
                                 <DropShadowEffect Color="#22d3ee" ShadowDepth="0" BlurRadius="5"/>
                             </TextBlock.Effect>
                         </TextBlock>
-                        <TextBlock DockPanel.Dock="Top" Text="{Binding NonDummySingersCount, StringFormat='Total Singers: {0}'}" FontSize="14" Foreground="#ddd" Margin="5"/>
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding Singers.Count, StringFormat='Total Singers: {0}'}" FontSize="14" Foreground="#ddd" Margin="5"/>
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <StackPanel Margin="5">
-                                <!-- Green Singers -->
-                                <ItemsControl ItemsSource="{Binding GreenSingers}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel Width="260" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Width="130">
-                                                <TextBlock Text="{Binding DisplayName, FallbackValue='Unknown Singer'}"
-                                                           FontSize="16" Margin="5"
-                                                           Foreground="{Binding ., Converter={StaticResource SingerStatusToColorConverter}}"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <!-- Yellow Singers -->
-                                <ItemsControl ItemsSource="{Binding YellowSingers}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel Width="260" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Width="130">
-                                                <TextBlock Text="{Binding DisplayName, FallbackValue='Unknown Singer'}"
-                                                           FontSize="16" Margin="5"
-                                                           Foreground="{Binding ., Converter={StaticResource SingerStatusToColorConverter}}"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <!-- Orange Singers -->
-                                <ItemsControl ItemsSource="{Binding OrangeSingers}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel Width="260" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Width="130">
-                                                <TextBlock Text="{Binding DisplayName, FallbackValue='Unknown Singer'}"
-                                                           FontSize="16" Margin="5"
-                                                           Foreground="{Binding ., Converter={StaticResource SingerStatusToColorConverter}}"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <!-- Red Singers -->
-                                <ItemsControl ItemsSource="{Binding RedSingers}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel Width="260" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Width="130">
-                                                <TextBlock Text="{Binding DisplayName, FallbackValue='Unknown Singer'}"
-                                                           FontSize="16" Margin="5"
-                                                           Foreground="{Binding ., Converter={StaticResource SingerStatusToColorConverter}}"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
+                            <ListView x:Name="SingersListView" ItemsSource="{Binding Singers}" Margin="5"
+                                      ContextMenuOpening="SingersContextMenu_Opening">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName, FallbackValue='Unknown Singer'}"
+                                                   FontSize="20" FontWeight="Bold" Margin="5"
+                                                   Foreground="{Binding ., Converter={StaticResource SingerStatusToColorConverter}}"/>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#4A4A4A"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="#4A4A4A"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Name="SetAvailableMenuItem" Header="Set Available"
+                                                  IsEnabled="{Binding Source={x:Static services:SettingsService.Instance}, Path=Settings.TestMode}"/>
+                                        <MenuItem Name="SetOnBreakMenuItem" Header="Set On Break"
+                                                  IsEnabled="{Binding Source={x:Static services:SettingsService.Instance}, Path=Settings.TestMode}"/>
+                                        <MenuItem Name="SetNotJoinedMenuItem" Header="Set Not Joined"
+                                                  IsEnabled="{Binding Source={x:Static services:SettingsService.Instance}, Path=Settings.TestMode}"/>
+                                        <MenuItem Name="SetLoggedOutMenuItem" Header="Set Logged Out"
+                                                  IsEnabled="{Binding Source={x:Static services:SettingsService.Instance}, Path=Settings.TestMode}"/>
+                                    </ContextMenu>
+                                </ListView.ContextMenu>
+                            </ListView>
                         </ScrollViewer>
                     </DockPanel>
                 </Border>

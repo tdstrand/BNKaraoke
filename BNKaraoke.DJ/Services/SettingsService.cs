@@ -59,7 +59,8 @@ namespace BNKaraoke.DJ.Services
                 ShowDebugConsole = true,
                 MaximizedOnStart = true,
                 LogFilePath = @"C:\BNKaraoke_Logs\DJ.log",
-                EnableVerboseLogging = true
+                EnableVerboseLogging = true,
+                TestMode = false // Default to Production
             };
             Log.Information("[SETTINGS SERVICE] Using default settings");
             return defaultSettings;

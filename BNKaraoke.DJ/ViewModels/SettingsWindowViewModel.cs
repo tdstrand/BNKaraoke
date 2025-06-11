@@ -13,17 +13,16 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Forms;
 
 namespace BNKaraoke.DJ.ViewModels;
 
 public class MonitorInfo
 {
-    public Screen Screen { get; set; }
+    public System.Windows.Forms.Screen Screen { get; set; }
     public string DisplayName => Screen.Primary ? $"Primary Display ({Screen.DeviceName})" : $"Display {ScreenIndex + 1} ({Screen.DeviceName})";
     public int ScreenIndex { get; set; }
 
-    public MonitorInfo(Screen screen, int index)
+    public MonitorInfo(System.Windows.Forms.Screen screen, int index)
     {
         Screen = screen;
         ScreenIndex = index;
@@ -59,6 +58,7 @@ public partial class SettingsWindowViewModel : ObservableObject
     [ObservableProperty] private bool _maximizedOnStart;
     [ObservableProperty] private string _logFilePath;
     [ObservableProperty] private bool _enableVerboseLogging;
+    [ObservableProperty] private bool _testMode;
 
     public SettingsWindowViewModel()
     {
@@ -85,7 +85,7 @@ public partial class SettingsWindowViewModel : ObservableObject
         // Initialize video devices
         try
         {
-            var screens = Screen.AllScreens;
+            var screens = System.Windows.Forms.Screen.AllScreens;
             for (int i = 0; i < screens.Length; i++)
             {
                 AvailableVideoDevices.Add(new MonitorInfo(screens[i], i));
@@ -94,13 +94,13 @@ public partial class SettingsWindowViewModel : ObservableObject
             if (AvailableVideoDevices.Count == 0)
             {
                 Log.Warning("[SETTINGS VM] No video devices detected");
-                System.Windows.MessageBox.Show("No monitors detected. Please connect at least one display.", "No Displays", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                MessageBox.Show("No monitors detected. Please connect at least one display.", "No Displays", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
         catch (Exception ex)
         {
             Log.Error("[SETTINGS VM] Failed to enumerate video devices: {Message}", ex.Message);
-            System.Windows.MessageBox.Show("Failed to detect monitors. Please check display connections.", "Display Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            MessageBox.Show("Failed to detect monitors. Please check display connections.", "Display Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
         // Initialize from current settings
@@ -119,9 +119,10 @@ public partial class SettingsWindowViewModel : ObservableObject
         _maximizedOnStart = _settingsService.Settings.MaximizedOnStart;
         _logFilePath = _settingsService.Settings.LogFilePath;
         _enableVerboseLogging = _settingsService.Settings.EnableVerboseLogging;
+        _testMode = _settingsService.Settings.TestMode;
 
-        Log.Information("[SETTINGS VM] Initialized: ApiUrl={ApiUrl}, DefaultDJName={DefaultDJName}, PreferredAudioDevice={PreferredAudioDevice}, KaraokeVideoDevice={KaraokeVideoDevice}, EnableSignalRSync={EnableSignalRSync}, CacheSizeGB={CacheSizeGB}",
-            _apiUrl, _defaultDJName, _preferredAudioDevice?.FriendlyName ?? "None", _karaokeVideoDevice?.DisplayName ?? "None", _enableSignalRSync, _cacheSizeGB);
+        Log.Information("[SETTINGS VM] Initialized: ApiUrl={ApiUrl}, DefaultDJName={DefaultDJName}, PreferredAudioDevice={PreferredAudioDevice}, KaraokeVideoDevice={KaraokeVideoDevice}, EnableSignalRSync={EnableSignalRSync}, CacheSizeGB={CacheSizeGB}, TestMode={TestMode}",
+            _apiUrl, _defaultDJName, _preferredAudioDevice?.FriendlyName ?? "None", _karaokeVideoDevice?.DisplayName ?? "None", _enableSignalRSync, _cacheSizeGB, _testMode);
     }
 
     [RelayCommand]
@@ -135,7 +136,7 @@ public partial class SettingsWindowViewModel : ObservableObject
             // Validate ApiUrl
             if (!_availableApiUrls.Contains(ApiUrl))
             {
-                System.Windows.MessageBox.Show($"API URL {ApiUrl} is not in the allowed list. Please select a valid URL.", "Invalid API URL", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                MessageBox.Show($"API URL {ApiUrl} is not in the allowed list. Please select a valid URL.", "Invalid API URL", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             using (var client = new HttpClient())
@@ -144,7 +145,7 @@ public partial class SettingsWindowViewModel : ObservableObject
                 var response = await client.GetAsync($"{ApiUrl}/api/Auth/test");
                 if (!response.IsSuccessStatusCode)
                 {
-                    System.Windows.MessageBox.Show($"API URL {ApiUrl} is not reachable. Please try again.", "API Unreachable", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    MessageBox.Show($"API URL {ApiUrl} is not reachable. Please try again.", "API Unreachable", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
             }
@@ -152,7 +153,7 @@ public partial class SettingsWindowViewModel : ObservableObject
             // Validate ReconnectIntervalMs
             if (ReconnectIntervalMs < 1000)
             {
-                System.Windows.MessageBox.Show("Reconnect Interval must be at least 1000 ms.", "Invalid Input", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                MessageBox.Show("Reconnect Interval must be at least 1000 ms.", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -165,7 +166,7 @@ public partial class SettingsWindowViewModel : ObservableObject
                 }
                 catch
                 {
-                    System.Windows.MessageBox.Show($"Video Cache Path {VideoCachePath} is invalid or inaccessible.", "Invalid Path", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    MessageBox.Show($"Video Cache Path {VideoCachePath} is invalid or inaccessible.", "Invalid Path", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
             }
@@ -179,7 +180,7 @@ public partial class SettingsWindowViewModel : ObservableObject
                 }
                 catch
                 {
-                    System.Windows.MessageBox.Show($"Log File Path {LogFilePath} is invalid or inaccessible.", "Invalid Path", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    MessageBox.Show($"Log File Path {LogFilePath} is invalid or inaccessible.", "Invalid Path", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
             }
@@ -187,27 +188,27 @@ public partial class SettingsWindowViewModel : ObservableObject
             // Validate CacheSizeGB
             if (CacheSizeGB < 0 || CacheSizeGB > 100)
             {
-                System.Windows.MessageBox.Show("Cache Size must be between 0 and 100 GB.", "Invalid Input", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                MessageBox.Show("Cache Size must be between 0 and 100 GB.", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
             // Validate audio and video devices
             if (AvailableAudioDevices.Count == 0)
             {
-                System.Windows.MessageBox.Show("No audio devices available. Please connect an audio device.", "No Audio Devices", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                MessageBox.Show("No audio devices available. Please connect an audio device.", "No Audio Devices", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             if (AvailableVideoDevices.Count == 0)
             {
-                System.Windows.MessageBox.Show("No video devices available. Please connect a monitor.", "No Video Devices", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                MessageBox.Show("No video devices available. Please connect a monitor.", "No Video Devices", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
             bool apiUrlChanged = _settingsService.Settings.ApiUrl != ApiUrl;
             if (apiUrlChanged)
             {
-                var result = System.Windows.MessageBox.Show("Changing the API URL will log you out. Proceed?", "Confirm API URL Change", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning);
-                if (result != System.Windows.MessageBoxResult.Yes)
+                var result = MessageBox.Show("Changing the API URL will log you out. Proceed?", "Confirm API URL Change", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes)
                 {
                     return;
                 }
@@ -230,7 +231,8 @@ public partial class SettingsWindowViewModel : ObservableObject
                 ShowDebugConsole = ShowDebugConsole,
                 MaximizedOnStart = MaximizedOnStart,
                 LogFilePath = LogFilePath,
-                EnableVerboseLogging = EnableVerboseLogging
+                EnableVerboseLogging = EnableVerboseLogging,
+                TestMode = TestMode
             };
 
             // Save to settings.json
@@ -238,7 +240,7 @@ public partial class SettingsWindowViewModel : ObservableObject
             Log.Information("[SETTINGS VM] Settings saved successfully");
 
             // Close windows safely
-            var settingsWindow = System.Windows.Application.Current.Windows.OfType<SettingsWindow>().FirstOrDefault();
+            var settingsWindow = Application.Current.Windows.OfType<SettingsWindow>().FirstOrDefault();
             if (settingsWindow != null)
             {
                 Log.Information("[SETTINGS VM] Closing SettingsWindow");
@@ -257,7 +259,7 @@ public partial class SettingsWindowViewModel : ObservableObject
                 var loginWindow = new LoginWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
                 loginWindow.Show();
 
-                var djScreen = System.Windows.Application.Current.Windows.OfType<DJScreen>().FirstOrDefault();
+                var djScreen = Application.Current.Windows.OfType<DJScreen>().FirstOrDefault();
                 if (djScreen != null)
                 {
                     Log.Information("[SETTINGS VM] Closing DJScreen");
@@ -272,18 +274,18 @@ public partial class SettingsWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             Log.Error("[SETTINGS VM] Failed to save settings: {Message}", ex.Message);
-            System.Windows.MessageBox.Show($"Failed to save settings: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            MessageBox.Show($"Failed to save settings: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     [RelayCommand]
     private void BrowseVideoCachePath()
     {
-        using (var dialog = new FolderBrowserDialog())
+        using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
         {
             dialog.Description = "Select Video Cache Path";
             dialog.SelectedPath = string.IsNullOrEmpty(VideoCachePath) ? Environment.GetFolderPath(Environment.SpecialFolder.MyVideos) : VideoCachePath;
-            if (dialog.ShowDialog() == DialogResult.OK)
+            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 VideoCachePath = dialog.SelectedPath;
                 Log.Information("[SETTINGS VM] Selected Video Cache Path: {VideoCachePath}", VideoCachePath);
@@ -294,12 +296,12 @@ public partial class SettingsWindowViewModel : ObservableObject
     [RelayCommand]
     private void BrowseLogFilePath()
     {
-        using (var dialog = new FolderBrowserDialog())
+        using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
         {
             dialog.Description = "Select Log File Path";
             var initialPath = string.IsNullOrEmpty(LogFilePath) ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) : Path.GetDirectoryName(LogFilePath);
             dialog.SelectedPath = initialPath ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            if (dialog.ShowDialog() == DialogResult.OK)
+            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 LogFilePath = Path.Combine(dialog.SelectedPath, "DJ.log");
                 Log.Information("[SETTINGS VM] Selected Log File Path: {LogFilePath}", LogFilePath);
@@ -311,7 +313,7 @@ public partial class SettingsWindowViewModel : ObservableObject
     private void Cancel()
     {
         Log.Information("[SETTINGS VM] Settings dialog canceled");
-        var settingsWindow = System.Windows.Application.Current.Windows.OfType<SettingsWindow>().FirstOrDefault();
+        var settingsWindow = Application.Current.Windows.OfType<SettingsWindow>().FirstOrDefault();
         if (settingsWindow != null)
         {
             Log.Information("[SETTINGS VM] Closing SettingsWindow on cancel");

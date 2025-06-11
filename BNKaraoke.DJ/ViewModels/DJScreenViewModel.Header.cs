@@ -63,7 +63,7 @@ namespace BNKaraoke.DJ.ViewModels
             {
                 Log.Information("[DJSCREEN SIGNALR] Polling queue and singer data for EventId={EventId}", eventId);
                 await LoadQueueData();
-                await LoadSingerData();
+                await LoadSingersAsync(eventId);
                 await LoadSungCountAsync();
             }
             catch (Exception ex)
@@ -96,7 +96,7 @@ namespace BNKaraoke.DJ.ViewModels
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN] Failed to load sung count for EventId={EventId}: {Message}", _currentEventId, ex.Message);
-                SetWarningMessage($"Failed to load sung count: {ex.Message}");
+                WarningMessage = $"Failed to load sung count: {ex.Message}";
             }
         }
 
@@ -110,7 +110,7 @@ namespace BNKaraoke.DJ.ViewModels
                 if (_currentEventId == null)
                 {
                     Log.Information("[DJSCREEN] ToggleShow failed: No event joined");
-                    SetWarningMessage("Please join an event before starting the show.");
+                    WarningMessage = "Please join an event before starting the show.";
                     return;
                 }
 
@@ -172,7 +172,7 @@ namespace BNKaraoke.DJ.ViewModels
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN] Failed to toggle show: {Message}", ex.Message);
-                SetWarningMessage($"Failed to toggle show: {ex.Message}");
+                WarningMessage = $"Failed to toggle show: {ex.Message}";
             }
         }
 
@@ -203,7 +203,7 @@ namespace BNKaraoke.DJ.ViewModels
                             catch (Exception ex)
                             {
                                 Log.Error("[DJSCREEN] Failed to leave event: {EventId}: {Message}", _currentEventId, ex.Message);
-                                SetWarningMessage($"Failed to leave event: {ex.Message}");
+                                WarningMessage = $"Failed to leave event: {ex.Message}";
                             }
                             _currentEventId = null;
                         }
@@ -244,7 +244,7 @@ namespace BNKaraoke.DJ.ViewModels
                     catch (Exception ex)
                     {
                         Log.Error("[DJSCREEN] Failed to show LoginWindow: {Message}", ex.Message);
-                        SetWarningMessage($"Failed to show login: {ex.Message}");
+                        WarningMessage = $"Failed to show login: {ex.Message}";
                     }
                     finally
                     {
@@ -255,7 +255,7 @@ namespace BNKaraoke.DJ.ViewModels
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN] Failed to process LoginLogout: {Message}", ex.Message);
-                SetWarningMessage($"Failed to process login/logout: {ex.Message}");
+                WarningMessage = $"Failed to process login/logout: {ex.Message}";
             }
         }
 
@@ -274,7 +274,7 @@ namespace BNKaraoke.DJ.ViewModels
                         Log.Information("[DJSCREEN] No live events available");
                         JoinEventButtonText = "No Live Events";
                         JoinEventButtonColor = "Gray";
-                        SetWarningMessage("No live events are currently available.");
+                        WarningMessage = "No live events are currently available.";
                         return;
                     }
 
@@ -282,7 +282,7 @@ namespace BNKaraoke.DJ.ViewModels
                     if (string.IsNullOrEmpty(_userSessionService.UserName))
                     {
                         Log.Error("[DJSCREEN] Cannot join event: UserName is empty");
-                        SetWarningMessage("Cannot join event: User username is not set.");
+                        WarningMessage = "Cannot join event: User username is not set.";
                         return;
                     }
                     await _apiService.JoinEventAsync(eventDto.EventId.ToString(), _userSessionService.UserName);
@@ -292,7 +292,7 @@ namespace BNKaraoke.DJ.ViewModels
                     JoinEventButtonColor = "#FF0000";
                     Log.Information("[DJSCREEN] Joined event: {EventId}, {EventCode}", _currentEventId, eventDto.EventCode);
 
-                    await LoadSingerData();
+                    await LoadSingersAsync(_currentEventId);
                     await LoadQueueData();
                     await LoadSungCountAsync();
                     await InitializeSignalRAsync(_currentEventId);
@@ -300,7 +300,7 @@ namespace BNKaraoke.DJ.ViewModels
                 catch (Exception ex)
                 {
                     Log.Error("[DJSCREEN] Failed to join event: {Message}", ex.Message);
-                    SetWarningMessage($"Failed to join event: {ex.Message}");
+                    WarningMessage = $"Failed to join event: {ex.Message}";
                 }
             }
             else
@@ -310,7 +310,7 @@ namespace BNKaraoke.DJ.ViewModels
                     if (string.IsNullOrEmpty(_userSessionService.UserName))
                     {
                         Log.Error("[DJSCREEN] Cannot leave event: UserName is empty");
-                        SetWarningMessage("Cannot leave event: User username is not set.");
+                        WarningMessage = "Cannot leave event: User username is not set.";
                         return;
                     }
                     await _signalRService.StopAsync(int.Parse(_currentEventId));
@@ -322,11 +322,6 @@ namespace BNKaraoke.DJ.ViewModels
                     CurrentEvent = null;
                     QueueEntries.Clear();
                     Singers.Clear();
-                    GreenSingers.Clear();
-                    YellowSingers.Clear();
-                    OrangeSingers.Clear();
-                    RedSingers.Clear();
-                    NonDummySingersCount = 0;
                     SungCount = 0;
                     if (_videoPlayerWindow != null)
                     {
@@ -337,14 +332,13 @@ namespace BNKaraoke.DJ.ViewModels
                         ShowButtonColor = "#22d3ee";
                     }
                     PlayingQueueEntry = null;
-                    OnPropertyChanged(nameof(NonDummySingersCount));
                     OnPropertyChanged(nameof(SungCount));
                     await UpdateAuthenticationState();
                 }
                 catch (Exception ex)
                 {
                     Log.Error("[DJSCREEN] Failed to leave event: {EventId}: {Message}", _currentEventId, ex.Message);
-                    SetWarningMessage($"Failed to leave event: {ex.Message}");
+                    WarningMessage = $"Failed to leave event: {ex.Message}";
                 }
             }
         }
@@ -362,7 +356,7 @@ namespace BNKaraoke.DJ.ViewModels
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN] Failed to open SettingsWindow: {Message}", ex.Message);
-                SetWarningMessage($"Failed to open settings: {ex.Message}");
+                WarningMessage = $"Failed to open settings: {ex.Message}";
             }
         }
 
@@ -412,7 +406,7 @@ namespace BNKaraoke.DJ.ViewModels
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN] Failed to update join event button state: {Message}", ex.Message);
-                SetWarningMessage($"Failed to update event button: {ex.Message}");
+                WarningMessage = $"Failed to update event button: {ex.Message}";
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     JoinEventButtonText = "No Live Events";
