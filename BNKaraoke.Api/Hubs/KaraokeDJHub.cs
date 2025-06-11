@@ -1,10 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using BNKaraoke.Api.Data;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging; // Added for logging
 
 namespace BNKaraoke.Api.Hubs
 {
@@ -12,7 +11,7 @@ namespace BNKaraoke.Api.Hubs
     public class KaraokeDJHub : Hub
     {
         private readonly ApplicationDbContext _context;
-        private readonly ILogger<KaraokeDJHub> _logger; // Added for logging
+        private readonly ILogger<KaraokeDJHub> _logger;
 
         public KaraokeDJHub(ApplicationDbContext context, ILogger<KaraokeDJHub> logger)
         {
@@ -22,54 +21,70 @@ namespace BNKaraoke.Api.Hubs
 
         public async Task UpdateSingerStatus(string userId, int eventId, string displayName, bool isLoggedIn, bool isJoined, bool isOnBreak)
         {
-            _logger.LogInformation("Updating singer status for UserId: {UserId}, EventId: {EventId}", userId, eventId);
-            var attendance = await _context.EventAttendances
-                .FirstOrDefaultAsync(ea => ea.EventId == eventId && ea.RequestorId == userId);
-            if (attendance != null)
+            try
             {
-                attendance.IsCheckedIn = isJoined;
-                attendance.IsOnBreak = isOnBreak;
-                attendance.BreakStartAt = isOnBreak ? DateTime.UtcNow : null;
-                attendance.BreakEndAt = !isOnBreak && attendance.IsOnBreak ? DateTime.UtcNow : null;
-                await _context.SaveChangesAsync();
+                _logger.LogInformation("Broadcasting SingerStatusUpdated for UserId: {UserId}, EventId: {EventId}, ConnectionId: {ConnectionId}", userId, eventId, Context.ConnectionId);
+                var response = new
+                {
+                    UserId = userId,
+                    EventId = eventId,
+                    DisplayName = displayName,
+                    IsLoggedIn = isLoggedIn,
+                    IsJoined = isJoined,
+                    IsOnBreak = isOnBreak
+                };
+                await Clients.Group($"Event_{eventId}").SendAsync("SingerStatusUpdated", response);
+                _logger.LogInformation("Successfully broadcasted SingerStatusUpdated for UserId: {UserId}, EventId: {EventId}, Group: Event_{EventId}", userId, eventId, eventId);
             }
-
-            await Clients.Group($"Event_{eventId}").SendAsync("SingerStatusUpdated", new
+            catch (Exception ex)
             {
-                UserId = userId,
-                EventId = eventId,
-                DisplayName = displayName,
-                IsLoggedIn = isLoggedIn,
-                IsJoined = isJoined,
-                IsOnBreak = isOnBreak
-            });
-            _logger.LogInformation("Sent SingerStatusUpdated for UserId: {UserId}, EventId: {EventId}", userId, eventId);
+                _logger.LogError(ex, "Error broadcasting SingerStatusUpdated for UserId: {UserId}, EventId: {EventId}, ConnectionId: {ConnectionId}", userId, eventId, Context.ConnectionId);
+                throw;
+            }
         }
 
         public async Task UpdateQueue(int queueId, int eventId, string action, string? youTubeUrl = null, string? holdReason = null)
         {
-            _logger.LogInformation("Updating queue for QueueId: {QueueId}, EventId: {EventId}, Action: {Action}", queueId, eventId, action);
-            await Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", new
+            try
             {
-                QueueId = queueId,
-                EventId = eventId,
-                Action = action,
-                YouTubeUrl = youTubeUrl,
-                HoldReason = holdReason // Added for hold status
-            });
-            _logger.LogInformation("Sent QueueUpdated for QueueId: {QueueId}, EventId: {EventId}", queueId, eventId);
+                _logger.LogInformation("Broadcasting QueueUpdated for QueueId: {QueueId}, EventId: {EventId}, Action: {Action}, ConnectionId: {ConnectionId}", queueId, eventId, action, Context.ConnectionId);
+                var response = new
+                {
+                    QueueId = queueId,
+                    EventId = eventId,
+                    Action = action,
+                    YouTubeUrl = youTubeUrl,
+                    HoldReason = holdReason
+                };
+                await Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", response);
+                _logger.LogInformation("Successfully broadcasted QueueUpdated for QueueId: {QueueId}, EventId: {EventId}, Group: Event_{EventId}", queueId, eventId, eventId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error broadcasting QueueUpdated for QueueId: {QueueId}, EventId: {EventId}, ConnectionId: {ConnectionId}", queueId, eventId, Context.ConnectionId);
+                throw;
+            }
         }
 
         public async Task QueuePlaying(int queueId, int eventId, string? youTubeUrl = null)
         {
-            _logger.LogInformation("Notifying queue playing for QueueId: {QueueId}, EventId: {EventId}", queueId, eventId);
-            await Clients.Group($"Event_{eventId}").SendAsync("QueuePlaying", new
+            try
             {
-                QueueId = queueId,
-                EventId = eventId,
-                YouTubeUrl = youTubeUrl
-            });
-            _logger.LogInformation("Sent QueuePlaying for QueueId: {QueueId}, EventId: {EventId}", queueId, eventId);
+                _logger.LogInformation("Broadcasting QueuePlaying for QueueId: {QueueId}, EventId: {EventId}, ConnectionId: {ConnectionId}", queueId, eventId, Context.ConnectionId);
+                var response = new
+                {
+                    QueueId = queueId,
+                    EventId = eventId,
+                    YouTubeUrl = youTubeUrl
+                };
+                await Clients.Group($"Event_{eventId}").SendAsync("QueuePlaying", response);
+                _logger.LogInformation("Successfully broadcasted QueuePlaying for QueueId: {QueueId}, EventId: {EventId}, Group: Event_{EventId}", queueId, eventId, eventId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error broadcasting QueuePlaying for QueueId: {QueueId}, EventId: {EventId}, ConnectionId: {ConnectionId}", queueId, eventId, Context.ConnectionId);
+                throw;
+            }
         }
 
         public async Task JoinEventGroup(int eventId)

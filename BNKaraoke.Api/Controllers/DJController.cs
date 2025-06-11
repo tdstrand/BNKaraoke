@@ -48,15 +48,15 @@ namespace BNKaraoke.Api.Controllers
             {
                 if (string.IsNullOrEmpty(request.RequestorUserName))
                 {
-                    _logger.LogWarning("RequestorUserName is null or empty for EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] RequestorUserName is null or empty for EventId: {EventId}", eventId);
                     return BadRequest("RequestorUserName cannot be null or empty");
                 }
 
-                _logger.LogInformation("Checking in for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
+                _logger.LogInformation("[DJController] Checking in for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -64,7 +64,7 @@ namespace BNKaraoke.Api.Controllers
                     .FirstOrDefaultAsync(u => u.UserName == request.RequestorUserName);
                 if (user == null)
                 {
-                    _logger.LogWarning("User not found with UserName: {UserName}", request.RequestorUserName);
+                    _logger.LogWarning("[DJController] User not found with UserName: {UserName}", request.RequestorUserName);
                     return NotFound("User not found");
                 }
 
@@ -122,34 +122,28 @@ namespace BNKaraoke.Api.Controllers
                     _holdReasons.Remove(entry.QueueId);
                 }
 
-                await _hubContext.Clients.Group($"Event_{eventId}")
-                    .SendAsync("SingerStatusUpdated", new
-                    {
-                        UserId = user.UserName,
-                        EventId = eventId,
-                        DisplayName = $"{user.FirstName} {user.LastName}".Trim(),
-                        IsLoggedIn = true,
-                        IsJoined = true,
-                        IsOnBreak = false
-                    });
+                var response = new DJSingerDto
+                {
+                    UserId = user.UserName ?? string.Empty,
+                    DisplayName = $"{user.FirstName} {user.LastName}".Trim(),
+                    IsLoggedIn = true,
+                    IsJoined = true,
+                    IsOnBreak = false
+                };
 
-                _logger.LogInformation("Checked in successfully for EventId: {EventId}, UserId: {UserId}", eventId, user.Id);
+                await _hubContext.Clients.Group($"Event_{eventId}")
+                    .SendAsync("SingerStatusUpdated", response);
+
+                _logger.LogInformation("[DJController] Checked in successfully for EventId: {EventId}, UserId: {UserId}", eventId, user.Id);
                 return Ok(new
                 {
                     message = "Checked in successfully",
-                    singerStatus = new
-                    {
-                        UserId = user.UserName,
-                        DisplayName = $"{user.FirstName} {user.LastName}".Trim(),
-                        IsLoggedIn = true,
-                        IsJoined = true,
-                        IsOnBreak = false
-                    }
+                    singerStatus = response
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking in for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
+                _logger.LogError(ex, "[DJController] Error checking in for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
                 return StatusCode(500, new { message = "Error checking in", details = ex.Message });
             }
         }
@@ -162,15 +156,15 @@ namespace BNKaraoke.Api.Controllers
             {
                 if (string.IsNullOrEmpty(request.RequestorUserName))
                 {
-                    _logger.LogWarning("RequestorUserName is null or empty for EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] RequestorUserName is null or empty for EventId: {EventId}", eventId);
                     return BadRequest("RequestorUserName cannot be null or empty");
                 }
 
-                _logger.LogInformation("Checking out for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
+                _logger.LogInformation("[DJController] Checking out for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -178,7 +172,7 @@ namespace BNKaraoke.Api.Controllers
                     .FirstOrDefaultAsync(u => u.UserName == request.RequestorUserName);
                 if (user == null)
                 {
-                    _logger.LogWarning("User not found with UserName: {UserName}", request.RequestorUserName);
+                    _logger.LogWarning("[DJController] User not found with UserName: {UserName}", request.RequestorUserName);
                     return NotFound("User not found");
                 }
 
@@ -212,23 +206,24 @@ namespace BNKaraoke.Api.Controllers
 
                 await _context.SaveChangesAsync();
 
-                await _hubContext.Clients.Group($"Event_{eventId}")
-                    .SendAsync("SingerStatusUpdated", new
-                    {
-                        UserId = user.UserName,
-                        EventId = eventId,
-                        DisplayName = $"{user.FirstName} {user.LastName}".Trim(),
-                        IsLoggedIn = false,
-                        IsJoined = false,
-                        IsOnBreak = false
-                    });
+                var response = new DJSingerDto
+                {
+                    UserId = user.UserName ?? string.Empty,
+                    DisplayName = $"{user.FirstName} {user.LastName}".Trim(),
+                    IsLoggedIn = false,
+                    IsJoined = false,
+                    IsOnBreak = false
+                };
 
-                _logger.LogInformation("Checked out successfully for EventId: {EventId}, UserId: {UserId}", eventId, user.Id);
+                await _hubContext.Clients.Group($"Event_{eventId}")
+                    .SendAsync("SingerStatusUpdated", response);
+
+                _logger.LogInformation("[DJController] Checked out successfully for EventId: {EventId}, UserId: {UserId}", eventId, user.Id);
                 return Ok(new { message = "Checked out successfully" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking out for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
+                _logger.LogError(ex, "[DJController] Error checking out for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
                 return StatusCode(500, new { message = "Error checking out", details = ex.Message });
             }
         }
@@ -239,11 +234,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Playing song for EventId: {EventId}, QueueId: {QueueId}", eventId, queueId);
+                _logger.LogInformation("[DJController] Playing song for EventId: {EventId}, QueueId: {QueueId}", eventId, queueId);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -251,7 +246,7 @@ namespace BNKaraoke.Api.Controllers
                     .FirstOrDefaultAsync(eq => eq.EventId == eventId && eq.QueueId == queueId);
                 if (queueEntry == null)
                 {
-                    _logger.LogWarning("Queue entry not found with QueueId: {QueueId} for EventId: {EventId}", queueId, eventId);
+                    _logger.LogWarning("[DJController] Queue entry not found with QueueId: {QueueId} for EventId: {EventId}", queueId, eventId);
                     return NotFound("Queue entry not found");
                 }
 
@@ -272,12 +267,12 @@ namespace BNKaraoke.Api.Controllers
                 await _hubContext.Clients.Group($"Event_{eventId}")
                     .SendAsync("QueueUpdated", queueId, "Playing", null, null);
 
-                _logger.LogInformation("Started play for QueueId: {QueueId} for EventId: {EventId}", queueId, eventId);
+                _logger.LogInformation("[DJController] Started play for QueueId: {QueueId} for EventId: {EventId}", queueId, eventId);
                 return Ok(new { message = "Song play started", QueueId = queueId });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error starting play for EventId: {EventId}, QueueId: {QueueId}", eventId, queueId);
+                _logger.LogError(ex, "[DJController] Error starting play for EventId: {EventId}, QueueId: {QueueId}", eventId, queueId);
                 return StatusCode(500, new { message = "Error starting song play", details = ex.Message });
             }
         }
@@ -288,11 +283,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Skipping song for EventId: {EventId}, QueueId: {QueueId}", eventId, queueId);
+                _logger.LogInformation("[DJController] Skipping song for EventId: {EventId}, QueueId: {QueueId}", eventId, queueId);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -300,7 +295,7 @@ namespace BNKaraoke.Api.Controllers
                     .FirstOrDefaultAsync(eq => eq.EventId == eventId && eq.QueueId == queueId);
                 if (queueEntry == null)
                 {
-                    _logger.LogWarning("Queue entry not found with QueueId: {QueueId} for EventId: {EventId}", queueId, eventId);
+                    _logger.LogWarning("[DJController] Queue entry not found with QueueId: {QueueId} for EventId: {EventId}", queueId, eventId);
                     return NotFound("Queue entry not found");
                 }
 
@@ -314,12 +309,12 @@ namespace BNKaraoke.Api.Controllers
                 await _hubContext.Clients.Group($"Event_{eventId}")
                     .SendAsync("QueueUpdated", queueId, "Skipped", null, null);
 
-                _logger.LogInformation("Skipped song with QueueId: {QueueId} for EventId: {EventId}", queueId, eventId);
+                _logger.LogInformation("[DJController] Skipped song with QueueId: {QueueId} for EventId: {EventId}", queueId, eventId);
                 return Ok(new { message = "Song skipped" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error skipping song for EventId: {EventId}, QueueId: {QueueId}", eventId, queueId);
+                _logger.LogError(ex, "[DJController] Error skipping song for EventId: {EventId}, QueueId: {QueueId}", eventId, queueId);
                 return StatusCode(500, new { message = "Error skipping song", details = ex.Message });
             }
         }
@@ -330,19 +325,19 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Setting now playing for QueueId: {QueueId}", request.QueueId);
+                _logger.LogInformation("[DJController] Setting now playing for QueueId: {QueueId}", request.QueueId);
                 var queueEntry = await _context.EventQueues
                     .FirstOrDefaultAsync(eq => eq.QueueId == request.QueueId);
                 if (queueEntry == null)
                 {
-                    _logger.LogWarning("Queue entry not found with QueueId: {QueueId}", request.QueueId);
+                    _logger.LogWarning("[DJController] Queue entry not found with QueueId: {QueueId}", request.QueueId);
                     return NotFound("Queue entry not found");
                 }
 
                 var eventEntity = await _context.Events.FindAsync(queueEntry.EventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", queueEntry.EventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", queueEntry.EventId);
                     return NotFound("Event not found");
                 }
 
@@ -363,12 +358,12 @@ namespace BNKaraoke.Api.Controllers
                 await _hubContext.Clients.Group($"Event_{queueEntry.EventId}")
                     .SendAsync("QueueUpdated", queueEntry.QueueId, "Playing", null, null);
 
-                _logger.LogInformation("Set now playing for QueueId: {QueueId}, EventId: {EventId}", request.QueueId, queueEntry.EventId);
+                _logger.LogInformation("[DJController] Set now playing for QueueId: {QueueId}, EventId: {EventId}", request.QueueId, queueEntry.EventId);
                 return Ok(new { message = "Song set as now playing", QueueId = request.QueueId });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error setting now playing for QueueId: {QueueId}", request.QueueId);
+                _logger.LogError(ex, "[DJController] Error setting now playing for QueueId: {QueueId}", request.QueueId);
                 return StatusCode(500, new { message = "Error setting now playing", details = ex.Message });
             }
         }
@@ -379,11 +374,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Selecting next song for autoplay in EventId: {EventId}", eventId);
+                _logger.LogInformation("[DJController] Selecting next song for autoplay in EventId: {EventId}", eventId);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -446,7 +441,7 @@ namespace BNKaraoke.Api.Controllers
 
                 if (nextEntry == null)
                 {
-                    _logger.LogInformation("No eligible songs for autoplay in EventId: {EventId}", eventId);
+                    _logger.LogInformation("[DJController] No eligible songs for autoplay in EventId: {EventId}", eventId);
                     return NotFound(new { message = "No eligible songs" });
                 }
 
@@ -467,7 +462,7 @@ namespace BNKaraoke.Api.Controllers
                 await _hubContext.Clients.Group($"Event_{eventId}")
                     .SendAsync("QueueUpdated", nextEntry.QueueId, "Playing", null, null);
 
-                _logger.LogInformation("Selected next song for autoplay: QueueId: {QueueId}, EventId: {EventId}", nextEntry.QueueId, eventId);
+                _logger.LogInformation("[DJController] Selected next song for autoplay: QueueId: {QueueId}, EventId: {EventId}", nextEntry.QueueId, eventId);
                 return Ok(new
                 {
                     QueueId = nextEntry.QueueId,
@@ -478,7 +473,7 @@ namespace BNKaraoke.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error selecting next song for autoplay in EventId: {EventId}", eventId);
+                _logger.LogError(ex, "[DJController] Error selecting next song for autoplay in EventId: {EventId}", eventId);
                 return StatusCode(500, new { message = "Error selecting next song", details = ex.Message });
             }
         }
@@ -488,11 +483,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Fetching unplayed queue for EventId: {EventId}", eventId);
+                _logger.LogInformation("[DJController] Fetching unplayed queue for EventId: {EventId}", eventId);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -510,12 +505,12 @@ namespace BNKaraoke.Api.Controllers
                     queueDtos.First().IsUpNext = true;
                 }
 
-                _logger.LogInformation("Fetched {Count} unplayed queue entries for EventId: {EventId}", queueDtos.Count, eventId);
+                _logger.LogInformation("[DJController] Fetched {Count} unplayed queue entries for EventId: {EventId}", queueDtos.Count, eventId);
                 return Ok(queueDtos);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching unplayed queue for EventId: {EventId}", eventId);
+                _logger.LogError(ex, "[DJController] Error fetching unplayed queue for EventId: {EventId}", eventId);
                 return StatusCode(500, new { message = "Error retrieving unplayed queue", details = ex.Message });
             }
         }
@@ -525,11 +520,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Fetching now playing queue for EventId: {EventId}", eventId);
+                _logger.LogInformation("[DJController] Fetching now playing queue for EventId: {EventId}", eventId);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -540,19 +535,19 @@ namespace BNKaraoke.Api.Controllers
 
                 if (queueEntry == null)
                 {
-                    _logger.LogInformation("No currently playing song for EventId: {EventId}", eventId);
+                    _logger.LogInformation("[DJController] No currently playing song for EventId: {EventId}", eventId);
                     return Ok(null);
                 }
 
                 var queueDtos = await BuildQueueDtos(new[] { queueEntry }, eventId);
                 var queueDto = queueDtos.FirstOrDefault();
 
-                _logger.LogInformation("Fetched now playing queue entry for EventId: {EventId}", eventId);
+                _logger.LogInformation("[DJController] Fetched now playing queue entry for EventId: {EventId}", eventId);
                 return Ok(queueDto);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching now playing queue for EventId: {EventId}", eventId);
+                _logger.LogError(ex, "[DJController] Error fetching now playing queue for EventId: {EventId}", eventId);
                 return StatusCode(500, new { message = "Error retrieving now playing queue", details = ex.Message });
             }
         }
@@ -562,11 +557,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Fetching completed queue for EventId: {EventId}", eventId);
+                _logger.LogInformation("[DJController] Fetching completed queue for EventId: {EventId}", eventId);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -578,12 +573,12 @@ namespace BNKaraoke.Api.Controllers
 
                 var queueDtos = await BuildQueueDtos(queueEntries, eventId);
 
-                _logger.LogInformation("Fetched {Count} completed queue entries for EventId: {EventId}", queueDtos.Count, eventId);
+                _logger.LogInformation("[DJController] Fetched {Count} completed queue entries for EventId: {EventId}", queueDtos.Count, eventId);
                 return Ok(queueDtos);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching completed queue for EventId: {EventId}", eventId);
+                _logger.LogError(ex, "[DJController] Error fetching completed queue for EventId: {EventId}", eventId);
                 return StatusCode(500, new { message = "Error retrieving completed queue", details = ex.Message });
             }
         }
@@ -593,11 +588,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Fetching all queue for EventId: {EventId}", eventId);
+                _logger.LogInformation("[DJController] Fetching all queue for EventId: {EventId}", eventId);
                 var eventEntity = await _context.Events.FirstOrDefaultAsync(e => e.EventId == eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -613,12 +608,12 @@ namespace BNKaraoke.Api.Controllers
                     queueDtos.First(q => q.Status == "Unplayed").IsUpNext = true;
                 }
 
-                _logger.LogInformation("Fetched {Count} queue entries for EventId: {EventId}", queueDtos.Count, eventId);
+                _logger.LogInformation("[DJController] Fetched {Count} queue entries for EventId: {EventId}", queueDtos.Count, eventId);
                 return Ok(queueDtos);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching all queue for EventId: {EventId}", eventId);
+                _logger.LogError(ex, "[DJController] Error fetching all queue for EventId: {EventId}", eventId);
                 return StatusCode(500, new { message = "Error retrieving all queue", details = ex.Message });
             }
         }
@@ -628,11 +623,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Fetching event queue for EventId: {EventId}", eventId);
+                _logger.LogInformation("[DJController] Fetching event queue for EventId: {EventId}", eventId);
                 var eventEntity = await _context.Events.FirstOrDefaultAsync(e => e.EventId == eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -647,12 +642,12 @@ namespace BNKaraoke.Api.Controllers
                     queueDtos.First(q => q.Status == "Unplayed").IsUpNext = true;
                 }
 
-                _logger.LogInformation("Fetched {Count} queue entries for EventId: {EventId}", queueDtos.Count, eventId);
+                _logger.LogInformation("[DJController] Fetched {Count} queue entries for EventId: {EventId}", queueDtos.Count, eventId);
                 return Ok(new { QueueEntries = queueDtos, SongsCompleted = eventEntity.SongsCompleted });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching event queue for EventId: {EventId}", eventId);
+                _logger.LogError(ex, "[DJController] Error fetching event queue for EventId: {EventId}", eventId);
                 return StatusCode(500, new { message = "Error retrieving event queue", details = ex.Message });
             }
         }
@@ -662,11 +657,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Fetching singers for EventId: {EventId}, Page: {Page}, Size: {Size}", eventId, page, size);
+                _logger.LogInformation("[DJController] Fetching singers for EventId: {EventId}, Page: {Page}, Size: {Size}", eventId, page, size);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -674,40 +669,92 @@ namespace BNKaraoke.Api.Controllers
                     .FirstOrDefaultAsync(s => s.SettingKey == "ActivityTimeoutMinutes");
                 int timeoutMinutes = timeoutSetting != null && int.TryParse(timeoutSetting.SettingValue, out var parsedTimeout) ? parsedTimeout : 30;
 
-                var singers = await _context.SingerStatus
-                    .Where(ss => ss.EventId == eventId)
+                // Singers from SingerStatus (IsJoined=true)
+                var joinedSingers = await _context.SingerStatus
+                    .Where(ss => ss.EventId == eventId && ss.IsJoined)
                     .Join(_context.Users,
                         ss => ss.RequestorId,
                         u => u.Id,
                         (ss, u) => new
                         {
-                            SingerStatus = ss,
-                            User = u
+                            UserId = u.UserName ?? string.Empty,
+                            DisplayName = (u.FirstName + " " + u.LastName).Trim(),
+                            IsLoggedIn = ss.IsLoggedIn && (u.LastActivity == null || u.LastActivity >= DateTime.UtcNow.AddMinutes(-timeoutMinutes)),
+                            IsJoined = ss.IsJoined,
+                            IsOnBreak = ss.IsOnBreak,
+                            LastActivity = u.LastActivity,
+                            SingerStatusUpdatedAt = (DateTime?)ss.UpdatedAt,
+                            Source = "SingerStatus"
                         })
-                    .Where(x => x.SingerStatus.IsJoined || x.SingerStatus.IsLoggedIn)
-                    .Select(x => new DJSingerDto
-                    {
-                        UserId = x.User.UserName ?? string.Empty,
-                        DisplayName = (x.User.FirstName + " " + x.User.LastName).Trim(),
-                        IsLoggedIn = x.SingerStatus.IsLoggedIn && (x.User.LastActivity == null || x.User.LastActivity >= DateTime.UtcNow.AddMinutes(-timeoutMinutes)),
-                        IsJoined = x.SingerStatus.IsJoined,
-                        IsOnBreak = x.SingerStatus.IsOnBreak
-                    })
                     .ToListAsync();
 
-                var totalSingers = singers.Count;
-                var pagedSingers = singers
+                // Singers from EventQueues (distinct RequestorUserName)
+                var queueSingers = await _context.EventQueues
+                    .Where(eq => eq.EventId == eventId && eq.Status == "Live" && eq.SungAt == null)
+                    .Select(eq => eq.RequestorUserName)
+                    .Distinct()
+                    .Join(_context.Users,
+                        userName => userName,
+                        u => u.UserName,
+                        (userName, u) => new
+                        {
+                            UserId = u.UserName ?? string.Empty,
+                            DisplayName = (u.FirstName + " " + u.LastName).Trim(),
+                            IsLoggedIn = u.LastActivity != null && u.LastActivity >= DateTime.UtcNow.AddMinutes(-timeoutMinutes),
+                            IsJoined = true, // Treat queue participants as joined unless checked out
+                            IsOnBreak = false, // Default for queue-only singers
+                            LastActivity = u.LastActivity,
+                            SingerStatusUpdatedAt = (DateTime?)null,
+                            Source = "EventQueues"
+                        })
+                    .ToListAsync();
+
+                // Log raw data for debugging
+                foreach (var singer in joinedSingers)
+                {
+                    _logger.LogDebug("[DJController] SingerStatus singer: UserId={UserId}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}, LastActivity={LastActivity}, UpdatedAt={UpdatedAt}, Source={Source}",
+                        singer.UserId, singer.IsLoggedIn, singer.IsJoined, singer.IsOnBreak, singer.LastActivity, singer.SingerStatusUpdatedAt, singer.Source);
+                }
+                foreach (var singer in queueSingers)
+                {
+                    _logger.LogDebug("[DJController] EventQueues singer: UserId={UserId}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}, LastActivity={LastActivity}, UpdatedAt={UpdatedAt}, Source={Source}",
+                        singer.UserId, singer.IsLoggedIn, singer.IsJoined, singer.IsOnBreak, singer.LastActivity, singer.SingerStatusUpdatedAt, singer.Source);
+                }
+
+                // Union and deduplicate by UserId
+                var allSingers = joinedSingers
+                    .Concat(queueSingers)
+                    .GroupBy(s => s.UserId)
+                    .Select(g => new DJSingerDto
+                    {
+                        UserId = g.Key,
+                        DisplayName = g.First().DisplayName.Length > 0 ? g.First().DisplayName : g.Key, // Fallback to UserId
+                        IsLoggedIn = g.Any(s => s.IsLoggedIn), // True if any record indicates logged in
+                        IsJoined = g.Any(s => s.IsJoined), // True if joined or in queue
+                        IsOnBreak = g.Any(s => s.IsOnBreak) // True if on break in SingerStatus
+                    })
+                    .ToList();
+
+                // Log final DJSingerDto for debugging
+                foreach (var singer in allSingers)
+                {
+                    _logger.LogDebug("[DJController] Final singer: UserId={UserId}, DisplayName={DisplayName}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
+                        singer.UserId, singer.DisplayName, singer.IsLoggedIn, singer.IsJoined, singer.IsOnBreak);
+                }
+
+                var totalSingers = allSingers.Count;
+                var pagedSingers = allSingers
                     .OrderBy(s => s.DisplayName)
                     .Skip((page - 1) * size)
                     .Take(size)
                     .ToList();
 
-                _logger.LogInformation("Fetched {Count} singers for EventId: {EventId}", pagedSingers.Count, eventId);
+                _logger.LogInformation("[DJController] Fetched {Count} singers for EventId: {EventId}, Joined: {JoinedCount}, From Queue: {QueueCount}", pagedSingers.Count, eventId, joinedSingers.Count, queueSingers.Count);
                 return Ok(new { Singers = pagedSingers, Total = totalSingers, Page = page, Size = size });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching singers for EventId: {EventId}", eventId);
+                _logger.LogError(ex, "[DJController] Error fetching singers for EventId: {EventId}", eventId);
                 return StatusCode(500, new { message = "Error retrieving singers", details = ex.Message });
             }
         }
@@ -718,11 +765,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Reordering DJ queue for EventId: {EventId}", eventId);
+                _logger.LogInformation("[DJController] Reordering DJ queue for EventId: {EventId}", eventId);
                 var eventEntity = await _context.Events.FindAsync(eventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", eventId);
                     return NotFound("Event not found");
                 }
 
@@ -733,7 +780,7 @@ namespace BNKaraoke.Api.Controllers
 
                 if (!queueEntries.Any())
                 {
-                    _logger.LogInformation("No upcoming queue entries for EventId: {EventId}", eventId);
+                    _logger.LogInformation("[DJController] No upcoming queue entries for EventId: {EventId}", eventId);
                     return Ok(new { message = "No upcoming queue entries to reorder" });
                 }
 
@@ -741,13 +788,13 @@ namespace BNKaraoke.Api.Controllers
                 var invalidIds = queueIds.Where(id => !queueEntryIds.Contains(id)).ToList();
                 if (invalidIds.Any())
                 {
-                    _logger.LogWarning("Invalid QueueIds provided for EventId: {EventId}: {InvalidIds}", eventId, string.Join(", ", invalidIds));
+                    _logger.LogWarning("[DJController] Invalid QueueIds provided for EventId: {EventId}: {InvalidIds}", eventId, string.Join(", ", invalidIds));
                     return BadRequest($"Invalid QueueIds: [{string.Join(", ", invalidIds)}]");
                 }
 
                 if (queueIds.Count != queueEntries.Count || queueIds.Distinct().Count() != queueIds.Count)
                 {
-                    _logger.LogWarning("Invalid reorder request for EventId: {EventId}", eventId);
+                    _logger.LogWarning("[DJController] Invalid reorder request for EventId: {EventId}", eventId);
                     return BadRequest("Queue IDs must include all upcoming songs without duplicates");
                 }
 
@@ -765,7 +812,7 @@ namespace BNKaraoke.Api.Controllers
                             .FirstOrDefaultAsync(eq => eq.QueueId == queueId && eq.EventId == eventId);
                         if (dbEntry == null)
                         {
-                            _logger.LogWarning("Queue entry not found for QueueId: {QueueId} during reorder for EventId: {EventId}", queueId, eventId);
+                            _logger.LogWarning("[DJController] Queue entry not found for QueueId: {QueueId} during reorder for EventId: {EventId}", queueId, eventId);
                             throw new InvalidOperationException($"Queue entry not found for QueueId: {queueId}");
                         }
                         dbEntry.Position = queueIds.IndexOf(queueId) + 1;
@@ -780,7 +827,7 @@ namespace BNKaraoke.Api.Controllers
                             .ToListAsync();
                         if (currentEntries.Any(eq => originalTimestamps[eq.QueueId] != eq.UpdatedAt))
                         {
-                            _logger.LogWarning("Concurrency conflict detected for EventId: {EventId}", eventId);
+                            _logger.LogWarning("[DJController] Concurrency conflict detected for EventId: {EventId}", eventId);
                             throw new InvalidOperationException("Queue modified by another user");
                         }
                     }
@@ -791,17 +838,17 @@ namespace BNKaraoke.Api.Controllers
 
                 await _hubContext.Clients.Group($"Event_{eventId}").SendAsync("QueueUpdated", 0, "Reordered");
 
-                _logger.LogInformation("Reordered DJ queue for EventId: {EventId}", eventId);
+                _logger.LogInformation("[DJController] Reordered DJ queue for EventId: {EventId}", eventId);
                 return Ok(new { message = "Queue reordered" });
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("Queue modified"))
             {
-                _logger.LogWarning("Concurrency conflict during reorder for EventId: {EventId}: {Message}", eventId, ex.Message);
+                _logger.LogWarning("[DJController] Concurrency conflict during reorder for EventId: {EventId}: {Message}", eventId, ex.Message);
                 return StatusCode(409, "Queue modified by another user, please retry");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error reordering DJ queue for EventId: {EventId}", ex.Message);
+                _logger.LogError(ex, "[DJController] Error reordering DJ queue for EventId: {EventId}", ex.Message);
                 return StatusCode(500, new { message = "Error reordering queue", details = ex.Message });
             }
         }
@@ -812,11 +859,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Completing song for EventId: {EventId}, QueueId: {QueueId}", request.EventId, request.QueueId);
+                _logger.LogInformation("[DJController] Completing song for EventId: {EventId}, QueueId: {QueueId}", request.EventId, request.QueueId);
                 var eventEntity = await _context.Events.FindAsync(request.EventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", request.EventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", request.EventId);
                     return NotFound("Event not found");
                 }
 
@@ -824,7 +871,7 @@ namespace BNKaraoke.Api.Controllers
                     .FirstOrDefaultAsync(eq => eq.EventId == request.EventId && eq.QueueId == request.QueueId);
                 if (queueEntry == null)
                 {
-                    _logger.LogWarning("Queue entry not found with QueueId: {QueueId} for EventId: {EventId}", request.QueueId, request.EventId);
+                    _logger.LogWarning("[DJController] Queue entry not found with QueueId: {QueueId} for EventId: {EventId}", request.QueueId, request.EventId);
                     return NotFound("Queue entry not found");
                 }
 
@@ -840,12 +887,12 @@ namespace BNKaraoke.Api.Controllers
                 await _hubContext.Clients.Group($"Event_{request.EventId}")
                     .SendAsync("QueueUpdated", request.QueueId, "Sung", null, null);
 
-                _logger.LogInformation("Completed song with QueueId: {QueueId} for EventId: {EventId}", request.QueueId, request.EventId);
+                _logger.LogInformation("[DJController] Completed song with QueueId: {QueueId} for EventId: {EventId}", request.QueueId, request.EventId);
                 return Ok(new { message = "Song completed" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error completing song for EventId: {EventId}, QueueId: {QueueId}", request.EventId, request.QueueId);
+                _logger.LogError(ex, "[DJController] Error completing song for EventId: {EventId}, QueueId: {QueueId}", request.EventId, request.QueueId);
                 return StatusCode(500, new { message = "Error completing song", details = ex.Message });
             }
         }
@@ -856,12 +903,12 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Toggling break for EventId: {EventId}, QueueId: {QueueId}, IsOnBreak: {IsOnBreak}", request.EventId, request.QueueId, request.IsOnBreak);
+                _logger.LogInformation("[DJController] Toggling break for EventId: {EventId}, QueueId: {QueueId}, IsOnBreak: {IsOnBreak}", request.EventId, request.QueueId, request.IsOnBreak);
                 var queueEntry = await _context.EventQueues
                     .FirstOrDefaultAsync(eq => eq.EventId == request.EventId && eq.QueueId == request.QueueId);
                 if (queueEntry == null)
                 {
-                    _logger.LogWarning("Queue entry not found with QueueId: {QueueId} for EventId: {EventId}", request.QueueId, request.EventId);
+                    _logger.LogWarning("[DJController] Queue entry not found with QueueId: {QueueId} for EventId: {EventId}", request.QueueId, request.EventId);
                     return NotFound("Queue entry not found");
                 }
 
@@ -877,12 +924,12 @@ namespace BNKaraoke.Api.Controllers
                 await _hubContext.Clients.Group($"Event_{request.EventId}")
                     .SendAsync("QueueUpdated", queueEntry.QueueId, request.IsOnBreak ? "OnHold" : "Eligible", null, request.IsOnBreak ? "OnHold" : "None");
 
-                _logger.LogInformation("Toggled break for QueueId: {QueueId} to IsOnBreak: {IsOnBreak} for EventId: {EventId}", request.QueueId, request.IsOnBreak, request.EventId);
+                _logger.LogInformation("[DJController] Toggled break for QueueId: {QueueId} to IsOnBreak: {IsOnBreak} for EventId: {EventId}", request.QueueId, request.IsOnBreak, request.EventId);
                 return Ok(new { message = "Break status updated" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error toggling break for EventId: {EventId}, QueueId: {QueueId}", request.EventId, request.QueueId);
+                _logger.LogError(ex, "[DJController] Error toggling break for EventId: {EventId}, QueueId: {QueueId}", request.EventId, request.QueueId);
                 return StatusCode(500, new { message = "Error updating break status", details = ex.Message });
             }
         }
@@ -893,11 +940,11 @@ namespace BNKaraoke.Api.Controllers
         {
             try
             {
-                _logger.LogInformation("Updating singer status for EventId: {EventId}, RequestorUserName: {RequestorUserName}", request.EventId, request.RequestorUserName);
+                _logger.LogInformation("[DJController] Updating singer status for EventId: {EventId}, RequestorUserName: {RequestorUserName}", request.EventId, request.RequestorUserName);
                 var eventEntity = await _context.Events.FindAsync(request.EventId);
                 if (eventEntity == null)
                 {
-                    _logger.LogWarning("Event not found with EventId: {EventId}", request.EventId);
+                    _logger.LogWarning("[DJController] Event not found with EventId: {EventId}", request.EventId);
                     return NotFound("Event not found");
                 }
 
@@ -905,17 +952,32 @@ namespace BNKaraoke.Api.Controllers
                     .FirstOrDefaultAsync(u => u.UserName == request.RequestorUserName);
                 if (user == null)
                 {
-                    _logger.LogWarning("User not found with UserName: {UserName}", request.RequestorUserName);
+                    _logger.LogWarning("[DJController] User not found with UserName: {UserName}", request.RequestorUserName);
                     return NotFound("User not found");
                 }
+
+                // Log user LastActivity for debugging
+                _logger.LogDebug("[DJController] User LastActivity for UserId={UserId}: {LastActivity}", user.Id, user.LastActivity);
+
+                DateTime? originalUpdatedAt = null;
+                bool hadConcurrencyConflict = false;
 
                 using (var scope = new TransactionScope(TransactionScopeOption.Required, TransactionScopeAsyncFlowOption.Enabled))
                 {
                     var singerStatus = await _context.SingerStatus
+                        .AsNoTracking()
                         .FirstOrDefaultAsync(ss => ss.EventId == request.EventId && ss.RequestorId == user.Id);
-                    if (singerStatus == null)
+                    originalUpdatedAt = singerStatus?.UpdatedAt;
+
+                    // Log pre-update SingerStatus
+                    _logger.LogDebug("[DJController] Pre-update SingerStatus for UserId={UserId}, EventId={EventId}: IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}, UpdatedAt={UpdatedAt}",
+                        user.Id, request.EventId, singerStatus?.IsLoggedIn, singerStatus?.IsJoined, singerStatus?.IsOnBreak, singerStatus?.UpdatedAt);
+
+                    var dbSingerStatus = await _context.SingerStatus
+                        .FirstOrDefaultAsync(ss => ss.EventId == request.EventId && ss.RequestorId == user.Id);
+                    if (dbSingerStatus == null)
                     {
-                        singerStatus = new SingerStatus
+                        dbSingerStatus = new SingerStatus
                         {
                             EventId = request.EventId,
                             RequestorId = user.Id,
@@ -924,14 +986,44 @@ namespace BNKaraoke.Api.Controllers
                             IsOnBreak = request.IsOnBreak,
                             UpdatedAt = DateTime.UtcNow
                         };
-                        _context.SingerStatus.Add(singerStatus);
+                        _context.SingerStatus.Add(dbSingerStatus);
                     }
                     else
                     {
-                        singerStatus.IsLoggedIn = request.IsLoggedIn;
-                        singerStatus.IsJoined = request.IsJoined;
-                        singerStatus.IsOnBreak = request.IsOnBreak;
-                        singerStatus.UpdatedAt = DateTime.UtcNow;
+                        if (originalUpdatedAt != null && originalUpdatedAt != dbSingerStatus.UpdatedAt)
+                        {
+                            _logger.LogWarning("[DJController] Concurrency conflict for singer status update, EventId: {EventId}, UserId: {UserId}", request.EventId, user.Id);
+                            hadConcurrencyConflict = true;
+                            return Conflict("Singer status modified by another user, please retry");
+                        }
+
+                        dbSingerStatus.IsLoggedIn = request.IsLoggedIn;
+                        dbSingerStatus.IsJoined = request.IsJoined;
+                        dbSingerStatus.IsOnBreak = request.IsOnBreak;
+                        dbSingerStatus.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    var attendance = await _context.EventAttendances
+                        .FirstOrDefaultAsync(ea => ea.EventId == request.EventId && ea.RequestorId == user.Id);
+                    if (attendance == null)
+                    {
+                        attendance = new EventAttendance
+                        {
+                            EventId = request.EventId,
+                            RequestorId = user.Id,
+                            IsCheckedIn = request.IsJoined,
+                            IsOnBreak = request.IsOnBreak,
+                            BreakStartAt = request.IsOnBreak ? DateTime.UtcNow : null,
+                            BreakEndAt = !request.IsOnBreak ? DateTime.UtcNow : null
+                        };
+                        _context.EventAttendances.Add(attendance);
+                    }
+                    else
+                    {
+                        attendance.IsCheckedIn = request.IsJoined;
+                        attendance.IsOnBreak = request.IsOnBreak;
+                        attendance.BreakStartAt = request.IsOnBreak ? DateTime.UtcNow : attendance.BreakStartAt;
+                        attendance.BreakEndAt = !request.IsOnBreak ? DateTime.UtcNow : attendance.BreakEndAt;
                     }
 
                     var holdReason = "None";
@@ -956,6 +1048,11 @@ namespace BNKaraoke.Api.Controllers
                     }
 
                     await _context.SaveChangesAsync();
+
+                    // Log post-update SingerStatus
+                    _logger.LogDebug("[DJController] Post-update SingerStatus for UserId={UserId}, EventId={EventId}: IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}, UpdatedAt={UpdatedAt}",
+                        user.Id, request.EventId, dbSingerStatus.IsLoggedIn, dbSingerStatus.IsJoined, dbSingerStatus.IsOnBreak, dbSingerStatus.UpdatedAt);
+
                     scope.Complete();
                 }
 
@@ -971,12 +1068,12 @@ namespace BNKaraoke.Api.Controllers
                 await _hubContext.Clients.Group($"Event_{request.EventId}")
                     .SendAsync("SingerStatusUpdated", response);
 
-                _logger.LogInformation("Updated singer status for RequestorUserName: {RequestorUserName} for EventId: {EventId}", request.RequestorUserName, request.EventId);
+                _logger.LogInformation("[DJController] Updated singer status for RequestorUserName: {RequestorUserName} for EventId: {EventId}, Concurrency Conflict: {Conflict}", request.RequestorUserName, request.EventId, hadConcurrencyConflict);
                 return Ok(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating singer status for EventId: {EventId}, RequestorUserName: {RequestorUserName}", request.EventId, request.RequestorUserName);
+                _logger.LogError(ex, "[DJController] Error updating singer status for EventId: {EventId}, RequestorUserName: {RequestorUserName}", request.EventId, request.RequestorUserName);
                 return StatusCode(500, new { message = "Error updating singer status", details = ex.Message });
             }
         }
@@ -1009,7 +1106,7 @@ namespace BNKaraoke.Api.Controllers
                 }
                 catch (JsonException ex)
                 {
-                    _logger.LogWarning("Failed to deserialize Singers for QueueId: {QueueId}, Error: {Message}", eq.QueueId, ex.Message);
+                    _logger.LogWarning("[DJController] Failed to deserialize Singers for QueueId: {QueueId}, Error: {Message}", eq.QueueId, ex.Message);
                 }
             }
 
@@ -1030,7 +1127,7 @@ namespace BNKaraoke.Api.Controllers
             {
                 if (string.IsNullOrEmpty(eq.RequestorUserName) || !users.TryGetValue(eq.RequestorUserName, out var requestor))
                 {
-                    _logger.LogWarning("Requestor not found with UserName: {UserName} for QueueId: {QueueId}", eq.RequestorUserName, eq.QueueId);
+                    _logger.LogWarning("[DJController] Requestor not found with UserName: {UserName} for QueueId: {QueueId}", eq.RequestorUserName, eq.QueueId);
                     continue;
                 }
 
@@ -1043,7 +1140,7 @@ namespace BNKaraoke.Api.Controllers
                 }
                 catch (JsonException ex)
                 {
-                    _logger.LogWarning("Failed to deserialize Singers for QueueId: {QueueId}, Error: {Message}", eq.QueueId, ex.Message);
+                    _logger.LogWarning("[DJController] Failed to deserialize Singers for QueueId: {QueueId}, Error: {Message}", eq.QueueId, ex.Message);
                 }
 
                 bool anySingerOnBreak = false;
@@ -1073,7 +1170,7 @@ namespace BNKaraoke.Api.Controllers
                     SongTitle = eq.Song?.Title ?? string.Empty,
                     SongArtist = eq.Song?.Artist ?? string.Empty,
                     RequestorUserName = eq.RequestorUserName,
-                    RequestorDisplayName = $"{requestor.FirstName} {requestor.LastName}".Trim(), // Added display name
+                    RequestorDisplayName = $"{requestor.FirstName} {requestor.LastName}".Trim(),
                     Singers = singersList,
                     Position = eq.Position,
                     Status = status,
@@ -1155,7 +1252,7 @@ namespace BNKaraoke.Api.Controllers
         public string SongTitle { get; set; } = string.Empty;
         public string SongArtist { get; set; } = string.Empty;
         public string RequestorUserName { get; set; } = string.Empty;
-        public string RequestorDisplayName { get; set; } = string.Empty; // Added for UI
+        public string RequestorDisplayName { get; set; } = string.Empty;
         public List<string> Singers { get; set; } = new List<string>();
         public int Position { get; set; }
         public string Status { get; set; } = string.Empty;
