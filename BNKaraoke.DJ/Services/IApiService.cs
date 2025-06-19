@@ -9,7 +9,7 @@ namespace BNKaraoke.DJ.Services
     {
         Task<List<EventDto>> GetLiveEventsAsync(CancellationToken cancellationToken = default);
         Task JoinEventAsync(string eventId, string requestorUserName);
-        Task LeaveEventAsync(string eventId, string requestorUserName);
+        Task LeaveEventAsync(string eventId, string requestorId);
         Task<string> GetDiagnosticAsync();
         Task<LoginResult> LoginAsync(string userName, string password);
         Task<List<Singer>> GetSingersAsync(string eventId);
@@ -25,7 +25,7 @@ namespace BNKaraoke.DJ.Services
         Task LaunchVideoAsync(string eventId, string queueId);
         Task CompleteSongAsync(string eventId, int queueId);
         Task ToggleBreakAsync(string eventId, int queueId, bool isOnBreak);
-        Task<Singer> UpdateSingerStatusAsync(string eventId, string requestorUserName, bool isLoggedIn, bool isJoined, bool isOnBreak);
+        Task UpdateSingerStatusAsync(string eventId, string requestorUserName, bool isLoggedIn, bool isJoined, bool isOnBreak);
         Task AddSongAsync(string eventId, int songId, string requestorUserName, string[] singers);
     }
 }

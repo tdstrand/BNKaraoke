@@ -74,7 +74,14 @@ namespace BNKaraoke.DJ.Services
                     .Build();
 
                 _connection.On<int, string, int?, bool?>("QueueUpdated", _queueUpdatedCallback);
-                _connection.On<string, bool, bool, bool>("SingerStatusUpdated", _singerStatusUpdatedCallback);
+                _connection.On<string, bool, bool, bool>("SingerStatusUpdated", (requestorUserName, isLoggedIn, isJoined, isOnBreak) =>
+                {
+                    Log.Information("[SIGNALR] Received SingerStatusUpdated for EventId={EventId}, RequestorUserName={RequestorUserName}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
+                        _currentEventId, requestorUserName, isLoggedIn, isJoined, isOnBreak);
+                    _singerStatusUpdatedCallback(requestorUserName, isLoggedIn, isJoined, isOnBreak);
+                });
+
+                Log.Information("[SIGNALR] Subscribed to QueueUpdated and SingerStatusUpdated events for EventId={EventId}", eventId);
 
                 for (int attempt = 1; attempt <= MaxRetries; attempt++)
                 {

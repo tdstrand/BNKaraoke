@@ -1,21 +1,17 @@
 using BNKaraoke.DJ.Models;
+using BNKaraoke.DJ.Services;
 using BNKaraoke.DJ.ViewModels;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
 using System;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
-using BNKaraoke.DJ.Converters;
 
 namespace BNKaraoke.DJ.Views
 {
     public partial class DJScreen : Window
     {
-        private readonly SingerStatusToColorConverter _colorConverter = new SingerStatusToColorConverter();
-
         public DJScreen()
         {
             InitializeComponent();
@@ -149,40 +145,14 @@ namespace BNKaraoke.DJ.Views
                         return;
                     }
 
-                    // Ensure UI thread and refresh bindings
-                    Application.Current.Dispatcher.InvokeAsync(() =>
+                    if (!SettingsService.Instance.Settings.TestMode)
                     {
-                        listView.Items.Refresh();
-                        listView.UpdateLayout();
-                        listView.ItemsSource = null; // Clear ItemsSource
-                        listView.ItemsSource = viewModel.Singers; // Rebind
-                        Log.Information("[DJSCREEN] ListView ItemsSource rebound: Count={Count}", viewModel.Singers.Count);
-                    }).Wait();
-
-                    // Clone Singer to ensure fresh data
-                    var singer = viewModel.Singers.FirstOrDefault(s => s.UserId == selectedSinger.UserId);
-                    if (singer == null)
-                    {
-                        Log.Warning("[DJSCREEN] Singers ContextMenu: Singer not found in viewModel.Singers for UserId={UserId}", selectedSinger.UserId);
+                        Log.Information("[DJSCREEN] Singers ContextMenu: TestMode=false, menu disabled");
                         e.Handled = true;
                         return;
                     }
-                    var clonedSinger = new Singer
-                    {
-                        UserId = singer.UserId,
-                        DisplayName = singer.DisplayName,
-                        IsLoggedIn = singer.IsLoggedIn,
-                        IsJoined = singer.IsJoined,
-                        IsOnBreak = singer.IsOnBreak
-                    };
 
-                    Log.Information("[DJSCREEN] Singer state before color conversion: UserId={UserId}, DisplayName={DisplayName}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
-                        clonedSinger.UserId, clonedSinger.DisplayName, clonedSinger.IsLoggedIn, clonedSinger.IsJoined, clonedSinger.IsOnBreak);
-                    Log.Information("[DJSCREEN] Singers collection state: Count={Count}, Names={Names}",
-                        viewModel.Singers.Count, string.Join(", ", viewModel.Singers.Select(s => s.DisplayName)));
-
-                    var previousColor = _colorConverter.Convert(clonedSinger, typeof(Brush), null, System.Globalization.CultureInfo.InvariantCulture) as SolidColorBrush;
-                    var previousColorHex = previousColor != null ? $"#{previousColor.Color.R:X2}{previousColor.Color.G:X2}{previousColor.Color.B:X2}" : "Unknown";
+                    Log.Information("[DJSCREEN] Opening context menu for singer: UserId={UserId}, DisplayName={DisplayName}", selectedSinger.UserId, selectedSinger.DisplayName);
 
                     foreach (var item in contextMenu.Items)
                     {
@@ -194,41 +164,25 @@ namespace BNKaraoke.DJ.Views
                                 try
                                 {
                                     Log.Information("[DJSCREEN] MenuItem clicked: Name={Name}", menuItem.Name);
-                                    string status;
-                                    switch (menuItem.Name)
+                                    string status = menuItem.Name switch
                                     {
-                                        case "SetAvailableMenuItem":
-                                            status = "Active";
-                                            break;
-                                        case "SetOnBreakMenuItem":
-                                            status = "OnBreak";
-                                            break;
-                                        case "SetNotJoinedMenuItem":
-                                            status = "NotJoined";
-                                            break;
-                                        case "SetLoggedOutMenuItem":
-                                            status = "LoggedOut";
-                                            break;
-                                        default:
-                                            status = string.Empty;
-                                            Log.Warning("[DJSCREEN] Unknown MenuItem: {Name}", menuItem.Name);
-                                            break;
-                                    }
+                                        "SetAvailableMenuItem" => "Active",
+                                        "SetOnBreakMenuItem" => "OnBreak",
+                                        "SetNotJoinedMenuItem" => "NotJoined",
+                                        "SetLoggedOutMenuItem" => "LoggedOut",
+                                        _ => string.Empty
+                                    };
 
                                     if (!string.IsNullOrEmpty(status))
                                     {
-                                        var parameter = $"{status}|{singer.UserId}";
-                                        Log.Information("[DJSCREEN] Right-click operation: User={DisplayName}, UserId={UserId}, PreviousColor={PreviousColor}, NewStatus={Status}",
-                                            singer.DisplayName, singer.UserId, previousColorHex, status);
+                                        var parameter = $"{status}|{selectedSinger.UserId}";
+                                        Log.Information("[DJSCREEN] Right-click operation: User={DisplayName}, UserId={UserId}, NewStatus={Status}",
+                                            selectedSinger.DisplayName, selectedSinger.UserId, status);
                                         viewModel.UpdateSingerStatusCommand.Execute(parameter);
-                                        Application.Current.Dispatcher.InvokeAsync(() =>
-                                        {
-                                            listView.Items.Refresh();
-                                            listView.UpdateLayout();
-                                            listView.ItemsSource = null;
-                                            listView.ItemsSource = viewModel.Singers;
-                                            Log.Information("[DJSCREEN] ListView refreshed after status update: UserId={UserId}, Status={Status}", singer.UserId, status);
-                                        });
+                                    }
+                                    else
+                                    {
+                                        Log.Warning("[DJSCREEN] Unknown MenuItem: {Name}", menuItem.Name);
                                     }
                                 }
                                 catch (Exception ex)

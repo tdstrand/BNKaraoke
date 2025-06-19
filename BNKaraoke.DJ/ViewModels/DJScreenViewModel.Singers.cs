@@ -6,20 +6,20 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace BNKaraoke.DJ.ViewModels
 {
     public partial class DJScreenViewModel
     {
-        private readonly Dictionary<string, Singer> _singerCache = new Dictionary<string, Singer>();
-
         public IRelayCommand UpdateSingerStatusCommand => new RelayCommand<string>(async parameter =>
         {
             try
             {
-                if (string.IsNullOrEmpty(parameter))
+                if (string.IsNullOrEmpty(parameter) || string.IsNullOrEmpty(_currentEventId))
                 {
-                    Log.Warning("[DJSCREEN] UpdateSingerStatusCommand: Parameter is null or empty");
+                    Log.Warning("[DJSCREEN] UpdateSingerStatusCommand: Invalid parameter or no event joined, Parameter={Parameter}, EventId={EventId}", parameter, _currentEventId);
+                    WarningMessage = "Please select a singer and join an event.";
                     return;
                 }
 
@@ -27,17 +27,12 @@ namespace BNKaraoke.DJ.ViewModels
                 if (parts.Length != 2)
                 {
                     Log.Warning("[DJSCREEN] UpdateSingerStatusCommand: Invalid parameter format: {Parameter}", parameter);
+                    WarningMessage = "Invalid singer status format.";
                     return;
                 }
 
                 var status = parts[0];
                 var userId = parts[1];
-                var singer = Singers.FirstOrDefault(s => s.UserId == userId);
-                if (singer == null)
-                {
-                    Log.Warning("[DJSCREEN] UpdateSingerStatusCommand: Singer not found for UserId={UserId}", userId);
-                    return;
-                }
 
                 bool isLoggedIn, isJoined, isOnBreak;
                 switch (status)
@@ -64,134 +59,113 @@ namespace BNKaraoke.DJ.ViewModels
                         break;
                     default:
                         Log.Warning("[DJSCREEN] UpdateSingerStatusCommand: Unknown status: {Status}", status);
+                        WarningMessage = "Unknown singer status.";
                         return;
                 }
 
-                await UpdateSingerStatusAsync(singer, isLoggedIn, isJoined, isOnBreak);
+                Log.Information("[DJSCREEN] Sending singer status update request: EventId={EventId}, UserId={UserId}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
+                    _currentEventId, userId, isLoggedIn, isJoined, isOnBreak);
+                await _apiService.UpdateSingerStatusAsync(_currentEventId, userId, isLoggedIn, isJoined, isOnBreak);
+                Log.Information("[DJSCREEN] Singer status update request sent for UserId={UserId}, Status={Status}", userId, status);
             }
             catch (Exception ex)
             {
-                Log.Error("[DJSCREEN] UpdateSingerStatusCommand failed: {Message}", ex.Message);
+                Log.Error("[DJSCREEN] Failed to update singer status: {Message}", ex.Message);
+                WarningMessage = $"Failed to update singer status: {ex.Message}";
             }
         });
 
-        private async Task LoadSingersAsync(string eventId, string updatedUserId = "")
+        private async Task LoadSingersAsync()
         {
             try
             {
-                Log.Information("[DJSCREEN] Loading singer data for event: {EventId}, UpdatedUserId={UpdatedUserId}", eventId, updatedUserId);
-                var singers = await _apiService.GetSingersAsync(eventId);
-                var updatedSingers = new List<Singer>();
-
-                foreach (var singer in singers)
+                Log.Information("[DJSCREEN] Loading singer data for event: {EventId}", _currentEventId);
+                if (string.IsNullOrEmpty(_currentEventId))
                 {
-                    if (_singerCache.TryGetValue(singer.UserId, out var cachedSinger) && cachedSinger.UpdatedAt > singer.UpdatedAt)
-                    {
-                        Log.Information("[DJSCREEN] Using cached singer for UserId={UserId}: IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
-                            singer.UserId, cachedSinger.IsLoggedIn, cachedSinger.IsJoined, cachedSinger.IsOnBreak);
-                        updatedSingers.Add(cachedSinger);
-                    }
-                    else
-                    {
-                        updatedSingers.Add(singer);
-                    }
+                    Log.Information("[DJSCREEN] No event joined, skipping singer data load");
+                    Singers.Clear();
+                    GreenSingers.Clear();
+                    YellowSingers.Clear();
+                    OrangeSingers.Clear();
+                    RedSingers.Clear();
+                    NonDummySingersCount = 0;
+                    OnPropertyChanged(nameof(NonDummySingersCount));
+                    return;
                 }
 
-                await UpdateSingersCollectionAsync(updatedSingers, updatedUserId);
-                Log.Information("[DJSCREEN] Loaded {Count} singers for event {EventId}, Names={Names}", updatedSingers.Count, eventId, string.Join(", ", updatedSingers.Select(s => s.DisplayName)));
+                var singers = await _apiService.GetSingersAsync(_currentEventId);
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    Singers.Clear();
+                    foreach (var singer in singers)
+                    {
+                        Singers.Add(singer);
+                    }
+                    SortSingers();
+                    NonDummySingersCount = Singers.Count;
+                    Log.Information("[DJSCREEN] Loaded {Count} singers for event {EventId}, Names={Names}",
+                        NonDummySingersCount, _currentEventId, string.Join(", ", Singers.Select(s => s.DisplayName)));
+                });
             }
             catch (Exception ex)
             {
-                Log.Error("[DJSCREEN] Failed to load singers for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[DJSCREEN] Failed to load singers for event: {EventId}: {Message}", _currentEventId, ex.Message);
+                WarningMessage = $"Failed to load singers: {ex.Message}";
             }
         }
 
-        private async Task UpdateSingersCollectionAsync(List<Singer> newSingers, string updatedUserId)
-        {
-            await Task.Run(() =>
-            {
-                var existingSingers = Singers.ToDictionary(s => s.UserId, s => s);
-                foreach (var newSinger in newSingers)
-                {
-                    if (existingSingers.TryGetValue(newSinger.UserId, out var existingSinger))
-                    {
-                        Log.Information("[DJSCREEN] Updating singer UserId={UserId}: OldState=[IsLoggedIn={OldLoggedIn},IsJoined={OldJoined},IsOnBreak={OldOnBreak}], NewState=[IsLoggedIn={NewLoggedIn},IsJoined={NewJoined},IsOnBreak={NewOnBreak}]",
-                            newSinger.UserId, existingSinger.IsLoggedIn, existingSinger.IsJoined, existingSinger.IsOnBreak,
-                            newSinger.IsLoggedIn, newSinger.IsJoined, newSinger.IsOnBreak);
-
-                        existingSinger.UserId = newSinger.UserId;
-                        existingSinger.DisplayName = newSinger.DisplayName;
-                        existingSinger.IsLoggedIn = newSinger.IsLoggedIn;
-                        existingSinger.IsJoined = newSinger.IsJoined;
-                        existingSinger.IsOnBreak = newSinger.IsOnBreak;
-                        existingSinger.UpdatedAt = newSinger.UpdatedAt;
-                    }
-                    else
-                    {
-                        Singers.Add(newSinger);
-                    }
-                }
-
-                var singersToRemove = existingSingers.Keys.Except(newSingers.Select(s => s.UserId)).ToList();
-                foreach (var userId in singersToRemove)
-                {
-                    Singers.Remove(existingSingers[userId]);
-                }
-
-                SortSingers();
-            });
-        }
-
-        private async Task UpdateSingerStatusAsync(Singer singer, bool isLoggedIn, bool isJoined, bool isOnBreak)
+        private void SortSingers()
         {
             try
             {
-                Log.Information("[DJSCREEN] Sending update singer status request: EventId={EventId}, UserId={UserId}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
-                    CurrentEvent?.EventId, singer.UserId, isLoggedIn, isJoined, isOnBreak);
-
-                var updatedSinger = await _apiService.UpdateSingerStatusAsync(
-                    CurrentEvent.EventId.ToString(),
-                    singer.UserId,
-                    isLoggedIn,
-                    isJoined,
-                    isOnBreak);
-
-                Log.Information("[DJSCREEN] Successfully updated singer status for EventId={EventId}, RequestorUserName={UserId}, Response={Response}",
-                    CurrentEvent.EventId, singer.UserId, System.Text.Json.JsonSerializer.Serialize(updatedSinger));
-
-                // Update local Singers collection with returned Singer
-                var existingSinger = Singers.FirstOrDefault(s => s.UserId == updatedSinger.UserId);
-                if (existingSinger != null)
+                Log.Information("[DJSCREEN] Sorting singers");
+                var sortedSingers = Singers.OrderBy(singer =>
                 {
-                    existingSinger.UserId = updatedSinger.UserId;
-                    existingSinger.DisplayName = updatedSinger.DisplayName;
-                    existingSinger.IsLoggedIn = updatedSinger.IsLoggedIn;
-                    existingSinger.IsJoined = updatedSinger.IsJoined;
-                    existingSinger.IsOnBreak = updatedSinger.IsOnBreak;
-                    existingSinger.UpdatedAt = DateTime.UtcNow;
-                    _singerCache[updatedSinger.UserId] = new Singer
+                    if (singer.IsLoggedIn && singer.IsJoined && !singer.IsOnBreak) return 1; // Green
+                    if (singer.IsLoggedIn && singer.IsJoined && singer.IsOnBreak) return 2; // Yellow
+                    if (singer.IsLoggedIn && !singer.IsJoined) return 3; // Orange
+                    return 4; // Red
+                }).ThenBy(singer => singer.DisplayName).ToList();
+
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    Singers.Clear();
+                    foreach (var singer in sortedSingers)
                     {
-                        UserId = updatedSinger.UserId,
-                        DisplayName = updatedSinger.DisplayName,
-                        IsLoggedIn = updatedSinger.IsLoggedIn,
-                        IsJoined = updatedSinger.IsJoined,
-                        IsOnBreak = updatedSinger.IsOnBreak,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-                }
-                else
-                {
-                    Singers.Add(updatedSinger);
-                    _singerCache[updatedSinger.UserId] = updatedSinger;
-                }
+                        Singers.Add(singer);
+                    }
 
-                SortSingers();
-                Log.Information("[DJSCREEN] Locally updated singer status for UserId={UserId}, Status={Status}, SingersCount={Count}",
-                    singer.UserId, isJoined ? "Joined" : "NotJoined", Singers.Count);
+                    GreenSingers.Clear();
+                    YellowSingers.Clear();
+                    OrangeSingers.Clear();
+                    RedSingers.Clear();
+
+                    foreach (var singer in Singers)
+                    {
+                        if (singer.IsLoggedIn && singer.IsJoined && !singer.IsOnBreak)
+                            GreenSingers.Add(singer);
+                        else if (singer.IsLoggedIn && singer.IsJoined && singer.IsOnBreak)
+                            YellowSingers.Add(singer);
+                        else if (singer.IsLoggedIn && !singer.IsJoined)
+                            OrangeSingers.Add(singer);
+                        else
+                            RedSingers.Add(singer);
+                    }
+
+                    NonDummySingersCount = Singers.Count;
+                    OnPropertyChanged(nameof(NonDummySingersCount));
+                    OnPropertyChanged(nameof(GreenSingers));
+                    OnPropertyChanged(nameof(YellowSingers));
+                    OnPropertyChanged(nameof(OrangeSingers));
+                    OnPropertyChanged(nameof(RedSingers));
+                    Log.Information("[DJSCREEN] Sorted singers: {Count} singers, Names={Names}",
+                        NonDummySingersCount, string.Join(", ", Singers.Select(s => s.DisplayName)));
+                });
             }
             catch (Exception ex)
             {
-                Log.Error("[DJSCREEN] Failed to update singer status for UserId={UserId}: {Message}", singer.UserId, ex.Message);
+                Log.Error("[DJSCREEN] Failed to sort singers: {Message}", ex.Message);
+                WarningMessage = $"Failed to sort singers: {ex.Message}";
             }
         }
     }

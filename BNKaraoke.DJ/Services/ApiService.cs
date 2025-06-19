@@ -18,10 +18,10 @@ namespace BNKaraoke.DJ.Services
         private readonly IUserSessionService _userSessionService;
         private readonly SettingsService _settingsService;
 
-        public ApiService(IUserSessionService userSessionService, SettingsService settingsService)
+        public ApiService(IUserSessionService userSessionService, SettingsService userSettingsService)
         {
             _userSessionService = userSessionService;
-            _settingsService = settingsService;
+            _settingsService = userSettingsService;
             _httpClient = new HttpClient
             {
                 BaseAddress = new Uri(_settingsService.Settings.ApiUrl),
@@ -186,64 +186,31 @@ namespace BNKaraoke.DJ.Services
 
         public async Task<List<Singer>> GetSingersAsync(string eventId)
         {
-            const int maxRetries = 3;
-            int retryCount = 0;
-            List<Singer> lastResult = null;
-
-            while (retryCount <= maxRetries)
+            try
             {
-                try
+                ConfigureAuthorizationHeader();
+                Log.Information("[APISERVICE] Fetching singers for EventId={EventId}", eventId);
+                var response = await _httpClient.GetAsync($"/api/dj/events/{eventId}/singers");
+                var rawJson = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
                 {
-                    ConfigureAuthorizationHeader();
-                    Log.Information("[APISERVICE] Fetching singers for EventId={EventId}, Attempt={Attempt}", eventId, retryCount + 1);
-                    var response = await _httpClient.GetAsync($"/api/dj/events/{eventId}/singers");
-                    var rawJson = await response.Content.ReadAsStringAsync();
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        Log.Error("[APISERVICE] Failed to fetch singers for EventId={EventId}: Status={StatusCode}, Response={Response}", eventId, response.StatusCode, rawJson);
-                        return new List<Singer>();
-                    }
-                    var singersResponse = JsonSerializer.Deserialize<SingerResponse>(rawJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    var singers = singersResponse?.Singers ?? new List<Singer>();
-
-                    // Validate response
-                    Log.Information("[APISERVICE] Fetched {Count} singers for EventId={EventId}, Singers={SingerStates}", singers.Count, eventId,
-                        string.Join("; ", singers.Select(s => $"UserId={s.UserId},IsLoggedIn={s.IsLoggedIn},IsJoined={s.IsJoined},IsOnBreak={s.IsOnBreak}")));
-                    if (singers.Any(s => string.IsNullOrEmpty(s.UserId)))
-                    {
-                        Log.Warning("[APISERVICE] Invalid singer data detected for EventId={EventId}, Retrying", eventId);
-                        retryCount++;
-                        if (retryCount > maxRetries)
-                        {
-                            Log.Error("[APISERVICE] Max retries reached for EventId={EventId}, Returning last valid result or empty list", eventId);
-                            return lastResult ?? new List<Singer>();
-                        }
-                        await Task.Delay(100 * (int)Math.Pow(2, retryCount), CancellationToken.None); // Exponential backoff
-                        continue;
-                    }
-
-                    lastResult = singers;
-                    return singers;
-                }
-                catch (JsonException ex)
-                {
-                    Log.Error("[APISERVICE] Failed to deserialize singers for EventId={EventId}: {Message}", eventId, ex.Message);
+                    Log.Error("[APISERVICE] Failed to fetch singers for event {EventId}: Status={StatusCode}, Response={Response}", eventId, response.StatusCode, rawJson);
                     return new List<Singer>();
                 }
-                catch (Exception ex)
-                {
-                    Log.Error("[APISERVICE] Failed to fetch singers for EventId={EventId}, Attempt={Attempt}: {Message}", eventId, retryCount + 1, ex.Message);
-                    retryCount++;
-                    if (retryCount > maxRetries)
-                    {
-                        Log.Error("[APISERVICE] Max retries reached for EventId={EventId}, Returning last valid result or empty list", eventId);
-                        return lastResult ?? new List<Singer>();
-                    }
-                    await Task.Delay(100 * (int)Math.Pow(2, retryCount), CancellationToken.None); // Exponential backoff
-                }
+                var singersResponse = JsonSerializer.Deserialize<SingerResponse>(rawJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                Log.Information("[APISERVICE] Fetched {Count} singers for EventId={EventId}, Response={Response}", singersResponse?.Singers?.Count ?? 0, eventId, rawJson);
+                return singersResponse?.Singers ?? new List<Singer>();
             }
-
-            return lastResult ?? new List<Singer>();
+            catch (JsonException ex)
+            {
+                Log.Error("[APISERVICE] Failed to deserialize singers for EventId={EventId}: {Message}", eventId, ex.Message);
+                return new List<Singer>();
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[APISERVICE] Failed to fetch singers for EventId={EventId}: {Message}", eventId, ex.Message);
+                throw;
+            }
         }
 
         public async Task<List<QueueEntry>> GetQueueAsync(string eventId)
@@ -289,12 +256,12 @@ namespace BNKaraoke.DJ.Services
             }
             catch (JsonException ex)
             {
-                Log.Error("[APISERVICE] Failed to deserialize live queue for EventId={EventId}: {Message}", ex.Message);
+                Log.Error("[APISERVICE] Failed to deserialize live queue for EventId={EventId}: {Message}", eventId, ex.Message);
                 return new List<QueueEntry>();
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to fetch live queue for EventId={EventId}: {Message}", ex.Message);
+                Log.Error("[APISERVICE] Failed to fetch live queue for EventId={EventId}: {Message}", eventId, ex.Message);
                 throw;
             }
         }
@@ -527,23 +494,31 @@ namespace BNKaraoke.DJ.Services
             }
         }
 
-        public async Task<Singer> UpdateSingerStatusAsync(string eventId, string requestorUserName, bool isLoggedIn, bool isJoined, bool isOnBreak)
+        public async Task UpdateSingerStatusAsync(string eventId, string requestorUserName, bool isLoggedIn, bool isJoined, bool isOnBreak)
         {
             try
             {
+                if (string.IsNullOrEmpty(eventId))
+                {
+                    Log.Error("[APISERVICE] UpdateSingerStatusAsync: EventId is null or empty");
+                    throw new ArgumentException("EventId cannot be null or empty", nameof(eventId));
+                }
+
                 ConfigureAuthorizationHeader();
                 var request = new { EventId = int.Parse(eventId), RequestorUserName = requestorUserName, IsLoggedIn = isLoggedIn, IsJoined = isJoined, IsOnBreak = isOnBreak };
-                Log.Information("[DJSCREEN] Sending update singer status request for EventId={EventId}, RequestorUserName={RequestorUserName}, Payload={Payload}", eventId, requestorUserName, JsonSerializer.Serialize(request));
+                Log.Information("[APISERVICE] Sending update singer status request for EventId={EventId}, RequestorUserName={RequestorUserName}, Payload={Payload}", eventId, requestorUserName, JsonSerializer.Serialize(request));
                 var response = await _httpClient.PostAsJsonAsync("/api/dj/singer/update", request);
-                response.EnsureSuccessStatusCode();
-                var responseContent = await response.Content.ReadAsStringAsync();
-                var updatedSinger = JsonSerializer.Deserialize<Singer>(responseContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                Log.Information("[DJSCREEN] Successfully updated singer status for EventId={EventId}, RequestorUserName={RequestorUserName}, Response={Response}", eventId, requestorUserName, responseContent);
-                return updatedSinger ?? throw new InvalidOperationException("Updated singer response is null");
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Log.Error("[APISERVICE] Failed to update singer status for EventId={EventId}, RequestorUserName={RequestorUserName}: Status={StatusCode}, Error={Error}", eventId, requestorUserName, response.StatusCode, errorContent);
+                    throw new HttpRequestException($"Failed to update singer status: {response.StatusCode} - {errorContent}");
+                }
+                Log.Information("[APISERVICE] Successfully updated singer status for EventId={EventId}, RequestorUserName={RequestorUserName}", eventId, requestorUserName);
             }
             catch (Exception ex)
             {
-                Log.Error("[DJSCREEN] Failed to update singer status for EventId={EventId}, RequestorUserName={RequestorUserName}: {Message}", eventId, requestorUserName, ex.Message);
+                Log.Error("[APISERVICE] Failed to update singer status for EventId={EventId}, RequestorUserName={RequestorUserName}: {Message}", eventId, requestorUserName, ex.Message);
                 throw;
             }
         }

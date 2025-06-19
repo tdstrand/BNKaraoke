@@ -131,8 +131,17 @@ namespace BNKaraoke.Api.Controllers
                     IsOnBreak = false
                 };
 
-                await _hubContext.Clients.Group($"Event_{eventId}")
-                    .SendAsync("SingerStatusUpdated", response);
+                try
+                {
+                    _logger.LogDebug("[DJController] Sending SingerStatusUpdated to group Event_{EventId} for RequestorUserName={RequestorUserName}", eventId, request.RequestorUserName);
+                    await _hubContext.Clients.Group($"Event_{eventId}")
+                        .SendAsync("SingerStatusUpdated", request.RequestorUserName, true, true, false);
+                    _logger.LogInformation("[DJController] Successfully sent SingerStatusUpdated for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
+                }
+                catch (Exception signalREx)
+                {
+                    _logger.LogError(signalREx, "[DJController] Failed to send SingerStatusUpdated for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
+                }
 
                 _logger.LogInformation("[DJController] Checked in successfully for EventId: {EventId}, UserId: {UserId}", eventId, user.Id);
                 return Ok(new
@@ -215,8 +224,17 @@ namespace BNKaraoke.Api.Controllers
                     IsOnBreak = false
                 };
 
-                await _hubContext.Clients.Group($"Event_{eventId}")
-                    .SendAsync("SingerStatusUpdated", response);
+                try
+                {
+                    _logger.LogDebug("[DJController] Sending SingerStatusUpdated to group Event_{EventId} for RequestorUserName={RequestorUserName}", eventId, request.RequestorUserName);
+                    await _hubContext.Clients.Group($"Event_{eventId}")
+                        .SendAsync("SingerStatusUpdated", request.RequestorUserName, false, false, false);
+                    _logger.LogInformation("[DJController] Successfully sent SingerStatusUpdated for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
+                }
+                catch (Exception signalREx)
+                {
+                    _logger.LogError(signalREx, "[DJController] Failed to send SingerStatusUpdated for EventId: {EventId}, RequestorUserName: {RequestorUserName}", eventId, request.RequestorUserName);
+                }
 
                 _logger.LogInformation("[DJController] Checked out successfully for EventId: {EventId}, UserId: {UserId}", eventId, user.Id);
                 return Ok(new { message = "Checked out successfully" });
@@ -669,9 +687,9 @@ namespace BNKaraoke.Api.Controllers
                     .FirstOrDefaultAsync(s => s.SettingKey == "ActivityTimeoutMinutes");
                 int timeoutMinutes = timeoutSetting != null && int.TryParse(timeoutSetting.SettingValue, out var parsedTimeout) ? parsedTimeout : 30;
 
-                // Singers from SingerStatus (IsJoined=true)
-                var joinedSingers = await _context.SingerStatus
-                    .Where(ss => ss.EventId == eventId && ss.IsJoined)
+                // Singers from SingerStatus
+                var singerStatuses = await _context.SingerStatus
+                    .Where(ss => ss.EventId == eventId)
                     .Join(_context.Users,
                         ss => ss.RequestorId,
                         u => u.Id,
@@ -679,7 +697,7 @@ namespace BNKaraoke.Api.Controllers
                         {
                             UserId = u.UserName ?? string.Empty,
                             DisplayName = (u.FirstName + " " + u.LastName).Trim(),
-                            IsLoggedIn = ss.IsLoggedIn && (u.LastActivity == null || u.LastActivity >= DateTime.UtcNow.AddMinutes(-timeoutMinutes)),
+                            IsLoggedIn = ss.IsLoggedIn,
                             IsJoined = ss.IsJoined,
                             IsOnBreak = ss.IsOnBreak,
                             LastActivity = u.LastActivity,
@@ -688,7 +706,7 @@ namespace BNKaraoke.Api.Controllers
                         })
                     .ToListAsync();
 
-                // Singers from EventQueues (distinct RequestorUserName)
+                // Singers from EventQueues (distinct RequestorUserName, only if no SingerStatus entry)
                 var queueSingers = await _context.EventQueues
                     .Where(eq => eq.EventId == eventId && eq.Status == "Live" && eq.SungAt == null)
                     .Select(eq => eq.RequestorUserName)
@@ -701,8 +719,8 @@ namespace BNKaraoke.Api.Controllers
                             UserId = u.UserName ?? string.Empty,
                             DisplayName = (u.FirstName + " " + u.LastName).Trim(),
                             IsLoggedIn = u.LastActivity != null && u.LastActivity >= DateTime.UtcNow.AddMinutes(-timeoutMinutes),
-                            IsJoined = true, // Treat queue participants as joined unless checked out
-                            IsOnBreak = false, // Default for queue-only singers
+                            IsJoined = true, // Default for queue participants without SingerStatus
+                            IsOnBreak = false, // Default
                             LastActivity = u.LastActivity,
                             SingerStatusUpdatedAt = (DateTime?)null,
                             Source = "EventQueues"
@@ -710,7 +728,7 @@ namespace BNKaraoke.Api.Controllers
                     .ToListAsync();
 
                 // Log raw data for debugging
-                foreach (var singer in joinedSingers)
+                foreach (var singer in singerStatuses)
                 {
                     _logger.LogDebug("[DJController] SingerStatus singer: UserId={UserId}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}, LastActivity={LastActivity}, UpdatedAt={UpdatedAt}, Source={Source}",
                         singer.UserId, singer.IsLoggedIn, singer.IsJoined, singer.IsOnBreak, singer.LastActivity, singer.SingerStatusUpdatedAt, singer.Source);
@@ -721,19 +739,43 @@ namespace BNKaraoke.Api.Controllers
                         singer.UserId, singer.IsLoggedIn, singer.IsJoined, singer.IsOnBreak, singer.LastActivity, singer.SingerStatusUpdatedAt, singer.Source);
                 }
 
-                // Union and deduplicate by UserId
-                var allSingers = joinedSingers
-                    .Concat(queueSingers)
-                    .GroupBy(s => s.UserId)
-                    .Select(g => new DJSingerDto
+                // Combine and prioritize SingerStatus over EventQueues
+                var allSingers = singerStatuses
+                    .GroupJoin(queueSingers,
+                        ss => ss.UserId,
+                        qs => qs.UserId,
+                        (ss, qsGroup) => new { SingerStatus = ss, QueueSingers = qsGroup })
+                    .SelectMany(g => g.QueueSingers.DefaultIfEmpty(), (g, qs) => new { g.SingerStatus, QueueSinger = qs })
+                    .GroupBy(x => x.SingerStatus.UserId)
+                    .Select(g =>
                     {
-                        UserId = g.Key,
-                        DisplayName = g.First().DisplayName.Length > 0 ? g.First().DisplayName : g.Key, // Fallback to UserId
-                        IsLoggedIn = g.Any(s => s.IsLoggedIn), // True if any record indicates logged in
-                        IsJoined = g.Any(s => s.IsJoined), // True if joined or in queue
-                        IsOnBreak = g.Any(s => s.IsOnBreak) // True if on break in SingerStatus
+                        var ss = g.First().SingerStatus;
+                        var qs = g.FirstOrDefault(x => x.QueueSinger != null)?.QueueSinger;
+                        return new DJSingerDto
+                        {
+                            UserId = ss.UserId,
+                            DisplayName = ss.DisplayName.Length > 0 ? ss.DisplayName : ss.UserId,
+                            IsLoggedIn = ss.IsLoggedIn || (qs != null && qs.IsLoggedIn),
+                            IsJoined = ss.IsJoined,
+                            IsOnBreak = ss.IsOnBreak
+                        };
                     })
                     .ToList();
+
+                // Include queue singers without SingerStatus entries
+                var queueOnlySingers = queueSingers
+                    .Where(qs => !singerStatuses.Any(ss => ss.UserId == qs.UserId))
+                    .Select(qs => new DJSingerDto
+                    {
+                        UserId = qs.UserId,
+                        DisplayName = qs.DisplayName.Length > 0 ? qs.DisplayName : qs.UserId,
+                        IsLoggedIn = qs.IsLoggedIn,
+                        IsJoined = false, // Respect TestMode updates
+                        IsOnBreak = qs.IsOnBreak
+                    })
+                    .ToList();
+
+                allSingers.AddRange(queueOnlySingers);
 
                 // Log final DJSingerDto for debugging
                 foreach (var singer in allSingers)
@@ -749,7 +791,7 @@ namespace BNKaraoke.Api.Controllers
                     .Take(size)
                     .ToList();
 
-                _logger.LogInformation("[DJController] Fetched {Count} singers for EventId: {EventId}, Joined: {JoinedCount}, From Queue: {QueueCount}", pagedSingers.Count, eventId, joinedSingers.Count, queueSingers.Count);
+                _logger.LogInformation("[DJController] Fetched {Count} singers for EventId: {EventId}, Total: {TotalCount}", pagedSingers.Count, eventId, totalSingers);
                 return Ok(new { Singers = pagedSingers, Total = totalSingers, Page = page, Size = size });
             }
             catch (Exception ex)
@@ -1065,8 +1107,17 @@ namespace BNKaraoke.Api.Controllers
                     IsOnBreak = request.IsOnBreak
                 };
 
-                await _hubContext.Clients.Group($"Event_{request.EventId}")
-                    .SendAsync("SingerStatusUpdated", response);
+                try
+                {
+                    _logger.LogDebug("[DJController] Sending SingerStatusUpdated to group Event_{EventId} for RequestorUserName={RequestorUserName}", request.EventId, request.RequestorUserName);
+                    await _hubContext.Clients.Group($"Event_{request.EventId}")
+                        .SendAsync("SingerStatusUpdated", request.RequestorUserName, request.IsLoggedIn, request.IsJoined, request.IsOnBreak);
+                    _logger.LogInformation("[DJController] Successfully sent SingerStatusUpdated for EventId: {EventId}, RequestorUserName: {RequestorUserName}", request.EventId, request.RequestorUserName);
+                }
+                catch (Exception signalREx)
+                {
+                    _logger.LogError(signalREx, "[DJController] Failed to send SingerStatusUpdated for EventId: {EventId}, RequestorUserName: {RequestorUserName}", request.EventId, request.RequestorUserName);
+                }
 
                 _logger.LogInformation("[DJController] Updated singer status for RequestorUserName: {RequestorUserName} for EventId: {EventId}, Concurrency Conflict: {Conflict}", request.RequestorUserName, request.EventId, hadConcurrencyConflict);
                 return Ok(response);

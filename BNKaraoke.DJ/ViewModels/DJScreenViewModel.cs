@@ -4,11 +4,8 @@ using BNKaraoke.DJ.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Serilog;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Threading.Tasks;
-using System.Timers;
 using System.Windows;
 
 namespace BNKaraoke.DJ.ViewModels
@@ -19,11 +16,12 @@ namespace BNKaraoke.DJ.ViewModels
         private readonly IApiService _apiService = new ApiService(UserSessionService.Instance, SettingsService.Instance);
         private readonly SettingsService _settingsService = SettingsService.Instance;
         private readonly VideoCacheService? _videoCacheService;
+#pragma warning disable CS8618 // Suppress CS8618 warning
         private readonly SignalRService _signalRService;
+#pragma warning restore CS8618
         private string? _currentEventId;
         private VideoPlayerWindow? _videoPlayerWindow;
         private bool _isLoginWindowOpen;
-        private Timer? _singerPollingTimer;
 
         [ObservableProperty]
         private bool _isAuthenticated;
@@ -35,13 +33,13 @@ namespace BNKaraoke.DJ.ViewModels
         private string _loginLogoutButtonText = "Login";
 
         [ObservableProperty]
-        private string _loginLogoutButtonColor = "#3B82F6";
+        private string _loginLogoutButtonColor = "#3B82F6"; // Blue
 
         [ObservableProperty]
         private string _joinEventButtonText = "No Live Events";
 
         [ObservableProperty]
-        private string _joinEventButtonColor = "Gray";
+        private string _joinEventButtonColor = "Gray"; // Disabled
 
         [ObservableProperty]
         private bool _isJoinEventButtonVisible;
@@ -62,10 +60,25 @@ namespace BNKaraoke.DJ.ViewModels
         private ObservableCollection<Singer> _singers = [];
 
         [ObservableProperty]
+        private int _nonDummySingersCount;
+
+        [ObservableProperty]
+        private ObservableCollection<Singer> _greenSingers = [];
+
+        [ObservableProperty]
+        private ObservableCollection<Singer> _yellowSingers = [];
+
+        [ObservableProperty]
+        private ObservableCollection<Singer> _orangeSingers = [];
+
+        [ObservableProperty]
+        private ObservableCollection<Singer> _redSingers = [];
+
+        [ObservableProperty]
         private string _showButtonText = "Start Show";
 
         [ObservableProperty]
-        private string _showButtonColor = "#22d3ee";
+        private string _showButtonColor = "#22d3ee"; // Cyan
 
         [ObservableProperty]
         private bool _isShowActive;
@@ -104,10 +117,13 @@ namespace BNKaraoke.DJ.ViewModels
         private int _sungCount;
 
         [ObservableProperty]
+        private double _songPosition;
+
+        [ObservableProperty]
         private TimeSpan _songDuration = TimeSpan.FromMinutes(4);
 
         [ObservableProperty]
-        private string _stopRestartButtonColor = "#22d3ee";
+        private string _stopRestartButtonColor = "#22d3ee"; // Default cyan
 
         public DJScreenViewModel(VideoCacheService? videoCacheService = null)
         {
@@ -126,11 +142,7 @@ namespace BNKaraoke.DJ.ViewModels
                 _userSessionService.SessionChanged += UserSessionService_SessionChanged;
                 Log.Information("[DJSCREEN VM] Subscribed to SessionChanged event");
 
-                _singerPollingTimer = new Timer(180000); // 180 seconds
-                _singerPollingTimer.Elapsed += async (s, e) => await LoadSingersAsync(_currentEventId);
-                _singerPollingTimer.AutoReset = true;
-
-                UpdateAuthenticationState();
+                UpdateAuthenticationStateInitial();
                 Log.Information("[DJSCREEN VM] Initialized UI state in constructor");
                 Log.Information("[DJSCREEN VM] ViewModel instance created: {InstanceId}", GetHashCode());
             }
@@ -139,6 +151,117 @@ namespace BNKaraoke.DJ.ViewModels
                 Log.Error("[DJSCREEN VM] Failed to initialize ViewModel: {Message}", ex.Message);
                 MessageBox.Show($"Failed to initialize DJScreen: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private void UpdateAuthenticationStateInitial()
+        {
+            try
+            {
+                Log.Information("[DJSCREEN] Initializing authentication state");
+                bool newIsAuthenticated = _userSessionService.IsAuthenticated;
+                string newWelcomeMessage = newIsAuthenticated ? $"Welcome, {_userSessionService.FirstName ?? "User"}" : "Not logged in";
+                string newLoginLogoutButtonText = newIsAuthenticated ? "Logout" : "Login";
+                string newLoginLogoutButtonColor = newIsAuthenticated ? "#FF0000" : "#3B82F6";
+                bool newIsJoinEventButtonVisible = newIsAuthenticated;
+
+                IsAuthenticated = newIsAuthenticated;
+                WelcomeMessage = newWelcomeMessage;
+                LoginLogoutButtonText = newLoginLogoutButtonText;
+                LoginLogoutButtonColor = newLoginLogoutButtonColor;
+                IsJoinEventButtonVisible = newIsJoinEventButtonVisible;
+
+                if (!newIsAuthenticated)
+                {
+                    JoinEventButtonText = "No Live Events";
+                    JoinEventButtonColor = "Gray";
+                    _currentEventId = null;
+                    CurrentEvent = null;
+                    QueueEntries.Clear();
+                    Singers.Clear();
+                    GreenSingers.Clear();
+                    YellowSingers.Clear();
+                    OrangeSingers.Clear();
+                    RedSingers.Clear();
+                    NonDummySingersCount = 0;
+                    SungCount = 0;
+                    if (_videoPlayerWindow != null)
+                    {
+                        _videoPlayerWindow.Close();
+                        _videoPlayerWindow = null;
+                        IsShowActive = false;
+                        ShowButtonText = "Start Show";
+                        ShowButtonColor = "#22d3ee";
+                    }
+                    PlayingQueueEntry = null;
+                }
+
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    OnPropertyChanged(nameof(IsAuthenticated));
+                    OnPropertyChanged(nameof(WelcomeMessage));
+                    OnPropertyChanged(nameof(LoginLogoutButtonText));
+                    OnPropertyChanged(nameof(LoginLogoutButtonColor));
+                    OnPropertyChanged(nameof(IsJoinEventButtonVisible));
+                    OnPropertyChanged(nameof(JoinEventButtonText));
+                    OnPropertyChanged(nameof(JoinEventButtonColor));
+                    OnPropertyChanged(nameof(CurrentEvent));
+                    OnPropertyChanged(nameof(QueueEntries));
+                    OnPropertyChanged(nameof(Singers));
+                    OnPropertyChanged(nameof(GreenSingers));
+                    OnPropertyChanged(nameof(YellowSingers));
+                    OnPropertyChanged(nameof(OrangeSingers));
+                    OnPropertyChanged(nameof(RedSingers));
+                    OnPropertyChanged(nameof(NonDummySingersCount));
+                    OnPropertyChanged(nameof(ShowButtonText));
+                    OnPropertyChanged(nameof(ShowButtonColor));
+                    OnPropertyChanged(nameof(IsShowActive));
+                    OnPropertyChanged(nameof(PlayingQueueEntry));
+                    OnPropertyChanged(nameof(SungCount));
+                });
+
+                Log.Information("[DJSCREEN] Initial authentication state set: IsAuthenticated={IsAuthenticated}, WelcomeMessage={WelcomeMessage}, LoginLogoutButtonText={LoginLogoutButtonText}, IsJoinEventButtonVisible={IsJoinEventButtonVisible}",
+                    IsAuthenticated, WelcomeMessage, LoginLogoutButtonText, IsJoinEventButtonVisible);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to initialize authentication state: {Message}", ex.Message);
+                SetWarningMessage($"Failed to initialize authentication: {ex.Message}");
+            }
+        }
+
+        private void HandleQueueUpdated(int queueId, string action, int? position, bool? isOnBreak)
+        {
+            Application.Current.Dispatcher.Invoke(async () =>
+            {
+                try
+                {
+                    Log.Information("[DJSCREEN SIGNALR] Handling QueueUpdated: QueueId={QueueId}, Action={Action}, Position={Position}, IsOnBreak={IsOnBreak}", queueId, action, position, isOnBreak);
+                    await LoadQueueData();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("[DJSCREEN SIGNALR] Failed to handle QueueUpdated for QueueId={QueueId}: {Message}, StackTrace={StackTrace}", queueId, ex.Message, ex.StackTrace);
+                    SetWarningMessage($"Failed to update queue: {ex.Message}");
+                }
+            });
+        }
+
+        private void HandleSingerStatusUpdated(string requestorUserName, bool isLoggedIn, bool isJoined, bool isOnBreak)
+        {
+            Application.Current.Dispatcher.Invoke(async () =>
+            {
+                try
+                {
+                    Log.Information("[DJSCREEN SIGNALR] Handling SingerStatusUpdated: RequestorUserName={RequestorUserName}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
+                        requestorUserName, isLoggedIn, isJoined, isOnBreak);
+                    await LoadSingersAsync();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("[DJSCREEN SIGNALR] Failed to handle SingerStatusUpdated for RequestorUserName={RequestorUserName}: {Message}, StackTrace={StackTrace}", requestorUserName, ex.Message, ex.StackTrace);
+                    SetWarningMessage($"Failed to update singers: {ex.Message}");
+                }
+            });
         }
 
         private async void UserSessionService_SessionChanged(object? sender, EventArgs e)
@@ -158,7 +281,7 @@ namespace BNKaraoke.DJ.ViewModels
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN] Failed to handle session changed event: {Message}", ex.Message);
-                WarningMessage = $"Failed to handle session change: {ex.Message}";
+                SetWarningMessage($"Failed to handle session change: {ex.Message}");
             }
         }
 
@@ -187,6 +310,11 @@ namespace BNKaraoke.DJ.ViewModels
                     CurrentEvent = null;
                     QueueEntries.Clear();
                     Singers.Clear();
+                    GreenSingers.Clear();
+                    YellowSingers.Clear();
+                    OrangeSingers.Clear();
+                    RedSingers.Clear();
+                    NonDummySingersCount = 0;
                     SungCount = 0;
                     if (_videoPlayerWindow != null)
                     {
@@ -197,8 +325,6 @@ namespace BNKaraoke.DJ.ViewModels
                         ShowButtonColor = "#22d3ee";
                     }
                     PlayingQueueEntry = null;
-                    if (_singerPollingTimer != null)
-                        _singerPollingTimer.Stop();
                     await _signalRService.StopAsync(0);
                     Log.Information("[DJSCREEN SIGNALR] Disconnected from KaraokeDJHub on logout");
                 }
@@ -219,6 +345,11 @@ namespace BNKaraoke.DJ.ViewModels
                     OnPropertyChanged(nameof(CurrentEvent));
                     OnPropertyChanged(nameof(QueueEntries));
                     OnPropertyChanged(nameof(Singers));
+                    OnPropertyChanged(nameof(GreenSingers));
+                    OnPropertyChanged(nameof(YellowSingers));
+                    OnPropertyChanged(nameof(OrangeSingers));
+                    OnPropertyChanged(nameof(RedSingers));
+                    OnPropertyChanged(nameof(NonDummySingersCount));
                     OnPropertyChanged(nameof(ShowButtonText));
                     OnPropertyChanged(nameof(ShowButtonColor));
                     OnPropertyChanged(nameof(IsShowActive));
@@ -232,106 +363,8 @@ namespace BNKaraoke.DJ.ViewModels
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN] Failed to update authentication state: {Message}", ex.Message);
-                WarningMessage = $"Failed to update authentication: {ex.Message}";
+                SetWarningMessage($"Failed to update authentication: {ex.Message}");
             }
         }
-
-        private void HandleQueueUpdated(int queueId, string action, int? position, bool? isOnBreak)
-        {
-            Application.Current.Dispatcher.Invoke(async () =>
-            {
-                try
-                {
-                    Log.Information("[DJSCREEN SIGNALR] Handling QueueUpdated: QueueId={QueueId}, Action={Action}, Position={Position}, IsOnBreak={IsOnBreak}", queueId, action, position, isOnBreak);
-                    await LoadQueueData();
-                    await LoadSingersAsync(_currentEventId);
-                }
-                catch (Exception ex)
-                {
-                    Log.Error("[DJSCREEN SIGNALR] Failed to handle QueueUpdated for QueueId={QueueId}: {Message}, StackTrace={StackTrace}", queueId, ex.Message, ex.StackTrace);
-                    WarningMessage = $"Failed to update queue: {ex.Message}";
-                }
-            });
-        }
-
-        private void HandleSingerStatusUpdated(string requestorUserName, bool isLoggedIn, bool isJoined, bool isOnBreak)
-        {
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                try
-                {
-                    Log.Information("[DJSCREEN SIGNALR] Handling SingerStatusUpdated: RequestorUserName={RequestorUserName}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
-                        requestorUserName, isLoggedIn, isJoined, isOnBreak);
-                    var singer = Singers.FirstOrDefault(s => s.UserId == requestorUserName);
-                    if (singer != null)
-                    {
-                        Log.Information("[DJSCREEN SIGNALR] Before update: UserId={UserId}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
-                            singer.UserId, singer.IsLoggedIn, singer.IsJoined, singer.IsOnBreak);
-
-                        singer.IsLoggedIn = isLoggedIn;
-                        Log.Information("[DJSCREEN SIGNALR] Updated IsLoggedIn to {IsLoggedIn} for UserId={UserId}", isLoggedIn, singer.UserId);
-                        singer.IsJoined = isJoined;
-                        Log.Information("[DJSCREEN SIGNALR] Updated IsJoined to {IsJoined} for UserId={UserId}", isJoined, singer.UserId);
-                        singer.IsOnBreak = isOnBreak;
-                        Log.Information("[DJSCREEN SIGNALR] Updated IsOnBreak to {IsOnBreak} for UserId={UserId}", isOnBreak, singer.UserId);
-
-                        SortSingers();
-                        OnPropertyChanged(nameof(Singers)); // Ensure UI refresh
-                        Log.Information("[DJSCREEN SIGNALR] Locally updated singer status for UserId={UserId}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
-                            requestorUserName, isLoggedIn, isJoined, isOnBreak);
-                    }
-                    else
-                    {
-                        Log.Warning("[DJSCREEN SIGNALR] Singer not found locally for UserId={UserId}", requestorUserName);
-                        Task.Run(() => LoadSingersAsync(_currentEventId, requestorUserName));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log.Error("[DJSCREEN SIGNALR] Failed to handle SingerStatusUpdated for RequestorUserName={RequestorUserName}: {Message}, StackTrace={StackTrace}", requestorUserName, ex.Message, ex.StackTrace);
-                    WarningMessage = $"Failed to update singers: {ex.Message}";
-                }
-            });
-        }
-
-        private void SortSingers()
-        {
-            try
-            {
-                Log.Information("[DJSCREEN] Sorting singers");
-                var sortedSingers = Singers.OrderBy(singer =>
-                {
-                    if (singer.IsLoggedIn && singer.IsJoined && !singer.IsOnBreak) return 1; // Green
-                    if (singer.IsLoggedIn && singer.IsJoined && singer.IsOnBreak) return 2; // Yellow
-                    if (singer.IsLoggedIn && !singer.IsJoined) return 3; // Orange
-                    return 4; // Red
-                }).ThenBy(singer => singer.DisplayName).ToList();
-
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    Singers.Clear();
-                    foreach (var singer in sortedSingers)
-                    {
-                        Singers.Add(singer);
-                    }
-                    OnPropertyChanged(nameof(Singers));
-                    Log.Information("[DJSCREEN] Sorted singers: Count={Count}, Names={Names}",
-                        Singers.Count, string.Join(", ", Singers.Select(s => s.DisplayName)));
-                });
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[DJSCREEN] Failed to sort singers: {Message}", ex.Message);
-                WarningMessage = $"Failed to sort singers: {ex.Message}";
-            }
-        }
-    }
-
-    public class SingersResponse
-    {
-        public List<DJSingerDto> Singers { get; set; } = [];
-        public int Total { get; set; }
-        public int Page { get; set; }
-        public int Size { get; set; }
     }
 }
