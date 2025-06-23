@@ -31,15 +31,21 @@ namespace BNKaraoke.DJ.Models
         private bool _isOnHold;
         private bool _isUpNext;
         private string? _holdReason;
+        private bool _isSingerLoggedIn;
+        private bool _isSingerJoined;
+        private bool _isSingerOnBreak;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-            if (propertyName == nameof(IsUpNext) || propertyName == nameof(IsOnHold) || propertyName == nameof(RequestorDisplayName))
+            if (propertyName == nameof(IsUpNext) || propertyName == nameof(IsOnHold) ||
+                propertyName == nameof(RequestorDisplayName) || propertyName == nameof(IsSingerLoggedIn) ||
+                propertyName == nameof(IsSingerJoined) || propertyName == nameof(IsSingerOnBreak))
             {
-                Log.Information("[QUEUE ENTRY] {PropertyName} changed for SongId={SongId}: {Value}", propertyName, SongId, GetPropertyValue(propertyName));
+                Log.Information("[QUEUE ENTRY] {PropertyName} changed for SongId={SongId}: {Value}",
+                    propertyName, SongId, GetPropertyValue(propertyName));
             }
         }
 
@@ -50,6 +56,9 @@ namespace BNKaraoke.DJ.Models
                 nameof(IsUpNext) => IsUpNext,
                 nameof(IsOnHold) => IsOnHold,
                 nameof(RequestorDisplayName) => RequestorDisplayName ?? "null",
+                nameof(IsSingerLoggedIn) => IsSingerLoggedIn,
+                nameof(IsSingerJoined) => IsSingerJoined,
+                nameof(IsSingerOnBreak) => IsSingerOnBreak,
                 _ => null
             };
         }
@@ -198,6 +207,24 @@ namespace BNKaraoke.DJ.Models
         {
             get => _holdReason;
             set => SetProperty(ref _holdReason, value);
+        }
+
+        public bool IsSingerLoggedIn
+        {
+            get => _isSingerLoggedIn;
+            set => SetProperty(ref _isSingerLoggedIn, value);
+        }
+
+        public bool IsSingerJoined
+        {
+            get => _isSingerJoined;
+            set => SetProperty(ref _isSingerJoined, value);
+        }
+
+        public bool IsSingerOnBreak
+        {
+            get => _isSingerOnBreak;
+            set => SetProperty(ref _isSingerOnBreak, value);
         }
     }
 }

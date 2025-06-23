@@ -1,3 +1,4 @@
+// ApiService.cs
 using BNKaraoke.DJ.Models;
 using Serilog;
 using System;
@@ -208,7 +209,7 @@ namespace BNKaraoke.DJ.Services
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to fetch singers for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[APISERVICE] Failed to fetch singers for EventId={EventId}: {Message}", ex.Message);
                 throw;
             }
         }
@@ -237,7 +238,7 @@ namespace BNKaraoke.DJ.Services
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to fetch queue for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[APISERVICE] Failed to fetch queue for EventId={EventId}: {Message}", ex.Message);
                 throw;
             }
         }
@@ -256,12 +257,12 @@ namespace BNKaraoke.DJ.Services
             }
             catch (JsonException ex)
             {
-                Log.Error("[APISERVICE] Failed to deserialize live queue for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[APISERVICE] Failed to deserialize live queue for EventId={EventId}: {Message}", ex.Message);
                 return new List<QueueEntry>();
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to fetch live queue for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[APISERVICE] Failed to fetch live queue for EventId={EventId}: {Message}", ex.Message);
                 throw;
             }
         }
@@ -305,7 +306,7 @@ namespace BNKaraoke.DJ.Services
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to fetch sung count for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[APISERVICE] Failed to fetch sung count for EventId={EventId}: {Message}", ex.Message);
                 throw;
             }
         }
@@ -334,12 +335,12 @@ namespace BNKaraoke.DJ.Services
             }
             catch (HttpRequestException ex)
             {
-                Log.Error("[APISERVICE] Failed to reorder queue for EventId={EventId}: {Message}", eventId, ex.Message);
+                Log.Error("[APISERVICE] Failed to reorder queue for EventId={EventId}: {Message}", ex.Message);
                 throw;
             }
             catch (Exception ex)
             {
-                Log.Error("[APISERVICE] Failed to reorder queue for EventId={EventId}: {Message}, InnerException={InnerException}", eventId, ex.Message, ex.InnerException?.Message);
+                Log.Error("[APISERVICE] Failed to reorder queue for EventId={EventId}: {Message}, InnerException={InnerException}", ex.Message, ex.InnerException?.Message);
                 throw;
             }
         }
@@ -485,11 +486,11 @@ namespace BNKaraoke.DJ.Services
                 Log.Information("[APISERVICE] Sending toggle break request for EventId={EventId}, QueueId={QueueId}, IsOnBreak={IsOnBreak}, Payload={Payload}", eventId, queueId, isOnBreak, JsonSerializer.Serialize(request));
                 var response = await _httpClient.PostAsJsonAsync($"/api/dj/break", request);
                 response.EnsureSuccessStatusCode();
-                Log.Information("[DJSCREEN] Successfully toggled break for songId={QueueId} for EventId={EventId}", queueId, eventId);
+                Log.Information("[APISERVICE] Successfully toggled break for QueueId={QueueId} for EventId={EventId}", queueId, eventId);
             }
             catch (Exception ex)
             {
-                Log.Error("[DJSCREEN] Failed to toggle break for songId={QueueId} for EventId={EventId}: {Message}", queueId, eventId);
+                Log.Error("[APISERVICE] Failed to toggle break for QueueId={QueueId} for EventId={EventId}: {Message}", queueId, eventId, ex.Message);
                 throw;
             }
         }

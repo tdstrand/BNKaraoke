@@ -175,15 +175,18 @@
                                 <TextBlock Text="{Binding PlayingQueueEntry.Position, FallbackValue=''}" Grid.Row="1" Grid.Column="0" FontSize="18" Foreground="#ddd" Margin="5"/>
                                 <TextBlock Text="{Binding PlayingQueueEntry.SongTitle, FallbackValue='No Song Playing'}" Grid.Row="1" Grid.Column="1" FontSize="18" Foreground="#ddd" Margin="5"/>
                                 <TextBlock Text="{Binding PlayingQueueEntry.SongArtist, FallbackValue=''}" Grid.Row="1" Grid.Column="2" FontSize="18" Foreground="#ddd" Margin="5"/>
-                                <TextBlock Text="{Binding PlayingQueueEntry.RequestorDisplayName, FallbackValue=''}" Grid.Row="1" Grid.Column="3" FontSize="18" Foreground="#ddd" Margin="5"/>
+                                <TextBlock Text="{Binding PlayingQueueEntry.RequestorDisplayName, FallbackValue=''}" Grid.Row="1" Grid.Column="3" FontSize="18" Margin="5">
+                                    <TextBlock.Foreground>
+                                        <Binding Path="PlayingQueueEntry" Converter="{StaticResource SingerStatusToColorConverter}"/>
+                                    </TextBlock.Foreground>
+                                </TextBlock>
                                 <TextBlock Text="{Binding PlayingQueueEntry.VideoLength, FallbackValue=''}" Grid.Row="1" Grid.Column="4" FontSize="18" Foreground="#ddd" Margin="5"/>
                                 <CheckBox IsChecked="{Binding PlayingQueueEntry.IsVideoCached}" IsEnabled="False" Grid.Row="1" Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
                             </Grid>
                         </Border>
                         <ListView x:Name="QueueListView" ItemsSource="{Binding QueueEntries}" Margin="5"
                                   SelectedItem="{Binding SelectedQueueEntry}" AllowDrop="True"
-                                  PreviewMouseLeftButtonDown="ListViewItem_PreviewMouseLeftButtonDown"
-                                  MouseDoubleClick="ListViewItem_MouseDoubleClick">
+                                  PreviewMouseLeftButtonDown="ListViewItem_PreviewMouseLeftButtonDown">
                             <i:Interaction.Behaviors>
                                 <behaviors:DragDropBehavior DropCommand="{Binding DropCommand}"/>
                             </i:Interaction.Behaviors>
@@ -192,7 +195,17 @@
                                     <GridViewColumn Header="Pos" Width="50" DisplayMemberBinding="{Binding Position}"/>
                                     <GridViewColumn Header="Song Title" Width="280" DisplayMemberBinding="{Binding SongTitle}"/>
                                     <GridViewColumn Header="Artist" Width="230" DisplayMemberBinding="{Binding SongArtist}"/>
-                                    <GridViewColumn Header="Requestor" Width="180" DisplayMemberBinding="{Binding RequestorDisplayName}"/>
+                                    <GridViewColumn Header="Requestor" Width="180">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding RequestorDisplayName, FallbackValue='Unknown'}" FontSize="18" Margin="5">
+                                                    <TextBlock.Foreground>
+                                                        <Binding Path="." Converter="{StaticResource SingerStatusToColorConverter}"/>
+                                                    </TextBlock.Foreground>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
                                     <GridViewColumn Header="Length" Width="80" DisplayMemberBinding="{Binding VideoLength}"/>
                                     <GridViewColumn Header="Cached" Width="50">
                                         <GridViewColumn.CellTemplate>
@@ -210,6 +223,7 @@
                                     <Setter Property="Padding" Value="10"/>
                                     <Setter Property="BorderBrush" Value="#ccc"/>
                                     <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                    <EventSetter Event="PreviewMouseDoubleClick" Handler="QueueListView_PreviewMouseDoubleClick"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsUpNext, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" Value="True">
                                             <Setter Property="Background" Value="#FFFFE0"/>

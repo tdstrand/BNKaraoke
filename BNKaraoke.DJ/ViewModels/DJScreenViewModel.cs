@@ -1,10 +1,12 @@
-﻿using BNKaraoke.DJ.Models;
+﻿// DJScreenViewModel.cs
+using BNKaraoke.DJ.Models;
 using BNKaraoke.DJ.Services;
 using BNKaraoke.DJ.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Serilog;
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -16,9 +18,7 @@ namespace BNKaraoke.DJ.ViewModels
         private readonly IApiService _apiService = new ApiService(UserSessionService.Instance, SettingsService.Instance);
         private readonly SettingsService _settingsService = SettingsService.Instance;
         private readonly VideoCacheService? _videoCacheService;
-#pragma warning disable CS8618 // Suppress CS8618 warning
-        private readonly SignalRService _signalRService;
-#pragma warning restore CS8618
+        private SignalRService? _signalRService;
         private string? _currentEventId;
         private VideoPlayerWindow? _videoPlayerWindow;
         private bool _isLoginWindowOpen;
@@ -135,7 +135,8 @@ namespace BNKaraoke.DJ.ViewModels
 
                 _signalRService = new SignalRService(
                     _userSessionService,
-                    (queueId, action, position, isOnBreak) => HandleQueueUpdated(queueId, action, position, isOnBreak),
+                    (queueId, action, position, isOnBreak, isSingerLoggedIn, isSingerJoined, isSingerOnBreak) =>
+                        HandleQueueUpdated(queueId, action, position, isOnBreak, isSingerLoggedIn, isSingerJoined, isSingerOnBreak),
                     (requestorUserName, isLoggedIn, isJoined, isOnBreak) => HandleSingerStatusUpdated(requestorUserName, isLoggedIn, isJoined, isOnBreak)
                 );
 
@@ -184,6 +185,7 @@ namespace BNKaraoke.DJ.ViewModels
                     RedSingers.Clear();
                     NonDummySingersCount = 0;
                     SungCount = 0;
+                    ClearPlayingQueueEntry();
                     if (_videoPlayerWindow != null)
                     {
                         _videoPlayerWindow.Close();
@@ -192,7 +194,6 @@ namespace BNKaraoke.DJ.ViewModels
                         ShowButtonText = "Start Show";
                         ShowButtonColor = "#22d3ee";
                     }
-                    PlayingQueueEntry = null;
                 }
 
                 Application.Current.Dispatcher.Invoke(() =>
@@ -229,14 +230,62 @@ namespace BNKaraoke.DJ.ViewModels
             }
         }
 
-        private void HandleQueueUpdated(int queueId, string action, int? position, bool? isOnBreak)
+        private void ClearPlayingQueueEntry()
+        {
+            try
+            {
+                Log.Information("[DJSCREEN] Clearing PlayingQueueEntry");
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    PlayingQueueEntry = null;
+                    IsPlaying = false;
+                    IsVideoPaused = false;
+                    SliderPosition = 0;
+                    CurrentVideoPosition = "--:--";
+                    TimeRemainingSeconds = 0;
+                    TimeRemaining = "0:00";
+                    StopRestartButtonColor = "#22d3ee";
+                    OnPropertyChanged(nameof(PlayingQueueEntry));
+                    OnPropertyChanged(nameof(IsPlaying));
+                    OnPropertyChanged(nameof(IsVideoPaused));
+                    OnPropertyChanged(nameof(SliderPosition));
+                    OnPropertyChanged(nameof(CurrentVideoPosition));
+                    OnPropertyChanged(nameof(TimeRemaining));
+                    OnPropertyChanged(nameof(TimeRemainingSeconds));
+                    OnPropertyChanged(nameof(StopRestartButtonColor));
+                    Log.Information("[DJSCREEN] UI updated after clearing PlayingQueueEntry");
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to clear PlayingQueueEntry: {Message}", ex.Message);
+                SetWarningMessage($"Failed to clear current song: {ex.Message}");
+            }
+        }
+
+        private void HandleQueueUpdated(int queueId, string action, int? position, bool? isOnBreak, bool isSingerLoggedIn, bool isSingerJoined, bool isSingerOnBreak)
         {
             Application.Current.Dispatcher.Invoke(async () =>
             {
                 try
                 {
-                    Log.Information("[DJSCREEN SIGNALR] Handling QueueUpdated: QueueId={QueueId}, Action={Action}, Position={Position}, IsOnBreak={IsOnBreak}", queueId, action, position, isOnBreak);
-                    await LoadQueueData();
+                    Log.Information("[DJSCREEN SIGNALR] Handling QueueUpdated: QueueId={QueueId}, Action={Action}, Position={Position}, IsOnBreak={IsOnBreak}, IsSingerLoggedIn={IsSingerLoggedIn}, IsSingerJoined={IsSingerJoined}, IsSingerOnBreak={IsSingerOnBreak}",
+                        queueId, action, position, isOnBreak, isSingerLoggedIn, isSingerJoined, isSingerOnBreak);
+                    var queueEntry = QueueEntries.FirstOrDefault(q => q.QueueId == queueId);
+                    if (queueEntry != null)
+                    {
+                        queueEntry.Position = position ?? queueEntry.Position;
+                        queueEntry.IsOnBreak = isOnBreak ?? queueEntry.IsOnBreak;
+                        queueEntry.IsSingerLoggedIn = isSingerLoggedIn;
+                        queueEntry.IsSingerJoined = isSingerJoined;
+                        queueEntry.IsSingerOnBreak = isSingerOnBreak;
+                        OnPropertyChanged(nameof(QueueEntries));
+                    }
+                    // Only refresh queue if action significantly changes state
+                    if (action == "Added" || action == "Removed" || action == "Moved")
+                    {
+                        await LoadQueueData();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -316,6 +365,7 @@ namespace BNKaraoke.DJ.ViewModels
                     RedSingers.Clear();
                     NonDummySingersCount = 0;
                     SungCount = 0;
+                    ClearPlayingQueueEntry();
                     if (_videoPlayerWindow != null)
                     {
                         _videoPlayerWindow.Close();
@@ -324,9 +374,11 @@ namespace BNKaraoke.DJ.ViewModels
                         ShowButtonText = "Start Show";
                         ShowButtonColor = "#22d3ee";
                     }
-                    PlayingQueueEntry = null;
-                    await _signalRService.StopAsync(0);
-                    Log.Information("[DJSCREEN SIGNALR] Disconnected from KaraokeDJHub on logout");
+                    if (_signalRService != null)
+                    {
+                        await _signalRService.StopAsync(0);
+                        Log.Information("[DJSCREEN SIGNALR] Disconnected from KaraokeDJHub on logout");
+                    }
                 }
                 else if (string.IsNullOrEmpty(_currentEventId) && !_isLoginWindowOpen)
                 {

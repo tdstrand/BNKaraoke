@@ -7,16 +7,89 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Threading.Tasks;
+using System.Threading;
 using System.Timers;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace BNKaraoke.DJ.ViewModels
 {
     public partial class DJScreenViewModel
     {
+        private readonly SemaphoreSlim _queueUpdateSemaphore = new SemaphoreSlim(1, 1);
+        private CancellationTokenSource _queueUpdateCts = new CancellationTokenSource();
+
+        private async Task UpdateQueueColorsAndRules()
+        {
+            if (string.IsNullOrEmpty(_currentEventId) || QueueEntries == null) return;
+
+            await _queueUpdateSemaphore.WaitAsync();
+            try
+            {
+                var cts = Interlocked.Exchange(ref _queueUpdateCts, new CancellationTokenSource());
+                cts.Cancel();
+                cts.Dispose();
+                var token = _queueUpdateCts.Token;
+
+                Log.Information("[DJSCREEN QUEUE] Updating queue colors and rules for EventId={EventId}", _currentEventId);
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    // Clear IsUpNext for all entries
+                    foreach (var entry in QueueEntries.Where(e => e.IsUpNext))
+                    {
+                        Log.Information("[DJSCREEN QUEUE] Clearing IsUpNext for QueueId={QueueId}, SongTitle={SongTitle}", entry.QueueId, entry.SongTitle);
+                        entry.IsUpNext = false;
+                    }
+
+                    // Log all queue entries for debugging
+                    foreach (var entry in QueueEntries.OrderBy(e => e.Position))
+                    {
+                        Log.Information("[DJSCREEN QUEUE] Evaluating QueueId={QueueId}, Position={Position}, SongTitle={SongTitle}, RequestorUserName={RequestorUserName}, IsOnHold={IsOnHold}, SingerStatus=IsSingerLoggedIn:{IsSingerLoggedIn}, IsSingerJoined:{IsSingerJoined}, IsSingerOnBreak:{IsSingerOnBreak}",
+                            entry.QueueId, entry.Position, entry.SongTitle, entry.RequestorUserName, entry.IsOnHold,
+                            entry.IsSingerLoggedIn, entry.IsSingerJoined, entry.IsSingerOnBreak);
+                    }
+
+                    // Find the first active entry with a green singer (IsSingerLoggedIn=True, IsSingerJoined=True, IsSingerOnBreak=False)
+                    var nextEntry = QueueEntries
+                        .Where(e => e.IsActive)
+                        .OrderBy(e => e.Position)
+                        .FirstOrDefault(e => !e.IsOnHold && e.IsSingerLoggedIn && e.IsSingerJoined && !e.IsSingerOnBreak);
+
+                    if (nextEntry != null)
+                    {
+                        nextEntry.IsUpNext = true;
+                        Log.Information("[DJSCREEN QUEUE] Set IsUpNext=True for QueueId={QueueId}, RequestorUserName={RequestorUserName}, SongTitle={SongTitle}, Position={Position}, IsSingerOnBreak={IsSingerOnBreak}",
+                            nextEntry.QueueId, nextEntry.RequestorUserName, nextEntry.SongTitle, nextEntry.Position, nextEntry.IsSingerOnBreak);
+                    }
+                    else
+                    {
+                        Log.Information("[DJSCREEN QUEUE] No eligible green singer found for IsUpNext in EventId={EventId}", _currentEventId);
+                    }
+
+                    OnPropertyChanged(nameof(QueueEntries));
+                }, DispatcherPriority.Background, token);
+            }
+            catch (OperationCanceledException)
+            {
+                Log.Information("[DJSCREEN QUEUE] Queue update cancelled for EventId={EventId}", _currentEventId);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN QUEUE] Failed to update queue colors and rules for EventId={EventId}: {Message}", _currentEventId, ex.Message);
+                SetWarningMessage($"Failed to update queue: {ex.Message}");
+            }
+            finally
+            {
+                _queueUpdateSemaphore.Release();
+            }
+        }
+
         [RelayCommand]
         private void ShowSongDetails()
         {
@@ -84,7 +157,7 @@ namespace BNKaraoke.DJ.ViewModels
         }
 
         [RelayCommand]
-        private async Task Drop(DragEventArgs e)
+        private async Task Drop(System.Windows.DragEventArgs e)
         {
             try
             {
@@ -114,7 +187,12 @@ namespace BNKaraoke.DJ.ViewModels
 
                 Log.Information("[DJSCREEN] Accessing target element");
                 var target = e.OriginalSource as FrameworkElement;
-                var targetItem = target?.DataContext as QueueEntry;
+                var listViewItem = target;
+                while (listViewItem != null && !(listViewItem is ListViewItem))
+                {
+                    listViewItem = VisualTreeHelper.GetParent(listViewItem) as FrameworkElement;
+                }
+                var targetItem = (listViewItem as ListViewItem)?.DataContext as QueueEntry;
 
                 if (targetItem == null)
                 {
@@ -155,7 +233,6 @@ namespace BNKaraoke.DJ.ViewModels
                     for (int i = 0; i < QueueEntries.Count; i++)
                     {
                         QueueEntries[i].Position = i + 1;
-                        QueueEntries[i].IsUpNext = i == 0; // Set IsUpNext for first entry
                     }
                     OnPropertyChanged(nameof(QueueEntries));
                 });
@@ -168,8 +245,8 @@ namespace BNKaraoke.DJ.ViewModels
                     await _apiService.ReorderQueueAsync(_currentEventId, queueIds);
                     Log.Information("[DJSCREEN] Queue reordered for event {EventId}, dropped {SourceQueueId} to position {TargetIndex}",
                         _currentEventId, draggedItem.QueueId, targetIndex + 1);
-
                     await LoadQueueData();
+                    await UpdateQueueColorsAndRules();
                     await LoadSungCountAsync();
                     Log.Information("[DJSCREEN] Refreshed queue data after reorder for event {EventId}", _currentEventId);
                 }
@@ -177,7 +254,7 @@ namespace BNKaraoke.DJ.ViewModels
                 {
                     Log.Error("[DJSCREEN] Failed to persist queue order: {Message}", ex.Message);
                     SetWarningMessage($"Failed to reorder queue: {ex.Message}");
-                    await LoadQueueData(); // Revert to server state
+                    await LoadQueueData();
                 }
             }
             catch (Exception ex)
@@ -271,7 +348,6 @@ namespace BNKaraoke.DJ.ViewModels
                             for (int i = 0; i < QueueEntries.Count; i++)
                             {
                                 QueueEntries[i].Position = i + 1;
-                                QueueEntries[i].IsUpNext = i == 0; // Set IsUpNext for first entry
                             }
                             var queueIds = QueueEntries.Select(q => q.QueueId.ToString()).ToList();
                             Log.Information("[DJSCREEN] Reordering queue for event {EventId}, QueueIds={QueueIds}", _currentEventId, string.Join(",", queueIds));
@@ -291,12 +367,13 @@ namespace BNKaraoke.DJ.ViewModels
                     OnPropertyChanged(nameof(TotalSongsPlayed));
                     OnPropertyChanged(nameof(SungCount));
                     Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}, SungCount: {SungCount}", TotalSongsPlayed, SungCount);
-                    QueueEntries.Remove(PlayingQueueEntry); // Remove from queue
+                    QueueEntries.Remove(PlayingQueueEntry);
                     PlayingQueueEntry = null;
                     OnPropertyChanged(nameof(PlayingQueueEntry));
                     OnPropertyChanged(nameof(QueueEntries));
                 }
                 await LoadQueueData();
+                await UpdateQueueColorsAndRules();
                 await LoadSungCountAsync();
             }
             catch (HttpRequestException ex)
@@ -375,7 +452,7 @@ namespace BNKaraoke.DJ.ViewModels
                         if (_videoPlayerWindow != null)
                         {
                             _videoPlayerWindow.StopVideo();
-                            _videoPlayerWindow.MediaPlayer?.Stop(); // Ensure video is fully stopped
+                            _videoPlayerWindow.MediaPlayer?.Stop();
                             Log.Information("[DJSCREEN] Stopped video for QueueId={QueueId}", PlayingQueueEntry.QueueId);
                         }
                         await _apiService.CompleteSongAsync(_currentEventId, PlayingQueueEntry.QueueId);
@@ -400,7 +477,7 @@ namespace BNKaraoke.DJ.ViewModels
                         OnPropertyChanged(nameof(TotalSongsPlayed));
                         OnPropertyChanged(nameof(SungCount));
                         Log.Information("[DJSCREEN] Incremented TotalSongsPlayed: {Count}, SungCount: {SungCount}", TotalSongsPlayed, SungCount);
-                        QueueEntries.Remove(PlayingQueueEntry); // Remove from queue
+                        QueueEntries.Remove(PlayingQueueEntry);
                         PlayingQueueEntry = null;
                         OnPropertyChanged(nameof(PlayingQueueEntry));
                         OnPropertyChanged(nameof(QueueEntries));
@@ -452,28 +529,29 @@ namespace BNKaraoke.DJ.ViewModels
                     }
                     if (_countdownTimer == null)
                     {
-                        _countdownTimer = new Timer(1000);
+                        _countdownTimer = new System.Timers.Timer(1000);
                         _countdownTimer.Elapsed += CountdownTimer_Elapsed;
                         _countdownTimer.Start();
                     }
                     if (_updateTimer == null)
                     {
-                        _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) }; // Increased interval
+                        _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
                         _updateTimer.Tick += UpdateTimer_Tick;
                         _updateTimer.Start();
                     }
-                    QueueEntries.Remove(SelectedQueueEntry); // Remove from queue
+                    QueueEntries.Remove(SelectedQueueEntry);
                     Application.Current.Dispatcher.Invoke(() =>
                     {
                         for (int i = 0; i < QueueEntries.Count; i++)
                         {
-                            QueueEntries[i].IsUpNext = i == 0; // Set IsUpNext for first entry
+                            QueueEntries[i].Position = i + 1;
                         }
                         OnPropertyChanged(nameof(QueueEntries));
                     });
-                    await Task.Delay(1000); // Reduced delay
+                    await Task.Delay(1000);
                     _isInitialPlayback = false;
-                    await LoadQueueData(); // Refresh queue to update Up Next
+                    await LoadQueueData();
+                    await UpdateQueueColorsAndRules();
                 }
                 catch (Exception ex)
                 {
@@ -492,10 +570,15 @@ namespace BNKaraoke.DJ.ViewModels
         public async Task PlayNextAutoPlaySong()
         {
             Log.Information("[DJSCREEN] AutoPlay enabled, checking for next song");
-            var nextEntry = QueueEntries.OrderBy(q => q.Position)
-                .FirstOrDefault(q => q.IsActive && !q.IsOnHold && q.IsVideoCached);
+            var nextEntry = QueueEntries
+                .Where(q => q.IsActive && !q.IsOnHold && q.IsVideoCached)
+                .OrderBy(q => q.Position)
+                .FirstOrDefault(q => q.IsSingerLoggedIn && q.IsSingerJoined && !q.IsSingerOnBreak);
+
             if (nextEntry != null)
             {
+                Log.Information("[DJSCREEN] Selected next song for auto-play: QueueId={QueueId}, SongTitle={SongTitle}, RequestorUserName={RequestorUserName}",
+                    nextEntry.QueueId, nextEntry.SongTitle, nextEntry.RequestorUserName);
                 SelectedQueueEntry = nextEntry;
                 OnPropertyChanged(nameof(SelectedQueueEntry));
                 try
@@ -534,28 +617,29 @@ namespace BNKaraoke.DJ.ViewModels
                 }
                 if (_countdownTimer == null)
                 {
-                    _countdownTimer = new Timer(1000);
+                    _countdownTimer = new System.Timers.Timer(1000);
                     _countdownTimer.Elapsed += CountdownTimer_Elapsed;
                     _countdownTimer.Start();
                 }
                 if (_updateTimer == null)
                 {
-                    _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) }; // Increased interval
+                    _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
                     _updateTimer.Tick += UpdateTimer_Tick;
                     _updateTimer.Start();
                 }
-                QueueEntries.Remove(nextEntry); // Remove from queue
+                QueueEntries.Remove(nextEntry);
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     for (int i = 0; i < QueueEntries.Count; i++)
                     {
-                        QueueEntries[i].IsUpNext = i == 0; // Set IsUpNext for first entry
+                        QueueEntries[i].Position = i + 1;
                     }
                     OnPropertyChanged(nameof(QueueEntries));
                 });
-                await Task.Delay(1000); // Reduced delay
+                await Task.Delay(1000);
                 _isInitialPlayback = false;
-                await LoadQueueData(); // Refresh queue to update Up Next
+                await LoadQueueData();
+                await UpdateQueueColorsAndRules();
             }
             else
             {
@@ -564,6 +648,7 @@ namespace BNKaraoke.DJ.ViewModels
                 PlayingQueueEntry = null;
                 OnPropertyChanged(nameof(PlayingQueueEntry));
                 await LoadQueueData();
+                await UpdateQueueColorsAndRules();
                 await LoadSungCountAsync();
             }
         }
@@ -575,20 +660,37 @@ namespace BNKaraoke.DJ.ViewModels
             {
                 Log.Information("[DJSCREEN] Loading queue data for event: {EventId}", _currentEventId);
                 var queueEntries = await _apiService.GetQueueAsync(_currentEventId);
-                Log.Information("[DJSCREEN] API returned {Count} queue entries for event {EventId}, RawJSON={RawJSON}",
-                    queueEntries.Count, _currentEventId, System.Text.Json.JsonSerializer.Serialize(queueEntries));
+                Log.Information("[DJSCREEN] API returned {Count} queue entries for event {EventId}, QueueIds={QueueIds}",
+                    queueEntries.Count, _currentEventId, string.Join(",", queueEntries.Select(q => q.QueueId)));
+
+                // Log archived or missing QueueIds for monitoring
+                var expectedQueueIds = new[] { 1000, 1001, 1002, 1003, 1005, 1006, 1009, 1010, 1011, 1012, 1013, 1014, 1016, 1017, 1020, 1021, 1022, 1023, 1024, 1025, 1027, 1028, 1031, 1032, 1033, 1034, 1035, 1036, 1038, 1039, 1042, 1043, 1044, 1045, 1046, 1047, 1049, 1050, 1053, 1054, 1055, 1056 };
+                var missingQueueIds = expectedQueueIds.Except(queueEntries.Select(q => q.QueueId)).ToList();
+                if (missingQueueIds.Any())
+                {
+                    Log.Information("[DJSCREEN] Archived or missing QueueIds: {MissingQueueIds}", string.Join(",", missingQueueIds));
+                }
+
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     QueueEntries.Clear();
-                    for (int i = 0; i < queueEntries.Count; i++)
+                    foreach (var entry in queueEntries.OrderBy(q => q.Position))
                     {
-                        var entry = queueEntries.OrderBy(q => q.Position).ElementAt(i);
-                        entry.IsUpNext = i == 0; // Set IsUpNext for first entry
-                        // Map API fields to QueueEntry
-                        entry.RequestorDisplayName = entry.RequestorDisplayName; // Use API-provided name
+                        // Sync IsSingerOnBreak with Singer data
+                        var matchingSinger = Singers.FirstOrDefault(s => s.UserId == entry.RequestorUserName);
+                        if (matchingSinger != null)
+                        {
+                            entry.IsSingerOnBreak = matchingSinger.IsOnBreak;
+                            Log.Information("[DJSCREEN] Synced IsSingerOnBreak={IsSingerOnBreak} for QueueId={QueueId}, RequestorUserName={RequestorUserName}, SingerDisplayName={SingerDisplayName}",
+                                entry.IsSingerOnBreak, entry.QueueId, entry.RequestorUserName, matchingSinger.DisplayName);
+                        }
+
+                        entry.RequestorDisplayName = entry.RequestorDisplayName;
+                        entry.IsSingerLoggedIn = entry.IsSingerLoggedIn;
+                        entry.IsSingerJoined = entry.IsSingerJoined;
                         if (entry.Singers != null && entry.Singers.Any())
                         {
-                            entry.Singers = entry.Singers.ToList(); // Map Singers array
+                            entry.Singers = entry.Singers.ToList();
                         }
                         if (_videoCacheService != null)
                         {
@@ -616,11 +718,12 @@ namespace BNKaraoke.DJ.ViewModels
                                     }
                                 });
                             }
-                            Log.Information("[DJSCREEN] Queue entry: SongId={SongId}, IsCached={IsCached}, CachePath={CachePath}, SongTitle={SongTitle}, RequestorDisplayName={RequestorDisplayName}, Singers={Singers}, VideoLength={VideoLength}, IsUpNext={IsUpNext}, IsOnHold={IsOnHold}, HoldReason={HoldReason}",
+                            Log.Information("[DJSCREEN] Queue entry: SongId={SongId}, IsCached={IsCached}, CachePath={CachePath}, SongTitle={SongTitle}, RequestorDisplayName={RequestorDisplayName}, Singers={Singers}, VideoLength={VideoLength}, IsUpNext={IsUpNext}, IsOnHold={IsOnHold}, HoldReason={HoldReason}, IsSingerLoggedIn={IsSingerLoggedIn}, IsSingerJoined={IsSingerJoined}, IsSingerOnBreak={IsSingerOnBreak}",
                                 entry.SongId, entry.IsVideoCached, System.IO.Path.Combine(_settingsService.Settings.VideoCachePath, $"{entry.SongId}.mp4"),
                                 entry.SongTitle ?? "null", entry.RequestorDisplayName ?? "null",
                                 entry.Singers != null ? string.Join(",", entry.Singers) : "null",
-                                entry.VideoLength, entry.IsUpNext, entry.IsOnHold, entry.HoldReason ?? "null");
+                                entry.VideoLength, entry.IsUpNext, entry.IsOnHold, entry.HoldReason ?? "null",
+                                entry.IsSingerLoggedIn, entry.IsSingerJoined, entry.IsSingerOnBreak);
                         }
                         QueueEntries.Add(entry);
                     }
@@ -632,6 +735,7 @@ namespace BNKaraoke.DJ.ViewModels
                     OnPropertyChanged(nameof(QueueEntries));
                     Log.Information("[DJSCREEN] Loaded {Count} queue entries for event {EventId}", QueueEntries.Count, _currentEventId);
                 });
+                await UpdateQueueColorsAndRules();
             }
             catch (Exception ex)
             {

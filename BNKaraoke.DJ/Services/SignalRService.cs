@@ -12,7 +12,7 @@ namespace BNKaraoke.DJ.Services
     public class SignalRService
     {
         private readonly IUserSessionService _userSessionService;
-        private readonly Action<int, string, int?, bool?> _queueUpdatedCallback;
+        private readonly Action<int, string, int?, bool?, bool, bool, bool> _queueUpdatedCallback;
         private readonly Action<string, bool, bool, bool> _singerStatusUpdatedCallback;
         private readonly SettingsService _settingsService;
         private HubConnection? _connection;
@@ -23,7 +23,7 @@ namespace BNKaraoke.DJ.Services
 
         public SignalRService(
             IUserSessionService userSessionService,
-            Action<int, string, int?, bool?> queueUpdatedCallback,
+            Action<int, string, int?, bool?, bool, bool, bool> queueUpdatedCallback,
             Action<string, bool, bool, bool> singerStatusUpdatedCallback)
         {
             _userSessionService = userSessionService;
@@ -56,7 +56,7 @@ namespace BNKaraoke.DJ.Services
                         {
                             var token = _userSessionService.Token;
                             Log.Information("[SIGNALR] Providing access token for EventId={EventId}, TokenExists={TokenExists}", eventId, !string.IsNullOrEmpty(token));
-#pragma warning disable CS8603 // Token may be null, but logged
+#pragma warning disable CS8603
                             return Task.FromResult(token);
 #pragma warning restore CS8603
                         };
@@ -73,7 +73,13 @@ namespace BNKaraoke.DJ.Services
                     .WithAutomaticReconnect()
                     .Build();
 
-                _connection.On<int, string, int?, bool?>("QueueUpdated", _queueUpdatedCallback);
+                _connection.On<int, string, int?, bool?, bool, bool, bool>("QueueUpdated",
+                    (queueId, action, position, isOnBreak, isSingerLoggedIn, isSingerJoined, isSingerOnBreak) =>
+                    {
+                        Log.Information("[SIGNALR] Received QueueUpdated for EventId={EventId}, QueueId={QueueId}, Action={Action}, Position={Position}, IsOnBreak={IsOnBreak}, IsSingerLoggedIn={IsSingerLoggedIn}, IsSingerJoined={IsSingerJoined}, IsSingerOnBreak={IsSingerOnBreak}",
+                            _currentEventId, queueId, action, position, isOnBreak, isSingerLoggedIn, isSingerJoined, isSingerOnBreak);
+                        _queueUpdatedCallback(queueId, action, position, isOnBreak, isSingerLoggedIn, isSingerJoined, isSingerOnBreak);
+                    });
                 _connection.On<string, bool, bool, bool>("SingerStatusUpdated", (requestorUserName, isLoggedIn, isJoined, isOnBreak) =>
                 {
                     Log.Information("[SIGNALR] Received SingerStatusUpdated for EventId={EventId}, RequestorUserName={RequestorUserName}, IsLoggedIn={IsLoggedIn}, IsJoined={IsJoined}, IsOnBreak={IsOnBreak}",
