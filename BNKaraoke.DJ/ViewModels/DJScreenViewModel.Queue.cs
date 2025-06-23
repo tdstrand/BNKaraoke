@@ -40,14 +40,12 @@ namespace BNKaraoke.DJ.ViewModels
                 {
                     token.ThrowIfCancellationRequested();
 
-                    // Clear IsUpNext for all entries
                     foreach (var entry in QueueEntries.Where(e => e.IsUpNext))
                     {
                         Log.Information("[DJSCREEN QUEUE] Clearing IsUpNext for QueueId={QueueId}, SongTitle={SongTitle}", entry.QueueId, entry.SongTitle);
                         entry.IsUpNext = false;
                     }
 
-                    // Log all queue entries for debugging
                     foreach (var entry in QueueEntries.OrderBy(e => e.Position))
                     {
                         Log.Information("[DJSCREEN QUEUE] Evaluating QueueId={QueueId}, Position={Position}, SongTitle={SongTitle}, RequestorUserName={RequestorUserName}, IsOnHold={IsOnHold}, SingerStatus=IsSingerLoggedIn:{IsSingerLoggedIn}, IsSingerJoined:{IsSingerJoined}, IsSingerOnBreak:{IsSingerOnBreak}",
@@ -55,7 +53,6 @@ namespace BNKaraoke.DJ.ViewModels
                             entry.IsSingerLoggedIn, entry.IsSingerJoined, entry.IsSingerOnBreak);
                     }
 
-                    // Find the first active entry with a green singer (IsSingerLoggedIn=True, IsSingerJoined=True, IsSingerOnBreak=False)
                     var nextEntry = QueueEntries
                         .Where(e => e.IsActive)
                         .OrderBy(e => e.Position)
@@ -91,17 +88,22 @@ namespace BNKaraoke.DJ.ViewModels
         }
 
         [RelayCommand]
-        private void ShowSongDetails()
+        private async Task ShowSongDetails()
         {
             Log.Information("[DJSCREEN] ShowSongDetails command invoked");
             if (SelectedQueueEntry != null)
             {
                 try
                 {
+                    var viewModel = new SongDetailsViewModel(_userSessionService)
+                    {
+                        SelectedQueueEntry = SelectedQueueEntry
+                    };
+                    await viewModel.LoadSongDetailsAsync(SelectedQueueEntry.SongId);
                     var songDetailsWindow = new SongDetailsWindow
                     {
                         WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                        DataContext = new SongDetailsViewModel { SelectedQueueEntry = SelectedQueueEntry }
+                        DataContext = viewModel
                     };
                     songDetailsWindow.ShowDialog();
                     Log.Information("[DJSCREEN] SongDetailsWindow closed");
@@ -242,7 +244,7 @@ namespace BNKaraoke.DJ.ViewModels
 
                 try
                 {
-                    await _apiService.ReorderQueueAsync(_currentEventId, queueIds);
+                    await _apiService.ReorderQueueAsync(_currentEventId!, queueIds);
                     Log.Information("[DJSCREEN] Queue reordered for event {EventId}, dropped {SourceQueueId} to position {TargetIndex}",
                         _currentEventId, draggedItem.QueueId, targetIndex + 1);
                     await LoadQueueData();
@@ -333,7 +335,7 @@ namespace BNKaraoke.DJ.ViewModels
                     Log.Information("[DJSCREEN] Stopped update timer for QueueId={QueueId}", targetEntry.QueueId);
                 }
 
-                await _apiService.CompleteSongAsync(_currentEventId, targetEntry.QueueId);
+                await _apiService.CompleteSongAsync(_currentEventId!, targetEntry.QueueId);
                 Log.Information("[DJSCREEN] Skip request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, targetEntry.QueueId, targetEntry.SongTitle);
 
                 if (PlayingQueueEntry != null)
@@ -353,7 +355,7 @@ namespace BNKaraoke.DJ.ViewModels
                             Log.Information("[DJSCREEN] Reordering queue for event {EventId}, QueueIds={QueueIds}", _currentEventId, string.Join(",", queueIds));
                             try
                             {
-                                await _apiService.ReorderQueueAsync(_currentEventId, queueIds);
+                                await _apiService.ReorderQueueAsync(_currentEventId!, queueIds);
                                 Log.Information("[DJSCREEN] Moved skipped song to end: QueueId={QueueId}", entry.QueueId);
                             }
                             catch (Exception reorderEx)
@@ -663,7 +665,6 @@ namespace BNKaraoke.DJ.ViewModels
                 Log.Information("[DJSCREEN] API returned {Count} queue entries for event {EventId}, QueueIds={QueueIds}",
                     queueEntries.Count, _currentEventId, string.Join(",", queueEntries.Select(q => q.QueueId)));
 
-                // Log archived or missing QueueIds for monitoring
                 var expectedQueueIds = new[] { 1000, 1001, 1002, 1003, 1005, 1006, 1009, 1010, 1011, 1012, 1013, 1014, 1016, 1017, 1020, 1021, 1022, 1023, 1024, 1025, 1027, 1028, 1031, 1032, 1033, 1034, 1035, 1036, 1038, 1039, 1042, 1043, 1044, 1045, 1046, 1047, 1049, 1050, 1053, 1054, 1055, 1056 };
                 var missingQueueIds = expectedQueueIds.Except(queueEntries.Select(q => q.QueueId)).ToList();
                 if (missingQueueIds.Any())
@@ -676,7 +677,6 @@ namespace BNKaraoke.DJ.ViewModels
                     QueueEntries.Clear();
                     foreach (var entry in queueEntries.OrderBy(q => q.Position))
                     {
-                        // Sync IsSingerOnBreak with Singer data
                         var matchingSinger = Singers.FirstOrDefault(s => s.UserId == entry.RequestorUserName);
                         if (matchingSinger != null)
                         {

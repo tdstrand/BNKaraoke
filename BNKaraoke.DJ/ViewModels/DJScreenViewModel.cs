@@ -1,5 +1,4 @@
-﻿// DJScreenViewModel.cs
-using BNKaraoke.DJ.Models;
+﻿using BNKaraoke.DJ.Models;
 using BNKaraoke.DJ.Services;
 using BNKaraoke.DJ.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -9,6 +8,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 
 namespace BNKaraoke.DJ.ViewModels
 {
@@ -125,6 +125,8 @@ namespace BNKaraoke.DJ.ViewModels
         [ObservableProperty]
         private string _stopRestartButtonColor = "#22d3ee"; // Default cyan
 
+        public ICommand? ViewSungSongsCommand { get; } // Made nullable
+
         public DJScreenViewModel(VideoCacheService? videoCacheService = null)
         {
             try
@@ -143,6 +145,8 @@ namespace BNKaraoke.DJ.ViewModels
                 _userSessionService.SessionChanged += UserSessionService_SessionChanged;
                 Log.Information("[DJSCREEN VM] Subscribed to SessionChanged event");
 
+                ViewSungSongsCommand = new RelayCommand(ExecuteViewSungSongs);
+
                 UpdateAuthenticationStateInitial();
                 Log.Information("[DJSCREEN VM] Initialized UI state in constructor");
                 Log.Information("[DJSCREEN VM] ViewModel instance created: {InstanceId}", GetHashCode());
@@ -151,6 +155,32 @@ namespace BNKaraoke.DJ.ViewModels
             {
                 Log.Error("[DJSCREEN VM] Failed to initialize ViewModel: {Message}", ex.Message);
                 MessageBox.Show($"Failed to initialize DJScreen: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteViewSungSongs(object? parameter) // Made parameter nullable
+        {
+            try
+            {
+                Log.Information("[DJSCREEN] ViewSungSongs command invoked");
+                if (string.IsNullOrEmpty(_currentEventId))
+                {
+                    Log.Information("[DJSCREEN] ViewSungSongs failed: No event joined");
+                    SetWarningMessage("Please join an event to view sung songs.");
+                    return;
+                }
+                var viewModel = new SungSongsViewModel(_apiService, _currentEventId);
+                var window = new SungSongsView
+                {
+                    DataContext = viewModel
+                };
+                window.ShowDialog();
+                Log.Information("[DJSCREEN] SungSongsView opened for EventId={EventId}", _currentEventId);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[DJSCREEN] Failed to open SungSongsView: {Message}", ex.Message);
+                SetWarningMessage($"Failed to view sung songs: {ex.Message}");
             }
         }
 
@@ -417,6 +447,22 @@ namespace BNKaraoke.DJ.ViewModels
                 Log.Error("[DJSCREEN] Failed to update authentication state: {Message}", ex.Message);
                 SetWarningMessage($"Failed to update authentication: {ex.Message}");
             }
+        }
+
+        private class RelayCommand : ICommand
+        {
+            private readonly Action<object?> _execute; // Made parameter nullable
+
+            public RelayCommand(Action<object?> execute)
+            {
+                _execute = execute;
+            }
+
+            public bool CanExecute(object? parameter) => true; // Made parameter nullable
+
+            public void Execute(object? parameter) => _execute(parameter); // Made parameter nullable
+
+            public event EventHandler? CanExecuteChanged; // Made nullable
         }
     }
 }

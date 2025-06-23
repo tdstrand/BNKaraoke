@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Serilog;
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -28,10 +29,9 @@ namespace BNKaraoke.DJ.ViewModels
             _apiService = apiService;
             _eventId = eventId;
             CloseCommand = new RelayCommand(Close);
-            InitializeAsync().GetAwaiter().GetResult();
         }
 
-        private async Task InitializeAsync()
+        public async Task InitializeAsync() // Made async
         {
             try
             {
@@ -39,7 +39,7 @@ namespace BNKaraoke.DJ.ViewModels
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     SungSongs.Clear();
-                    foreach (var song in sungSongs)
+                    foreach (var song in sungSongs.OrderBy(s => s.SungAt ?? DateTime.MaxValue)) // Sort by SungAt, handle null
                     {
                         SungSongs.Add(song);
                     }

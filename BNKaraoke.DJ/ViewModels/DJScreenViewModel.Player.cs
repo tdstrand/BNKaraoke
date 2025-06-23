@@ -1,5 +1,4 @@
-﻿// DJScreenViewModel.Player.cs
-using BNKaraoke.DJ.Models;
+﻿using BNKaraoke.DJ.Models;
 using BNKaraoke.DJ.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -27,7 +26,7 @@ namespace BNKaraoke.DJ.ViewModels
         private bool _isSeeking;
         private bool _isInitialPlayback;
         private bool _wasPlaying;
-        private readonly object _queueLock = new object();
+        private readonly object _queueLock = new();
         private double _lastSeekPosition = -1;
         private bool _isPlayingStarting;
         private bool _isUserSeeking;
@@ -213,14 +212,16 @@ namespace BNKaraoke.DJ.ViewModels
         [RelayCommand]
         private async Task SeekSong(double position)
         {
-            if (_isDisposing || _videoPlayerWindow?.MediaPlayer == null || _isInitialPlayback || _videoPlayerWindow.MediaPlayer.State == VLCState.Stopped || !_isUserSeeking)
+            if (_isDisposing || _videoPlayerWindow?.MediaPlayer == null || _isInitialPlayback || _videoPlayerWindow.MediaPlayer.State == VLCState.Stopped)
             {
-                Log.Verbose("[DJSCREEN] SeekSong skipped: Disposing={Disposing}, MediaPlayer={MediaPlayer}, InitialPlayback={InitialPlayback}, State={State}, UserSeeking={UserSeeking}",
-                    _isDisposing, _videoPlayerWindow?.MediaPlayer != null, _isInitialPlayback, _videoPlayerWindow?.MediaPlayer?.State, _isUserSeeking);
+                Log.Verbose("[DJSCREEN] SeekSong skipped: Disposing={Disposing}, MediaPlayer={MediaPlayer}, InitialPlayback={InitialPlayback}, State={State}",
+                    _isDisposing, _videoPlayerWindow?.MediaPlayer != null, _isInitialPlayback, _videoPlayerWindow?.MediaPlayer?.State);
                 return;
             }
             try
             {
+                Log.Information("[DJSCREEN] SeekSong invoked with position: {Position}, IsSeeking={IsSeeking}, MediaState={State}",
+                    position, _isSeeking, _videoPlayerWindow.MediaPlayer.State);
                 var currentTime = _videoPlayerWindow.MediaPlayer.Time / 1000.0;
                 if (!_isSeeking && Math.Abs(position - currentTime) < 2.0)
                 {
@@ -232,8 +233,6 @@ namespace BNKaraoke.DJ.ViewModels
                     Log.Verbose("[DJSCREEN] SeekSong skipped: Position={Position} too close to last seek={LastSeekPosition}", position, _lastSeekPosition);
                     return;
                 }
-                Log.Information("[DJSCREEN] SeekSong invoked with position: {Position}, IsSeeking={IsSeeking}, MediaState={State}",
-                    position, _isSeeking, _videoPlayerWindow.MediaPlayer.State);
                 _isSeeking = true;
                 _videoPlayerWindow.MediaPlayer.Pause();
                 SliderPosition = position;
@@ -242,7 +241,7 @@ namespace BNKaraoke.DJ.ViewModels
                 OnPropertyChanged(nameof(CurrentVideoPosition));
                 _videoPlayerWindow.MediaPlayer.Time = (long)(position * 1000);
                 _lastSeekPosition = position;
-                await Task.Delay(500);
+                await Task.Delay(100);
                 if (_wasPlaying && _videoPlayerWindow.MediaPlayer.State != VLCState.Playing)
                 {
                     for (int i = 0; i < 3; i++)
@@ -274,7 +273,7 @@ namespace BNKaraoke.DJ.ViewModels
 
         private void NotifyAllProperties()
         {
-            Application.Current.Dispatcher.Invoke(async () =>
+            Application.Current.Dispatcher.Invoke(() =>
             {
                 OnPropertyChanged(nameof(PlayingQueueEntry));
                 OnPropertyChanged(nameof(SelectedQueueEntry));
@@ -288,7 +287,7 @@ namespace BNKaraoke.DJ.ViewModels
                 OnPropertyChanged(nameof(SongDuration));
                 CommandManager.InvalidateRequerySuggested();
                 Log.Information("[DJSCREEN] Notified all UI properties");
-                await Dispatcher.Yield(DispatcherPriority.Render); // Ensure UI renders
+                Dispatcher.Yield(DispatcherPriority.Render);
             });
         }
 
@@ -304,14 +303,13 @@ namespace BNKaraoke.DJ.ViewModels
                 return;
             }
 
-            if (QueueEntries?.Count == 0)
+            if (QueueEntries.Count == 0) // CS8604: QueueEntries is never null
             {
                 Log.Information("[DJSCREEN] Play failed: Queue is empty");
                 SetWarningMessage("No songs in the queue.");
                 return;
             }
 
-            // Resume paused song
             if (IsVideoPaused && PlayingQueueEntry != null && _videoPlayerWindow?.MediaPlayer != null)
             {
                 try
@@ -328,7 +326,7 @@ namespace BNKaraoke.DJ.ViewModels
                     Log.Information("[DJSCREEN] Resumed video for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
                     if (!string.IsNullOrEmpty(_currentEventId))
                     {
-                        await _apiService.PlayAsync(_currentEventId, PlayingQueueEntry.QueueId.ToString());
+                        await _apiService.PlayAsync(_currentEventId, PlayingQueueEntry.QueueId.ToString()); // CS8602: Checked above
                         Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
                     }
                     if (_updateTimer == null)
@@ -348,7 +346,6 @@ namespace BNKaraoke.DJ.ViewModels
                 }
             }
 
-            // Pause playing song
             if (IsPlaying && _videoPlayerWindow?.MediaPlayer != null)
             {
                 try
@@ -377,7 +374,6 @@ namespace BNKaraoke.DJ.ViewModels
                 }
             }
 
-            // Play new song (auto-play)
             if (string.IsNullOrEmpty(_currentEventId))
             {
                 Log.Information("[DJSCREEN] Play failed: No event joined");
@@ -388,7 +384,6 @@ namespace BNKaraoke.DJ.ViewModels
             try
             {
                 _isPlayingStarting = true;
-                // Refresh queue to ensure latest state
                 await LoadQueueData();
 
                 QueueEntry? targetEntry;
@@ -398,7 +393,6 @@ namespace BNKaraoke.DJ.ViewModels
                     Log.Information("[DJSCREEN] SelectedQueueEntry: QueueId={QueueId}, SongTitle={SongTitle}, IsUpNext={IsUpNext}, IsSingerJoined={IsSingerJoined}, IsSingerOnBreak={IsSingerOnBreak}",
                         SelectedQueueEntry?.QueueId ?? -1, SelectedQueueEntry?.SongTitle ?? "null", SelectedQueueEntry?.IsUpNext ?? false, SelectedQueueEntry?.IsSingerJoined ?? false, SelectedQueueEntry?.IsSingerOnBreak ?? false);
 
-                    // Validate SelectedQueueEntry for auto-play (green singers only)
                     if (SelectedQueueEntry != null && (!SelectedQueueEntry.IsSingerJoined || SelectedQueueEntry.IsSingerOnBreak || !SelectedQueueEntry.IsActive || SelectedQueueEntry.IsOnHold || !SelectedQueueEntry.IsVideoCached))
                     {
                         Log.Information("[DJSCREEN] Invalid SelectedQueueEntry for auto-play, resetting to null: QueueId={QueueId}, SongTitle={SongTitle}", SelectedQueueEntry.QueueId, SelectedQueueEntry.SongTitle);
@@ -410,9 +404,8 @@ namespace BNKaraoke.DJ.ViewModels
                     }
 
                     targetEntry = SelectedQueueEntry ?? QueueEntries.FirstOrDefault(q => q.IsUpNext && q.IsActive && !q.IsOnHold && q.IsVideoCached && q.IsSingerLoggedIn && q.IsSingerJoined && !q.IsSingerOnBreak) ??
-                                  QueueEntries.FirstOrDefault(q => q.IsActive && !q.IsOnHold && q.IsVideoCached && q.IsSingerLoggedIn && q.IsSingerJoined && !q.IsSingerOnBreak);
+                                  QueueEntries.FirstOrDefault(q => q.IsActive && !q.IsOnHold && q.IsVideoCached && q.IsSingerLoggedIn && q.IsSingerJoined && !q.IsSingerOnBreak); // CS8604: QueueEntries is never null
 
-                    // Log invalid automatic selection
                     if (SelectedQueueEntry != null && targetEntry != SelectedQueueEntry)
                     {
                         Log.Information("[DJSCREEN] SelectedQueueEntry rejected: QueueId={QueueId}, SongTitle={SongTitle}, Reason=Invalid singer status (IsSingerJoined={IsSingerJoined}, IsSingerOnBreak={IsSingerOnBreak})",
@@ -423,7 +416,7 @@ namespace BNKaraoke.DJ.ViewModels
                 if (targetEntry == null)
                 {
                     Log.Information("[DJSCREEN] Play failed: No valid green singer available. SelectedQueueEntry={Selected}, UpNextCount={UpNextCount}, GreenSingerCount={GreenCount}",
-                        SelectedQueueEntry?.QueueId ?? -1, QueueEntries?.Count(q => q.IsUpNext) ?? 0, QueueEntries?.Count(q => q.IsActive && !q.IsOnHold && q.IsVideoCached && q.IsSingerLoggedIn && q.IsSingerJoined && !q.IsSingerOnBreak) ?? 0);
+                        SelectedQueueEntry?.QueueId ?? -1, QueueEntries.Count(q => q.IsUpNext), QueueEntries.Count(q => q.IsActive && !q.IsOnHold && q.IsVideoCached && q.IsSingerLoggedIn && q.IsSingerJoined && !q.IsSingerOnBreak));
                     SetWarningMessage("No valid green singers available to play.");
                     _isPlayingStarting = false;
                     return;
@@ -432,8 +425,6 @@ namespace BNKaraoke.DJ.ViewModels
                 Log.Information("[DJSCREEN] Selected target entry for play: QueueId={QueueId}, SongTitle={SongTitle}, IsUpNext={IsUpNext}, IsActive={IsActive}, IsOnHold={IsOnHold}, IsVideoCached={IsVideoCached}, IsSingerLoggedIn={IsSingerLoggedIn}, IsSingerJoined={IsSingerJoined}, IsSingerOnBreak={IsSingerOnBreak}",
                     targetEntry.QueueId, targetEntry.SongTitle, targetEntry.IsUpNext, targetEntry.IsActive, targetEntry.IsOnHold, targetEntry.IsVideoCached, targetEntry.IsSingerLoggedIn, targetEntry.IsSingerJoined, targetEntry.IsSingerOnBreak);
 
-                // Initialize or reset VideoPlayerWindow
-                Log.Information("[DJSCREEN] Initializing VideoPlayerWindow for QueueId={QueueId}", targetEntry.QueueId);
                 if (_videoPlayerWindow == null || _videoPlayerWindow.MediaPlayer == null)
                 {
                     _videoPlayerWindow?.Close();
@@ -446,7 +437,6 @@ namespace BNKaraoke.DJ.ViewModels
                 string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{targetEntry.SongId}.mp4");
                 Log.Information("[DJSCREEN] Video path for QueueId={QueueId}: {Path}", targetEntry.QueueId, videoPath);
 
-                // Update UI before playback
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     PlayingQueueEntry = targetEntry;
@@ -487,7 +477,7 @@ namespace BNKaraoke.DJ.ViewModels
                 }
                 finally
                 {
-                    _isInitialPlayback = false; // Ensure reset
+                    _isInitialPlayback = false;
                 }
 
                 if (TimeSpan.TryParseExact(targetEntry.VideoLength, @"m\:ss", null, out var duration))
@@ -510,7 +500,7 @@ namespace BNKaraoke.DJ.ViewModels
 
                 try
                 {
-                    await _apiService.PlayAsync(_currentEventId, targetEntry.QueueId.ToString());
+                    await _apiService.PlayAsync(_currentEventId!, targetEntry.QueueId.ToString());
                     Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, targetEntry.QueueId, targetEntry.SongTitle);
                 }
                 catch (Exception ex)
@@ -519,11 +509,10 @@ namespace BNKaraoke.DJ.ViewModels
                     SetWarningMessage($"Failed to notify server: {ex.Message}");
                 }
 
-                // Remove played song from queue
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     QueueEntries.Remove(targetEntry);
-                    for (int i = 0; i < QueueEntries?.Count; i++)
+                    for (int i = 0; i < QueueEntries.Count; i++)
                     {
                         QueueEntries[i].Position = i + 1;
                     }
@@ -547,7 +536,6 @@ namespace BNKaraoke.DJ.ViewModels
 
                 _isPlayingStarting = false;
 
-                // Update queue colors and rules
                 await UpdateQueueColorsAndRules();
             }
             catch (Exception ex)
@@ -584,8 +572,6 @@ namespace BNKaraoke.DJ.ViewModels
 
             try
             {
-                // Show confirmation dialog
-                Log.Information("[DJSCREEN] Preparing confirmation dialog for QueueId={QueueId}", entry.QueueId);
                 string confirmMessage = (IsPlaying || IsVideoPaused)
                     ? $"Play '{entry.SongTitle ?? "Unknown"}' by {entry.RequestorDisplayName ?? "Unknown"} now? This will stop the current song."
                     : $"Play '{entry.SongTitle ?? "Unknown"}' by {entry.RequestorDisplayName ?? "Unknown"} now?";
@@ -599,7 +585,6 @@ namespace BNKaraoke.DJ.ViewModels
                     return;
                 }
 
-                // Stop current song if playing or paused
                 if ((IsPlaying || IsVideoPaused) && PlayingQueueEntry != null && _videoPlayerWindow != null)
                 {
                     try
@@ -654,8 +639,6 @@ namespace BNKaraoke.DJ.ViewModels
                 Log.Information("[DJSCREEN] Target entry selected: QueueId={QueueId}, SongTitle={SongTitle}, IsSingerOnBreak={IsSingerOnBreak}",
                     targetEntry.QueueId, targetEntry.SongTitle, targetEntry.IsSingerOnBreak);
 
-                // Initialize or reset VideoPlayerWindow
-                Log.Information("[DJSCREEN] Initializing VideoPlayerWindow for QueueId={QueueId}", targetEntry.QueueId);
                 if (_videoPlayerWindow == null || _videoPlayerWindow.MediaPlayer == null)
                 {
                     _videoPlayerWindow?.Close();
@@ -668,7 +651,6 @@ namespace BNKaraoke.DJ.ViewModels
                 string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{targetEntry.SongId}.mp4");
                 Log.Information("[DJSCREEN] Video path for QueueId={QueueId}: {Path}", targetEntry.QueueId, videoPath);
 
-                // Update UI before playback
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     PlayingQueueEntry = targetEntry;
@@ -709,7 +691,7 @@ namespace BNKaraoke.DJ.ViewModels
                 }
                 finally
                 {
-                    _isInitialPlayback = false; // Ensure reset
+                    _isInitialPlayback = false;
                 }
 
                 if (TimeSpan.TryParseExact(targetEntry.VideoLength, @"m\:ss", null, out var duration))
@@ -732,8 +714,7 @@ namespace BNKaraoke.DJ.ViewModels
 
                 try
                 {
-                    Log.Information("[DJSCREEN] Sending play request for QueueId={QueueId}", targetEntry.QueueId);
-                    await _apiService.PlayAsync(_currentEventId, targetEntry.QueueId.ToString());
+                    await _apiService.PlayAsync(_currentEventId!, targetEntry.QueueId.ToString());
                     Log.Information("[DJSCREEN] Play request sent for event {EventId}, queue {QueueId}: {SongTitle}", _currentEventId, targetEntry.QueueId, targetEntry.SongTitle);
                 }
                 catch (Exception ex)
@@ -742,11 +723,10 @@ namespace BNKaraoke.DJ.ViewModels
                     SetWarningMessage($"Failed to notify server: {ex.Message}");
                 }
 
-                // Remove played song from queue
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     QueueEntries.Remove(targetEntry);
-                    for (int i = 0; i < QueueEntries?.Count; i++)
+                    for (int i = 0; i < QueueEntries.Count; i++)
                     {
                         QueueEntries[i].Position = i + 1;
                     }
@@ -770,7 +750,6 @@ namespace BNKaraoke.DJ.ViewModels
 
                 _isPlayingStarting = false;
 
-                Log.Information("[DJSCREEN] Updating queue colors and rules after playback for QueueId={QueueId}", targetEntry.QueueId);
                 await UpdateQueueColorsAndRules();
             }
             catch (Exception ex)
@@ -786,127 +765,6 @@ namespace BNKaraoke.DJ.ViewModels
                 });
                 _isInitialPlayback = false;
                 _isPlayingStarting = false;
-            }
-        }
-
-        [RelayCommand]
-        private async Task StopRestart()
-        {
-            Log.Information("[DJSCREEN] StopRestart command invoked");
-            if (_isDisposing) return;
-
-            var targetEntry = PlayingQueueEntry ?? SelectedQueueEntry;
-            if (targetEntry == null || string.IsNullOrEmpty(_currentEventId))
-            {
-                Log.Information("[DJSCREEN] StopRestart failed: No queue entry playing/selected or no event joined, PlayingQueueEntry={Playing}, SelectedQueueEntry={Selected}, EventId={EventId}",
-                    PlayingQueueEntry?.QueueId ?? -1, SelectedQueueEntry?.QueueId ?? -1, _currentEventId ?? "null");
-                SetWarningMessage("Please select a song and join an event.");
-                if (_videoPlayerWindow != null)
-                {
-                    _videoPlayerWindow.StopVideo();
-                    Log.Information("[DJSCREEN] Video playback stopped due to no valid queue entry");
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        IsPlaying = false;
-                        IsVideoPaused = false;
-                        SliderPosition = 0;
-                        CurrentVideoPosition = "--:--";
-                        TimeRemainingSeconds = 0;
-                        TimeRemaining = "0:00";
-                        StopRestartButtonColor = "#22d3ee";
-                        NotifyAllProperties();
-                    });
-                    if (_updateTimer != null)
-                    {
-                        _updateTimer.Stop();
-                        Log.Information("[DJSCREEN] Stopped update timer due to no valid queue entry");
-                    }
-                }
-                return;
-            }
-
-            try
-            {
-                if (IsVideoPaused && _videoPlayerWindow?.MediaPlayer != null && PlayingQueueEntry != null)
-                {
-                    string videoPath = Path.Combine(_settingsService.Settings.VideoCachePath, $"{PlayingQueueEntry.SongId}.mp4");
-                    Log.Information("[DJSCREEN] Checking video file for restart: Path={Path}, Exists={Exists}", videoPath, File.Exists(videoPath));
-                    if (!File.Exists(videoPath))
-                    {
-                        Log.Error("[DJSCREEN] Video file not found for restart QueueId={QueueId}: {Path}", PlayingQueueEntry.QueueId, videoPath);
-                        SetWarningMessage("Video file not found for restart.");
-                        return;
-                    }
-                    _videoPlayerWindow.PlayVideo(videoPath);
-                    Log.Information("[DJSCREEN] Video playback started for restart QueueId={QueueId}, Path={Path}", PlayingQueueEntry.QueueId, videoPath);
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        SliderPosition = 0;
-                        CurrentVideoPosition = "0:00";
-                        IsPlaying = true;
-                        IsVideoPaused = false;
-                        StopRestartButtonColor = "#22d3ee";
-                        NotifyAllProperties();
-                        Log.Information("[DJSCREEN] UI updated for restart: QueueId={QueueId}, SongTitle={SongTitle}", PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
-                    });
-                    if (_updateTimer == null)
-                    {
-                        _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
-                        _updateTimer.Tick += UpdateTimer_Tick;
-                        _updateTimer.Start();
-                        Log.Information("[DJSCREEN] Started update timer for restart");
-                    }
-                    Log.Information("[DJSCREEN] Restarted video for QueueId={QueueId}: {SongTitle}", PlayingQueueEntry.QueueId, PlayingQueueEntry.SongTitle);
-                }
-                else
-                {
-                    if (_videoPlayerWindow != null)
-                    {
-                        _videoPlayerWindow.StopVideo();
-                        Log.Information("[DJSCREEN] Video playback stopped for QueueId={QueueId}", targetEntry.QueueId);
-                    }
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        IsPlaying = false;
-                        IsVideoPaused = true;
-                        SliderPosition = 0;
-                        CurrentVideoPosition = "--:--";
-                        TimeRemainingSeconds = 0;
-                        TimeRemaining = "0:00";
-                        StopRestartButtonColor = "#FF0000";
-                        NotifyAllProperties();
-                        Log.Information("[DJSCREEN] UI updated for stop: QueueId={QueueId}, SongTitle={SongTitle}", targetEntry.QueueId, targetEntry.SongTitle);
-                    });
-                    if (_updateTimer != null)
-                    {
-                        _updateTimer.Stop();
-                        Log.Information("[DJSCREEN] Stopped update timer for QueueId={QueueId}", targetEntry.QueueId);
-                    }
-                    Log.Information("[DJSCREEN] Stopped video, retained in Now Playing: QueueId={QueueId}: {SongTitle}", targetEntry.QueueId, targetEntry.SongTitle);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[DJSCREEN] Failed to stop/restart queue {QueueId}: {Message}", targetEntry.QueueId, ex.Message);
-                SetWarningMessage($"Failed to stop/restart: {ex.Message}");
-            }
-        }
-
-        [RelayCommand]
-        private void ViewSungSongs()
-        {
-            Log.Information("[DJSCREEN] ViewSungSongs command invoked");
-            if (_isDisposing) return;
-            try
-            {
-                var sungWindow = new SungSongsView { DataContext = new SungSongsViewModel(_apiService, _currentEventId ?? "3") };
-                sungWindow.ShowDialog();
-                Log.Information("[DJSCREEN] SungSongsView shown for EventId={EventId}", _currentEventId);
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[DJSCREEN] Failed to show SungSongsView: {Message}", ex.Message);
-                SetWarningMessage($"Failed to view sung songs: {ex.Message}");
             }
         }
 
@@ -929,7 +787,7 @@ namespace BNKaraoke.DJ.ViewModels
                     QueueEntries.Remove(PlayingQueueEntry);
                     Application.Current.Dispatcher.Invoke(() =>
                     {
-                        for (int i = 0; i < QueueEntries?.Count; i++)
+                        for (int i = 0; i < QueueEntries.Count; i++)
                         {
                             QueueEntries[i].IsUpNext = i == 0;
                         }
