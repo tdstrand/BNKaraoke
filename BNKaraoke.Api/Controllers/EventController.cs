@@ -355,12 +355,13 @@ namespace BNKaraoke.Api.Controllers
                     .Where(eq => eq.EventId == eventId)
                     .MaxAsync(eq => (int?)eq.Position) ?? 0;
 
+                var userName = requestor.UserName ?? string.Empty; // Ensure non-null
                 var newQueueEntry = new EventQueue
                 {
                     EventId = eventId,
                     SongId = queueDto.SongId,
-                    RequestorUserName = requestor.UserName,
-                    Singers = JsonSerializer.Serialize(new[] { requestor.UserName }),
+                    RequestorUserName = userName,
+                    Singers = JsonSerializer.Serialize(new[] { userName }),
                     Position = maxPosition + 1,
                     Status = eventEntity.Status,
                     IsActive = eventEntity.Status == "Live",
@@ -377,18 +378,15 @@ namespace BNKaraoke.Api.Controllers
                 var singersList = new List<string>();
                 try
                 {
-                    var singersArray = JsonSerializer.Deserialize<string[]>(newQueueEntry.Singers);
-                    if (singersArray != null)
-                    {
-                        singersList.AddRange(singersArray);
-                    }
+                    var singersArray = JsonSerializer.Deserialize<string[]>(newQueueEntry.Singers) ?? Array.Empty<string>();
+                    singersList.AddRange(singersArray);
                 }
                 catch (JsonException ex)
                 {
                     _logger.LogWarning("Failed to deserialize Singers for QueueId {QueueId}: {Message}", newQueueEntry.QueueId, ex.Message);
                 }
 
-                var queueEntryDto = new EventQueueDto
+                var queueEntryResponse = new
                 {
                     QueueId = newQueueEntry.QueueId,
                     EventId = newQueueEntry.EventId,
@@ -401,11 +399,11 @@ namespace BNKaraoke.Api.Controllers
                     WasSkipped = newQueueEntry.WasSkipped,
                     IsCurrentlyPlaying = newQueueEntry.IsCurrentlyPlaying,
                     SungAt = newQueueEntry.SungAt,
-                    IsOnBreak = newQueueEntry.IsOnBreak
+                    IsOnBreak = false
                 };
 
                 _logger.LogInformation("Successfully added song to queue for EventId {EventId}, QueueId: {QueueId}", eventId, newQueueEntry.QueueId);
-                return CreatedAtAction(nameof(GetEventQueue), new { eventId, queueId = newQueueEntry.QueueId }, queueEntryDto);
+                return CreatedAtAction(nameof(GetEventQueue), new { eventId, queueId = newQueueEntry.QueueId }, queueEntryResponse);
             }
             catch (Exception ex)
             {
@@ -483,7 +481,7 @@ namespace BNKaraoke.Api.Controllers
                     .ToList();
                 var attendances = attendancesList.ToDictionary(ea => ea.RequestorId, ea => ea);
 
-                var queueDtos = new List<EventQueueDto>();
+                var queueResponses = new List<object>();
                 foreach (var eq in queueEntries)
                 {
                     if (string.IsNullOrEmpty(eq.RequestorUserName) || !users.TryGetValue(eq.RequestorUserName, out var requestor))
@@ -497,7 +495,11 @@ namespace BNKaraoke.Api.Controllers
                     var singersList = new List<string>();
                     try
                     {
-                        singersList.AddRange(JsonSerializer.Deserialize<string[]>(eq.Singers) ?? Array.Empty<string>());
+                        var singersArray = JsonSerializer.Deserialize<string[]>(eq.Singers);
+                        if (singersArray != null)
+                        {
+                            singersList.AddRange(singersArray);
+                        }
                     }
                     catch (JsonException ex)
                     {
@@ -521,7 +523,7 @@ namespace BNKaraoke.Api.Controllers
                         }
                     }
 
-                    var queueDto = new EventQueueDto
+                    var queueResponse = new
                     {
                         QueueId = eq.QueueId,
                         EventId = eq.EventId,
@@ -537,13 +539,13 @@ namespace BNKaraoke.Api.Controllers
                         IsOnBreak = attendance != null ? attendance.IsOnBreak : false
                     };
 
-                    queueDtos.Add(queueDto);
+                    queueResponses.Add(queueResponse);
                 }
 
-                var sortedQueueDtos = queueDtos.OrderBy(eq => eq.Position).ToList();
+                var sortedQueueResponses = queueResponses.OrderBy(q => (int)q.GetType().GetProperty("Position")!.GetValue(q)!).ToList();
 
-                _logger.LogInformation("Successfully fetched {Count} queue entries for EventId: {EventId}", sortedQueueDtos.Count, eventId);
-                return Ok(sortedQueueDtos);
+                _logger.LogInformation("Successfully fetched {Count} queue entries for EventId: {EventId}", sortedQueueResponses.Count, eventId);
+                return Ok(sortedQueueResponses);
             }
             catch (Exception ex)
             {

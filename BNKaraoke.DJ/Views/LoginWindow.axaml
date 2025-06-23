@@ -1,0 +1,70 @@
+<!-- File: LoginWindow.axaml -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="clr-namespace:BNKaraoke.DJ.Converters"
+	x:Class="BNKaraoke.DJ.Views.LoginWindow"
+	Width="400"
+	Height="350"
+	Title="DJ Login"
+	Background="#202020"
+	WindowStartupLocation="CenterOwner"
+	KeyDown="OnKeyDown">
+
+	<Window.Resources>
+		<conv:InverseBoolConverter x:Key="InverseBoolConverter" />
+	</Window.Resources>
+
+	<Border Background="#f0f0f0" Padding="25" CornerRadius="8">
+		<StackPanel Spacing="12">
+			<TextBlock Text="DJ Login"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"
+                       Foreground="#202020" />
+
+			<!-- Phone number input -->
+			<TextBlock Text="Phone Number" Foreground="#333" />
+			<TextBox Text="{Binding DisplayPhone, Mode=TwoWay}"
+                     Watermark="(123) 456-7890"
+                     MaxLength="14"
+                     Background="White"
+                     Foreground="Black"
+                     BorderBrush="#007ACC"
+                     CornerRadius="4" />
+
+			<!-- Password input -->
+			<TextBlock Text="Password" Foreground="#333" />
+			<TextBox Text="{Binding Password, Mode=TwoWay}"
+                     PasswordChar="*"
+                     Watermark="Enter your password"
+                     Background="White"
+                     Foreground="Black"
+                     BorderBrush="#007ACC"
+                     CornerRadius="4" />
+
+			<!-- Error message -->
+			<TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="Red"
+                       FontWeight="Bold"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding HasError}" />
+
+			<!-- Login button -->
+			<Button Content="Login"
+                    Command="{Binding LoginCommand}"
+                    Background="#007ACC"
+                    Foreground="White"
+                    HorizontalAlignment="Center"
+                    Width="120"
+                    CornerRadius="4"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+
+			<!-- Logging in... -->
+			<TextBlock Text="Logging in..."
+                       HorizontalAlignment="Center"
+                       Foreground="#007ACC"
+                       FontStyle="Italic"
+                       IsVisible="{Binding IsBusy}" />
+		</StackPanel>
+	</Border>
+</Window>

@@ -1,0 +1,142 @@
+<!-- File: MainWindow.axaml -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="BNKaraoke.DJ.Views.MainWindow"
+        Title="BNKaraoke DJ"
+        Width="1280"
+        Height="800"
+        Background="#181818">
+
+	<DockPanel LastChildFill="True">
+
+		<!-- HEADER AREA -->
+		<Border DockPanel.Dock="Top" Height="80" Background="#1E1E1E" Padding="10">
+			<Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" VerticalAlignment="Center">
+				<!-- Logo -->
+				<Image Source="avares://BNKaraoke.DJ/Assets/twosinger.png"
+                       Width="60" Height="60"
+                       VerticalAlignment="Center"
+                       Margin="10,0" />
+
+				<!-- Title + Welcome -->
+				<StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0">
+					<TextBlock Text="BNKaraoke.com DJ Control Center"
+                               Foreground="White"
+                               FontSize="24"
+                               FontWeight="Bold" />
+					<TextBlock x:Name="WelcomeText"
+                               Foreground="#66CCFF"
+                               FontSize="14"
+                               Text="Welcome, Guest" />
+				</StackPanel>
+
+				<!-- Join Live Event Button -->
+				<Button x:Name="JoinLiveEventButton"
+                        Content="Join Live Event"
+                        Width="150" Height="40"
+                        Grid.Column="2"
+                        Margin="10,0"
+                        HorizontalAlignment="Right"
+                        IsVisible="False"
+                        Background="#007ACC"
+                        Foreground="White" />
+
+				<!-- Login/Logout Button -->
+				<Button x:Name="LoginButton"
+                        Content="Login"
+                        Width="100" Height="40"
+                        Grid.Column="3"
+                        Margin="10,0"
+                        Background="#007ACC"
+                        Foreground="White"
+                        Click="OnLoginClick" />
+
+				<!-- Settings Icon -->
+				<Image Source="avares://BNKaraoke.DJ/Assets/blue-gear.png"
+                       Width="40" Height="40"
+                       Grid.Column="4"
+                       Margin="10,0"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"
+                       Cursor="Hand"
+                       PointerPressed="OnSettingsClick" />
+			</Grid>
+		</Border>
+
+		<!-- CONTROL AREA (BOTTOM) -->
+		<Border DockPanel.Dock="Bottom" Height="80" Background="#2D2D30">
+			<Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto"
+                  VerticalAlignment="Center"
+                  Margin="20,0">
+				<Button Content="Play" Width="80" Margin="5" Background="#007ACC" Foreground="White"/>
+				<Button Content="Stop" Width="80" Margin="5" Background="#007ACC" Foreground="White"/>
+				<Button Content="Resume" Width="80" Margin="5" Background="#007ACC" Foreground="White"/>
+				<Button Content="Skip" Width="80" Margin="5" Background="#007ACC" Foreground="White"/>
+				<Button Content="Launch Video" Width="120" Margin="5" Background="#007ACC" Foreground="White"/>
+				<TextBlock Grid.Column="5" />
+				<TextBlock Text="Now Playing: [Song]" Foreground="White" VerticalAlignment="Center" Grid.Column="6" />
+				<TextBlock Text="Up Next: [Next Song]" Foreground="Gray" VerticalAlignment="Center" Grid.Column="7" />
+				<TextBlock Text="00:45 / 03:30 (2:45 Left)" Foreground="White" HorizontalAlignment="Right" Grid.Column="8" Margin="10,0" />
+			</Grid>
+		</Border>
+
+		<!-- MAIN CONTENT AREA -->
+		<Grid ColumnDefinitions="3*,1*" Background="#181818">
+			<!-- QUEUE AREA -->
+			<Border BorderThickness="2"
+                    BorderBrush="#007ACC"
+                    Background="#202020"
+                    Margin="10"
+                    Padding="10"
+                    CornerRadius="6">
+				<StackPanel>
+					<TextBlock Text="🎤 Live Event Queue"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               Foreground="White"
+                               Margin="0,0,0,10" />
+					<TextBlock Text="Queue will appear here..." Foreground="Gray" />
+				</StackPanel>
+			</Border>
+
+			<!-- SONG + SINGERS AREA -->
+			<Grid Grid.Column="1" RowDefinitions="3*,2*" Margin="10,10,10,10">
+				<!-- SONG DETAILS -->
+				<Border BorderThickness="2"
+                        BorderBrush="#007ACC"
+                        CornerRadius="6"
+                        Padding="10"
+                        Margin="0,0,0,5"
+                        Background="#202020">
+					<StackPanel>
+						<TextBlock Text="🎶 Song Details" FontSize="16" FontWeight="Bold" Foreground="White" Margin="0,0,0,10" />
+						<TextBlock Text="Artist: " Foreground="White"/>
+						<TextBlock Text="Genre: " Foreground="White"/>
+						<TextBlock Text="Decade: " Foreground="White"/>
+						<TextBlock Text="Length: " Foreground="White"/>
+						<TextBlock Text="Added By: " Foreground="White"/>
+						<TextBlock Text="Requested Today By: " Foreground="White"/>
+					</StackPanel>
+				</Border>
+
+				<!-- SINGERS -->
+				<Border BorderThickness="2"
+                        BorderBrush="#007ACC"
+                        CornerRadius="6"
+                        Padding="10"
+                        Margin="0,5,0,0"
+                        Background="#202020">
+					<StackPanel>
+						<TextBlock Text="👤 Singers" FontSize="16" FontWeight="Bold" Foreground="White" Margin="0,0,0,10" />
+						<ScrollViewer Height="100">
+							<StackPanel>
+								<TextBlock Text="John Smith - On Break" Foreground="White"/>
+								<TextBlock Text="Jane Doe - Ready" Foreground="White"/>
+							</StackPanel>
+						</ScrollViewer>
+					</StackPanel>
+				</Border>
+			</Grid>
+		</Grid>
+	</DockPanel>
+</Window>
