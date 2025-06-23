@@ -158,7 +158,7 @@ namespace BNKaraoke.DJ.ViewModels
             }
         }
 
-        private void ExecuteViewSungSongs(object? parameter) // Made parameter nullable
+        private void ExecuteViewSungSongs(object? parameter)
         {
             try
             {
@@ -173,6 +173,11 @@ namespace BNKaraoke.DJ.ViewModels
                 var window = new SungSongsView
                 {
                     DataContext = viewModel
+                };
+                window.Loaded += async (s, e) =>
+                {
+                    await viewModel.InitializeAsync();
+                    Log.Information("[DJSCREEN] Initialized SungSongsViewModel for EventId={EventId}", _currentEventId);
                 };
                 window.ShowDialog();
                 Log.Information("[DJSCREEN] SungSongsView opened for EventId={EventId}", _currentEventId);
@@ -451,18 +456,18 @@ namespace BNKaraoke.DJ.ViewModels
 
         private class RelayCommand : ICommand
         {
-            private readonly Action<object?> _execute; // Made parameter nullable
+            private readonly Action<object?> _execute;
 
             public RelayCommand(Action<object?> execute)
             {
                 _execute = execute;
             }
 
-            public bool CanExecute(object? parameter) => true; // Made parameter nullable
+            public bool CanExecute(object? parameter) => true;
 
-            public void Execute(object? parameter) => _execute(parameter); // Made parameter nullable
+            public void Execute(object? parameter) => _execute(parameter);
 
-            public event EventHandler? CanExecuteChanged; // Made nullable
+            public event EventHandler? CanExecuteChanged;
         }
     }
 }
