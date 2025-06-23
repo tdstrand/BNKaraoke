@@ -1,165 +1,142 @@
-﻿// File: ViewModels/LoginWindowViewModel.cs
+using BNKaraoke.DJ.Models;
+using BNKaraoke.DJ.Services;
+using BNKaraoke.DJ.Views;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Serilog;
 using System;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
+using System.Linq;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Windows.Input;
-using System.Diagnostics;
-using BNKaraoke.DJ.Services;
-using BNKaraoke.DJ.Models;
+using System.Windows;
 
 namespace BNKaraoke.DJ.ViewModels
 {
-    public class LoginWindowViewModel : INotifyPropertyChanged
+    public partial class LoginWindowViewModel : ObservableObject
     {
-        private string _displayPhone = "";
-        private string _password = "";
-        private string _errorMessage = "";
-        private bool _isBusy = false;
+        private readonly AuthService _authService = new AuthService();
+        private readonly IUserSessionService _userSessionService = UserSessionService.Instance;
 
-        private readonly IApiServices _api;
-        private readonly IUserSessionService _session;
-        private readonly Action _onLoginSuccess;
+        private string _rawUserName = string.Empty; // Store raw digits
+        private string _userName = string.Empty;
+        [ObservableProperty]
+        private string _password = string.Empty;
+        [ObservableProperty]
+        private bool _isBusy;
+        [ObservableProperty]
+        private string _errorMessage = string.Empty;
 
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        public LoginWindowViewModel(IApiServices api, IUserSessionService session, Action onLoginSuccess)
+        public string UserName
         {
-            _api = api;
-            _session = session;
-            _onLoginSuccess = onLoginSuccess;
-
-            LoginCommand = new RelayCommand(
-                async (_) => await ExecuteLoginAsync(),
-                (_) => CanLogin()
-            );
-        }
-
-        public string DisplayPhone
-        {
-            get => _displayPhone;
+            get => _userName;
             set
             {
-                if (_displayPhone != value)
+                // Strip non-digits for raw storage
+                var digits = Regex.Replace(value, "[^0-9]", "");
+                if (digits.Length > 10) digits = digits.Substring(0, 10);
+
+                if (_rawUserName != digits)
                 {
-                    _displayPhone = FormatPhone(value);
-                    OnPropertyChanged();
-                    RaiseCanExecuteChanged();
+                    _rawUserName = digits;
+                    // Format for display: (XXX) XXX-XXXX
+                    string formatted = digits;
+                    if (digits.Length >= 7)
+                        formatted = $"({digits.Substring(0, 3)}) {digits.Substring(3, 3)}-{digits.Substring(6)}";
+                    else if (digits.Length >= 4)
+                        formatted = $"({digits.Substring(0, 3)}) {digits.Substring(3)}";
+                    else if (digits.Length > 0)
+                        formatted = $"({digits}";
+                    else
+                        formatted = string.Empty;
+
+                    if (SetProperty(ref _userName, formatted))
+                    {
+                        Log.Information("[LOGIN] UserName set: Raw={Raw}, Display={Display}, CanLogin={CanLogin}", _rawUserName, formatted, CanLogin);
+                        OnPropertyChanged(nameof(CanLogin));
+                        LoginCommand.NotifyCanExecuteChanged();
+                    }
                 }
             }
         }
 
-        public string Password
+        public bool CanLogin => _rawUserName.Length == 10 && !string.IsNullOrWhiteSpace(Password);
+
+        public LoginWindowViewModel()
         {
-            get => _password;
-            set
-            {
-                _password = value;
-                OnPropertyChanged();
-                RaiseCanExecuteChanged();
-            }
+            Log.Information("[LOGIN INIT] ViewModel initialized: {InstanceId}", GetHashCode());
         }
 
-        public string ErrorMessage
+        [RelayCommand(CanExecute = nameof(CanLogin))]
+        private async Task LoginAsync()
         {
-            get => _errorMessage;
-            set { _errorMessage = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasError)); }
-        }
-
-        public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
-
-        public bool IsBusy
-        {
-            get => _isBusy;
-            set { _isBusy = value; OnPropertyChanged(); RaiseCanExecuteChanged(); }
-        }
-
-        public ICommand LoginCommand { get; }
-
-        private async Task ExecuteLoginAsync()
-        {
-            ErrorMessage = "";
-
-            var rawPhone = StripPhone(DisplayPhone);
-            if (rawPhone.Length != 10)
-            {
-                ErrorMessage = "Enter a valid 10-digit phone number.";
-                return;
-            }
-
-            IsBusy = true;
-
             try
             {
-                Debug.WriteLine($"🔐 Attempting login for phone: {rawPhone}");
+                ErrorMessage = string.Empty;
+                IsBusy = true;
 
-                var token = await _api.LoginAsync(rawPhone, Password);
-                var userInfo = await _api.GetUserInfoAsync(token);
-
-                if (!userInfo.Roles.Contains("Karaoke DJ"))
+                var userNameDigits = _rawUserName;
+                Log.Information("[LOGIN] Attempting login with UserName={UserName}", userNameDigits);
+                if (string.IsNullOrWhiteSpace(userNameDigits))
                 {
-                    ErrorMessage = "You must have the 'Karaoke DJ' role to use this console.";
+                    ErrorMessage = "Username is required.";
+                    Log.Error("[LOGIN] Login failed: Empty username");
+                    return;
+                }
+                if (userNameDigits.Length != 10)
+                {
+                    ErrorMessage = "Username must be a 10-digit phone number.";
+                    Log.Error("[LOGIN] Login failed: Invalid username length={Length}", userNameDigits.Length);
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(Password))
+                {
+                    ErrorMessage = "Password is required.";
+                    Log.Error("[LOGIN] Login failed: Empty password");
                     return;
                 }
 
-                _session.SetSession(new UserSession
-                {
-                    Token = token,
-                    UserId = userInfo.UserName,
-                    FirstName = userInfo.FirstName,
-                    LastName = userInfo.LastName,
-                    Roles = userInfo.Roles
-                });
+                Log.Information("[LOGIN] Sending login for: {UserName}", userNameDigits);
+                var loginResult = await _authService.LoginAsync(userNameDigits, Password);
+                Log.Information("[LOGIN] Login result: Token={Token}, FirstName={FirstName}",
+                    loginResult.Token?.Substring(0, Math.Min(10, loginResult.Token?.Length ?? 0)) ?? "null",
+                    loginResult.FirstName);
 
-                Debug.WriteLine("✅ Login successful. Closing window...");
-                _onLoginSuccess.Invoke();
+                if (!string.IsNullOrEmpty(loginResult.Token))
+                {
+                    _userSessionService.SetSession(loginResult, userNameDigits);
+                    Log.Information("[LOGIN] Session set: IsAuthenticated=True");
+
+                    if (Application.Current.Windows.OfType<LoginWindow>().FirstOrDefault() is LoginWindow loginWindow)
+                    {
+                        loginWindow.DialogResult = true;
+                        Log.Information("[LOGIN] LoginWindow DialogResult set to true");
+                    }
+                    else
+                    {
+                        Log.Warning("[LOGIN] No LoginWindow found to close");
+                    }
+                }
+                else
+                {
+                    ErrorMessage = "Invalid username or password.";
+                    Log.Error("[LOGIN] Login failed: Invalid credentials");
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                ErrorMessage = $"Login failed: {ex.Message}. Check API URL in settings.";
+                Log.Error("[LOGIN] Login failed: HttpRequestException: {Message}", ex.Message);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("❌ Login error: " + ex);
-                ErrorMessage = "Login failed: " + ex.Message;
+                ErrorMessage = $"Login failed: {ex.Message}";
+                Log.Error("[LOGIN] Login failed: {Message}", ex.Message);
             }
             finally
             {
                 IsBusy = false;
             }
-        }
-
-        private string StripPhone(string phone)
-        {
-            return Regex.Replace(phone, @"\D", "");
-        }
-
-        private string FormatPhone(string raw)
-        {
-            string digits = StripPhone(raw);
-            if (digits.Length > 10)
-                digits = digits.Substring(0, 10);
-
-            return digits.Length switch
-            {
-                <= 3 => digits,
-                <= 6 => $"({digits.Substring(0, 3)}) {digits.Substring(3)}",
-                _ => $"({digits.Substring(0, 3)}) {digits.Substring(3, 3)}-{digits.Substring(6)}"
-            };
-        }
-
-        private bool CanLogin()
-        {
-            var phone = StripPhone(DisplayPhone);
-            return !IsBusy && phone.Length == 10 && !string.IsNullOrWhiteSpace(Password);
-        }
-
-        private void RaiseCanExecuteChanged()
-        {
-            if (LoginCommand is RelayCommand cmd)
-                cmd.RaiseCanExecuteChanged();
-        }
-
-        private void OnPropertyChanged([CallerMemberName] string? name = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
     }
 }

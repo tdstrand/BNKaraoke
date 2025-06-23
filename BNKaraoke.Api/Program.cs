@@ -1,38 +1,37 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using BNKaraoke.Api.Models;
-using BNKaraoke.Api.Data;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
-using Microsoft.AspNetCore.Diagnostics;
+using AspNetCoreRateLimit;
 using BNKaraoke.Api.Controllers;
-using Microsoft.Extensions.DependencyInjection;
+using BNKaraoke.Api.Data;
+using BNKaraoke.Api.Hubs;
+using BNKaraoke.Api.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Linq;
 using System.Security.Claims;
-using BNKaraoke.Api.Hubs;
+using System.Text;
+using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddUserSecrets<Program>();
 builder.Configuration.AddEnvironmentVariables();
 
-// Configure logging
 builder.Services.AddLogging(logging =>
 {
     logging.AddConsole();
     logging.AddDebug();
-    logging.SetMinimumLevel(LogLevel.Debug);
-    logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Debug);
-    logging.AddFilter("Microsoft.AspNetCore", LogLevel.Debug);
-    logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.Debug);
+    logging.SetMinimumLevel(LogLevel.Information);
 });
+
+builder.Services.AddSingleton(builder.Configuration);
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrEmpty(connectionString))
@@ -56,7 +55,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 var keyString = builder.Configuration["JwtSettings:SecretKey"];
 if (string.IsNullOrEmpty(keyString) || Encoding.UTF8.GetBytes(keyString).Length < 32)
 {
-    throw new InvalidOperationException("Jwt secret key is missing or too short. It must be at least 256 bits (32+ characters).");
+    throw new InvalidOperationException("Jwt secret key is missing or too short.");
 }
 
 builder.Services.AddAuthentication(options =>
@@ -83,45 +82,28 @@ builder.Services.AddAuthentication(options =>
         OnTokenValidated = context =>
         {
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-            logger.LogDebug("OnTokenValidated event fired.");
+            logger.LogDebug("Token validated for user: {User}", context.Principal?.Identity?.Name ?? "Unknown");
             var claims = context.Principal?.Claims;
             if (claims != null)
             {
-                logger.LogDebug("Token validated. Claims: {Claims}", string.Join(", ", claims.Select(c => $"{c.Type}: {c.Value}")));
                 var subClaim = claims.FirstOrDefault(c => c.Type == "sub")?.Value
-                            ?? claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value
-                            ?? claims.FirstOrDefault(c => c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+                            ?? claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
                 if (!string.IsNullOrEmpty(subClaim))
                 {
-                    logger.LogDebug("Sub claim found: {SubClaim}", subClaim);
                     var identity = context.Principal?.Identity as ClaimsIdentity;
                     if (identity != null && !identity.HasClaim(c => c.Type == ClaimTypes.Name))
                     {
                         identity.AddClaim(new Claim(ClaimTypes.Name, subClaim));
-                        logger.LogDebug("Added Name claim with value: {SubClaim}", subClaim);
+                        logger.LogDebug("Added Name claim: {SubClaim}", subClaim);
                     }
                 }
-                else
-                {
-                    logger.LogWarning("Sub claim not found in token");
-                }
-            }
-            else
-            {
-                logger.LogWarning("No claims found in token");
             }
             return Task.CompletedTask;
         },
         OnAuthenticationFailed = context =>
         {
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-            logger.LogError("Authentication failed: {Exception}", context.Exception.Message);
-            return Task.CompletedTask;
-        },
-        OnMessageReceived = context =>
-        {
-            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-            logger.LogDebug("OnMessageReceived event fired. Token: {Token}", context.Token);
+            logger.LogError(context.Exception, "Authentication failed");
             return Task.CompletedTask;
         }
     };
@@ -129,22 +111,35 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("Singer", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-        policy.RequireRole("Singer");
-    });
-    options.AddPolicy("SongManager", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-        policy.RequireRole("Song Manager");
-    });
-    options.AddPolicy("UserManager", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-        policy.RequireRole("User Manager");
-    });
+    options.AddPolicy("Singer", policy => policy.RequireAuthenticatedUser().RequireRole("Singer"));
+    options.AddPolicy("SongController", policy => policy.RequireAuthenticatedUser().RequireRole("Song Manager"));
+    options.AddPolicy("SongManager", policy => policy.RequireAuthenticatedUser().RequireRole("Song Manager"));
+    options.AddPolicy("UserManager", policy => policy.RequireAuthenticatedUser().RequireRole("User Manager"));
 });
+
+builder.Services.AddMemoryCache();
+builder.Services.Configure<IpRateLimitOptions>(options =>
+{
+    options.GeneralRules = new List<RateLimitRule>
+    {
+        new RateLimitRule
+        {
+            Endpoint = "POST:/api/dj/singer/update",
+            Period = "1s",
+            Limit = 5
+        }
+    };
+    options.QuotaExceededResponse = new QuotaExceededResponse
+    {
+        StatusCode = 429,
+        ContentType = "application/json",
+        Content = "{\"error\": \"Too many requests. Please try again later.\"}"
+    };
+});
+builder.Services.AddSingleton<IIpPolicyStore, MemoryCacheIpPolicyStore>();
+builder.Services.AddSingleton<IRateLimitCounterStore, MemoryCacheRateLimitCounterStore>();
+builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
+builder.Services.AddSingleton<IProcessingStrategy, AsyncKeyLockProcessingStrategy>();
 
 builder.Services.AddCors(options =>
 {
@@ -163,27 +158,11 @@ builder.Services.AddControllers()
     .AddControllersAsServices();
 
 builder.Services.AddTransient<EventController>();
-
-// Add SignalR services
-builder.Services.AddSignalR();
-
-var loggerFactory = LoggerFactory.Create(logging =>
+builder.Services.AddSignalR(options =>
 {
-    logging.AddConsole();
-    logging.AddDebug();
-    logging.SetMinimumLevel(LogLevel.Debug);
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15); // Increased to 15 seconds
 });
-var logger = loggerFactory.CreateLogger<Program>();
-logger.LogInformation("Starting controller discovery diagnostics...");
-var assembly = typeof(EventController).Assembly;
-var controllerTypes = assembly.GetTypes()
-    .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract)
-    .ToList();
-logger.LogInformation("Found {Count} controller types in assembly: {AssemblyName}", controllerTypes.Count, assembly.GetName().Name);
-foreach (var controllerType in controllerTypes)
-{
-    logger.LogInformation("Discovered controller: {ControllerName}", controllerType.Name);
-}
+builder.Services.AddHttpClient();
 
 builder.Services.AddSwaggerGen(c =>
 {
@@ -217,20 +196,15 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-builder.Services.AddHttpClient();
-
 var app = builder.Build();
 
-// Early logging middleware
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogDebug("Earliest middleware - Connection received: {Method} {Path} from {RemoteIp}",
-        context.Request.Method, context.Request.Path, context.Connection.RemoteIpAddress);
+    logger.LogDebug("Connection received: {Method} {Path} from {RemoteIp}", context.Request.Method, context.Request.Path, context.Connection.RemoteIpAddress);
     await next.Invoke();
 });
 
-// DI failure logging
 app.Use(async (context, next) =>
 {
     try
@@ -240,21 +214,92 @@ app.Use(async (context, next) =>
     catch (Exception ex)
     {
         var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Error processing request {Method} {Path}: {Message}",
-            context.Request.Method, context.Request.Path, ex.Message);
+        logger.LogError(ex, "Error processing request: {Method} {Path}", context.Request.Method, context.Request.Path);
         throw;
     }
 });
 
-// Request logging
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogDebug("Processing request: {Method} {Path} from Origin: {Origin} with Scheme: {Scheme}",
-        context.Request.Method, context.Request.Path, context.Request.Headers["Origin"], context.Request.Scheme);
+    logger.LogDebug("Processing request: {Method} {Path} from Origin: {Origin}", context.Request.Method, context.Request.Path, context.Request.Headers["Origin"]);
+    var requestorId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "Unknown";
     await next.Invoke();
-    logger.LogDebug("Sending response: {StatusCode} with CORS headers: {AllowOrigin}",
-        context.Response.StatusCode, context.Response.Headers["Access-Control-Allow-Origin"]);
+    if (context.Response.StatusCode == 404 && context.Request.Path.Value?.StartsWith("/api/events/", StringComparison.OrdinalIgnoreCase) == true &&
+        context.Request.Path.Value.EndsWith("/leave", StringComparison.OrdinalIgnoreCase))
+    {
+        var eventId = context.Request.Path.Value.Split('/')[3];
+        logger.LogWarning("404 on /leave for EventId: {EventId}, RequestorId: {RequestorId}", eventId, requestorId);
+    }
+});
+
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<KaraokeDJHub>>();
+            var user = await dbContext.Users.FindAsync(userId);
+            if (user != null)
+            {
+                user.LastActivity = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+
+                var path = context.Request.Path.Value?.ToLower();
+                if (path != null && path.Contains("/events/"))
+                {
+                    var eventIdStr = path.Split("/events/")[1].Split('/')[0];
+                    if (int.TryParse(eventIdStr, out int eventId))
+                    {
+                        var singerStatus = await dbContext.SingerStatus
+                            .FirstOrDefaultAsync(ss => ss.EventId == eventId && ss.RequestorId == userId);
+                        if (singerStatus != null && path.Contains("/attendance/check-in"))
+                        {
+                            singerStatus.IsJoined = true;
+                            singerStatus.IsLoggedIn = true;
+                            singerStatus.UpdatedAt = DateTime.UtcNow;
+                            await dbContext.SaveChangesAsync();
+                            await hubContext.Clients.Group($"Event_{eventId}")
+                                .SendAsync("SingerStatusUpdated", new
+                                {
+                                    UserId = userId,
+                                    EventId = eventId,
+                                    DisplayName = $"{user.FirstName} {user.LastName}".Trim(),
+                                    IsLoggedIn = true,
+                                    IsJoined = true,
+                                    IsOnBreak = singerStatus.IsOnBreak
+                                });
+                            logger.LogInformation("Logged Join for UserId: {UserId}, EventId: {EventId}", userId, eventId);
+                        }
+                        else if (singerStatus != null && path.Contains("/attendance/break"))
+                        {
+                            var isOnBreak = context.Request.Method == "POST" && path.EndsWith("/start");
+                            singerStatus.IsOnBreak = isOnBreak;
+                            singerStatus.UpdatedAt = DateTime.UtcNow;
+                            await dbContext.SaveChangesAsync();
+                            await hubContext.Clients.Group($"Event_{eventId}")
+                                .SendAsync("SingerStatusUpdated", new
+                                {
+                                    UserId = userId,
+                                    EventId = eventId,
+                                    DisplayName = $"{user.FirstName} {user.LastName}".Trim(),
+                                    IsLoggedIn = singerStatus.IsLoggedIn,
+                                    IsJoined = singerStatus.IsJoined,
+                                    IsOnBreak = isOnBreak
+                                });
+                            logger.LogInformation("Logged Break status {Status} for UserId: {UserId}, EventId: {EventId}", isOnBreak ? "On" : "Off", userId, eventId);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    await next();
 });
 
 if (app.Environment.IsDevelopment())
@@ -278,7 +323,7 @@ else
             logger.LogError(error?.Error, "Unhandled exception at {Path}", context.Request.Path);
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
-            await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred." });
+            await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred" });
         });
     });
 }
@@ -286,32 +331,12 @@ else
 app.UseStaticFiles();
 app.UseRouting();
 app.UseCors("AllowNetwork");
-
-// Add logging for CORS origins after app is built
-app.Use(async (context, next) =>
-{
-    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new[] { "https://www.bnkaraoke.com", "http://localhost:8080" };
-    logger.LogInformation("CORS policy configured for origins: {Origins}", string.Join(", ", allowedOrigins));
-    await next.Invoke();
-});
-
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseIpRateLimiting();
 
-// Route logging middleware
-app.Use(async (context, next) =>
-{
-    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogDebug("Before routing: {Method} {Path}", context.Request.Method, context.Request.Path);
-    await next.Invoke();
-    logger.LogDebug("After routing: {Method} {Path} -> Status: {StatusCode}",
-        context.Request.Method, context.Request.Path, context.Response.StatusCode);
-});
-
-// Map controllers and SignalR hub
 app.MapControllers();
-app.MapHub<QueueHub>("/hub/queue");
+app.MapHub<KaraokeDJHub>("/hubs/karaoke-dj");
 
 using (var scope = app.Services.CreateScope())
 {
@@ -355,7 +380,8 @@ using (var scope = app.Services.CreateScope())
             }
             else
             {
-                app.Logger.LogError("Failed to create user {UserName}: {Errors}", appUser.UserName, string.Join(", ", result.Errors.Select(e => e.Description)));
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+                logger.LogError("Failed to create user {UserName}: {Errors}", appUser.UserName, string.Join(", ", result.Errors.Select(e => e.Description)));
             }
         }
     }

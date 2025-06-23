@@ -1,9 +1,9 @@
-﻿namespace BNKaraoke.Api.Data
-{
-    using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
-    using Microsoft.EntityFrameworkCore;
-    using BNKaraoke.Api.Models;
+﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using BNKaraoke.Api.Models;
 
+namespace BNKaraoke.Api.Data
+{
     public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     {
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
@@ -21,10 +21,16 @@
         public DbSet<RegistrationSettings> RegistrationSettings { get; set; }
         public DbSet<PinChangeHistory> PinChangeHistory { get; set; }
         public DbSet<KaraokeChannel> KaraokeChannels { get; set; }
+        public DbSet<ApiSettings> ApiSettings { get; set; }
+        public DbSet<SingerStatus> SingerStatus { get; set; } // Added
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // ApplicationUser
+            modelBuilder.Entity<ApplicationUser>()
+                .Property(u => u.LastActivity).HasColumnName("LastActivity");
 
             // Event
             modelBuilder.Entity<Event>()
@@ -71,6 +77,8 @@
                 .Property(e => e.IsCanceled).HasColumnName("IsCanceled").HasDefaultValue(false);
             modelBuilder.Entity<Event>()
                 .Property(e => e.RequestLimit).HasColumnName("RequestLimit").HasDefaultValue(15);
+            modelBuilder.Entity<Event>()
+                .Property(e => e.SongsCompleted).HasColumnName("SongsCompleted").HasDefaultValue(0);
             modelBuilder.Entity<Event>()
                 .Property(e => e.CreatedAt).HasColumnName("CreatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP");
             modelBuilder.Entity<Event>()
@@ -132,9 +140,9 @@
             modelBuilder.Entity<EventQueue>()
                 .Property(eq => eq.IsOnBreak).HasColumnName("IsOnBreak").IsRequired().HasDefaultValue(false);
             modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.CreatedAt).HasColumnName("CreatedAt").IsRequired().HasDefaultValueSql("CURRENT_TIMESTAMP");
+                .Property(eq => eq.CreatedAt).HasColumnName("CreatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP");
             modelBuilder.Entity<EventQueue>()
-                .Property(eq => eq.UpdatedAt).HasColumnName("UpdatedAt").IsRequired().HasDefaultValueSql("CURRENT_TIMESTAMP");
+                .Property(eq => eq.UpdatedAt).HasColumnName("UpdatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             // EventAttendance
             modelBuilder.Entity<EventAttendance>()
@@ -306,6 +314,58 @@
                 .Property(kc => kc.SortOrder).HasColumnName("SortOrder").IsRequired();
             modelBuilder.Entity<KaraokeChannel>()
                 .Property(kc => kc.IsActive).HasColumnName("IsActive").IsRequired().HasDefaultValue(true);
+
+            // ApiSettings
+            modelBuilder.Entity<ApiSettings>()
+                .ToTable("ApiSettings", "public")
+                .HasKey(s => s.Id);
+
+            modelBuilder.Entity<ApiSettings>()
+                .Property(s => s.Id).HasColumnName("Id");
+            modelBuilder.Entity<ApiSettings>()
+                .Property(s => s.SettingKey).HasColumnName("SettingKey").IsRequired().HasMaxLength(50);
+            modelBuilder.Entity<ApiSettings>()
+                .Property(s => s.SettingValue).HasColumnName("SettingValue").IsRequired().HasMaxLength(100);
+            modelBuilder.Entity<ApiSettings>()
+                .Property(s => s.CreatedAt).HasColumnName("CreatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            modelBuilder.Entity<ApiSettings>()
+                .Property(s => s.UpdatedAt).HasColumnName("UpdatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            // SingerStatus
+            modelBuilder.Entity<SingerStatus>()
+                .ToTable("SingerStatus", "public")
+                .HasKey(ss => ss.Id);
+
+            modelBuilder.Entity<SingerStatus>()
+                .HasOne(ss => ss.Event)
+                .WithMany()
+                .HasForeignKey(ss => ss.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<SingerStatus>()
+                .HasOne(ss => ss.Requestor)
+                .WithMany()
+                .HasForeignKey(ss => ss.RequestorId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<SingerStatus>()
+                .Property(ss => ss.Id).HasColumnName("Id");
+            modelBuilder.Entity<SingerStatus>()
+                .Property(ss => ss.EventId).HasColumnName("EventId");
+            modelBuilder.Entity<SingerStatus>()
+                .Property(ss => ss.RequestorId).HasColumnName("RequestorId");
+            modelBuilder.Entity<SingerStatus>()
+                .Property(ss => ss.IsLoggedIn).HasColumnName("IsLoggedIn").IsRequired().HasDefaultValue(false);
+            modelBuilder.Entity<SingerStatus>()
+                .Property(ss => ss.IsJoined).HasColumnName("IsJoined").IsRequired().HasDefaultValue(false);
+            modelBuilder.Entity<SingerStatus>()
+                .Property(ss => ss.IsOnBreak).HasColumnName("IsOnBreak").IsRequired().HasDefaultValue(false);
+            modelBuilder.Entity<SingerStatus>()
+                .Property(ss => ss.UpdatedAt).HasColumnName("UpdatedAt").IsRequired().HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            modelBuilder.Entity<SingerStatus>()
+                .HasIndex(ss => new { ss.EventId, ss.RequestorId })
+                .IsUnique();
         }
     }
 }

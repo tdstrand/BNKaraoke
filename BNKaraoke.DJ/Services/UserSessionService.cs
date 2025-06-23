@@ -1,56 +1,66 @@
-﻿// File: Services/UserSessionService.cs
+using System;
 using System.Collections.Generic;
+using Serilog;
 using BNKaraoke.DJ.Models;
 
 namespace BNKaraoke.DJ.Services
 {
     public class UserSessionService : IUserSessionService
     {
-        public string Token { get; private set; } = string.Empty;
-        public string UserId { get; private set; } = string.Empty;
-        public string FirstName { get; private set; } = string.Empty;
-        public string LastName { get; private set; } = string.Empty;
-        public List<string> Roles { get; private set; } = new();
+        private static UserSessionService _instance = new UserSessionService();
+        public static UserSessionService Instance => _instance;
 
-        public bool IsAuthenticated => !string.IsNullOrWhiteSpace(Token);
+        public event EventHandler? SessionChanged;
 
-        public void SetSession(UserSession session)
+        public bool IsAuthenticated { get; private set; }
+        public string? Token { get; private set; }
+        public string? FirstName { get; private set; }
+        public string? UserName { get; private set; }
+        public List<string>? Roles { get; private set; }
+
+        private UserSessionService()
         {
-            Token = session.Token;
-            UserId = session.UserId;
-            FirstName = session.FirstName;
-            LastName = session.LastName;
-            Roles = session.Roles;
+            Log.Information("[SESSION] Singleton instance created: {InstanceId}", GetHashCode());
+        }
+
+        public void SetSession(LoginResult loginResult, string userName)
+        {
+            try
+            {
+                Log.Information("[SESSION] Setting session: Token={Token}, FirstName={FirstName}, UserName={UserName}, Roles={Roles}",
+                    loginResult?.Token?.Substring(0, Math.Min(10, loginResult.Token?.Length ?? 0)) ?? "null",
+                    loginResult?.FirstName, userName, loginResult?.Roles?.Count ?? 0);
+                Token = loginResult?.Token;
+                FirstName = loginResult?.FirstName;
+                UserName = userName;
+                Roles = loginResult?.Roles;
+                IsAuthenticated = !string.IsNullOrEmpty(Token);
+                SessionChanged?.Invoke(this, EventArgs.Empty);
+                Log.Information("[SESSION] Session set: IsAuthenticated={IsAuthenticated}", IsAuthenticated);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[SESSION] Failed to set session: {Message}", ex.Message);
+            }
         }
 
         public void ClearSession()
         {
-            Token = string.Empty;
-            UserId = string.Empty;
-            FirstName = string.Empty;
-            LastName = string.Empty;
-            Roles.Clear();
+            try
+            {
+                Log.Information("[SESSION] Clearing session");
+                Token = null;
+                FirstName = null;
+                UserName = null;
+                Roles = null;
+                IsAuthenticated = false;
+                SessionChanged?.Invoke(this, EventArgs.Empty);
+                Log.Information("[SESSION] Session cleared: IsAuthenticated={IsAuthenticated}", IsAuthenticated);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[SESSION] Failed to clear session: {Message}", ex.Message);
+            }
         }
-    }
-
-    public interface IUserSessionService
-    {
-        string Token { get; }
-        string UserId { get; }
-        string FirstName { get; }
-        string LastName { get; }
-        List<string> Roles { get; }
-        bool IsAuthenticated { get; }
-        void SetSession(UserSession session);
-        void ClearSession();
-    }
-
-    public class UserSession
-    {
-        public string Token { get; set; } = string.Empty;
-        public string UserId { get; set; } = string.Empty;
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
-        public List<string> Roles { get; set; } = new();
     }
 }

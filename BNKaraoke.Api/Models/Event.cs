@@ -1,4 +1,7 @@
-﻿namespace BNKaraoke.Api.Models
+﻿using System;
+using System.Collections.Generic;
+
+namespace BNKaraoke.Api.Models
 {
     public class Event
     {
@@ -14,11 +17,12 @@
         public string? KaraokeDJName { get; set; }
         public bool IsCanceled { get; set; }
         public int RequestLimit { get; set; } = 15;
+        public int SongsCompleted { get; set; } = 0; // Added
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
 
         // Navigation properties
         public List<EventQueue> EventQueues { get; set; } = new List<EventQueue>();
-        public List<EventAttendance> EventAttendances { get; set; } = new List<EventAttendance>(); // Added navigation property
+        public List<EventAttendance> EventAttendances { get; set; } = new List<EventAttendance>();
     }
 }

@@ -136,7 +136,16 @@
                 return Unauthorized(new { error = "Invalid credentials." });
             }
 
-            _logger.LogInformation("Login: Password validated. Retrieving roles...");
+            _logger.LogInformation("Login: Password validated. Updating LastActivity...");
+            user.LastActivity = DateTime.UtcNow;
+            var updateResult = await _userManager.UpdateAsync(user);
+            if (!updateResult.Succeeded)
+            {
+                _logger.LogError("Login: Failed to update LastActivity for UserName={UserName} - Errors: {Errors}", model.UserName, string.Join(", ", updateResult.Errors.Select(e => e.Description)));
+                return StatusCode(500, new { error = "Failed to update user activity" });
+            }
+
+            _logger.LogInformation("Login: Roles retrieved. Generating token...");
             var roles = await _userManager.GetRolesAsync(user);
 
             _logger.LogInformation("Login: Roles retrieved. Generating token...");
@@ -480,7 +489,7 @@
                 }
             }
 
-            _logger.LogInformation("    ChangePassword: Password changed successfully for user: {UserName}", user.UserName);
+            _logger.LogInformation("ChangePassword: Password changed successfully for user: {UserName}", user.UserName);
             return Ok(new { message = "Password changed successfully" });
         }
 
