@@ -28,7 +28,6 @@ namespace BNKaraoke.DJ.ViewModels
         private bool _wasPlaying;
         private readonly object _queueLock = new();
         private double _lastSeekPosition = -1;
-        private bool _isPlayingStarting;
         private bool _isUserSeeking;
 
         [ObservableProperty]
@@ -383,7 +382,6 @@ namespace BNKaraoke.DJ.ViewModels
 
             try
             {
-                _isPlayingStarting = true;
                 await LoadQueueData();
 
                 QueueEntry? targetEntry;
@@ -418,7 +416,6 @@ namespace BNKaraoke.DJ.ViewModels
                     Log.Information("[DJSCREEN] Play failed: No valid green singer available. SelectedQueueEntry={Selected}, UpNextCount={UpNextCount}, GreenSingerCount={GreenCount}",
                         SelectedQueueEntry?.QueueId ?? -1, QueueEntries.Count(q => q.IsUpNext), QueueEntries.Count(q => q.IsActive && !q.IsOnHold && q.IsVideoCached && q.IsSingerLoggedIn && q.IsSingerJoined && !q.IsSingerOnBreak));
                     SetWarningMessage("No valid green singers available to play.");
-                    _isPlayingStarting = false;
                     return;
                 }
 
@@ -472,7 +469,6 @@ namespace BNKaraoke.DJ.ViewModels
                         Log.Information("[DJSCREEN] UI reset after playback failure for QueueId={QueueId}", targetEntry.QueueId);
                     });
                     _isInitialPlayback = false;
-                    _isPlayingStarting = false;
                     return;
                 }
                 finally
@@ -534,8 +530,6 @@ namespace BNKaraoke.DJ.ViewModels
                     Log.Information("[DJSCREEN] Started update timer for QueueId={QueueId}", targetEntry.QueueId);
                 }
 
-                _isPlayingStarting = false;
-
                 await UpdateQueueColorsAndRules();
             }
             catch (Exception ex)
@@ -549,7 +543,6 @@ namespace BNKaraoke.DJ.ViewModels
                     NotifyAllProperties();
                 });
                 _isInitialPlayback = false;
-                _isPlayingStarting = false;
             }
         }
 
@@ -634,7 +627,6 @@ namespace BNKaraoke.DJ.ViewModels
                 }
 
                 Log.Information("[DJSCREEN] Starting playback setup for QueueId={QueueId}", entry.QueueId);
-                _isPlayingStarting = true;
                 QueueEntry targetEntry = entry;
                 Log.Information("[DJSCREEN] Target entry selected: QueueId={QueueId}, SongTitle={SongTitle}, IsSingerOnBreak={IsSingerOnBreak}",
                     targetEntry.QueueId, targetEntry.SongTitle, targetEntry.IsSingerOnBreak);
@@ -686,7 +678,6 @@ namespace BNKaraoke.DJ.ViewModels
                         Log.Information("[DJSCREEN] UI reset after playback failure for QueueId={QueueId}", targetEntry.QueueId);
                     });
                     _isInitialPlayback = false;
-                    _isPlayingStarting = false;
                     return;
                 }
                 finally
@@ -748,8 +739,6 @@ namespace BNKaraoke.DJ.ViewModels
                     Log.Information("[DJSCREEN] Started update timer for QueueId={QueueId}", targetEntry.QueueId);
                 }
 
-                _isPlayingStarting = false;
-
                 await UpdateQueueColorsAndRules();
             }
             catch (Exception ex)
@@ -764,7 +753,6 @@ namespace BNKaraoke.DJ.ViewModels
                     Log.Information("[DJSCREEN] UI reset after failure for QueueId={QueueId}", entry.QueueId);
                 });
                 _isInitialPlayback = false;
-                _isPlayingStarting = false;
             }
         }
 

@@ -14,7 +14,6 @@ namespace BNKaraoke.DJ.ViewModels
 {
     public partial class DJScreenViewModel
     {
-        private bool _isSignalRConnected;
         private System.Timers.Timer? _pollingTimer;
         private const int PollingIntervalMs = 10000;
 
@@ -22,23 +21,34 @@ namespace BNKaraoke.DJ.ViewModels
         {
             try
             {
+                if (string.IsNullOrEmpty(eventId) || !int.TryParse(eventId, out int parsedEventId))
+                {
+                    Log.Warning("[DJSCREEN SIGNALR] Cannot initialize SignalR: EventId is null, empty, or invalid");
+                    StartPolling(eventId ?? "");
+                    return;
+                }
+
+                if (_signalRService == null)
+                {
+                    Log.Warning("[DJSCREEN SIGNALR] Cannot initialize SignalR: SignalRService is null");
+                    StartPolling(eventId);
+                    return;
+                }
+
                 Log.Information("[DJSCREEN SIGNALR] Initializing SignalR connection for EventId={EventId}", eventId);
-                await _signalRService.StartAsync(int.Parse(eventId));
-                _isSignalRConnected = true;
+                await _signalRService.StartAsync(parsedEventId);
                 StopPolling();
                 Log.Information("[DJSCREEN SIGNALR] SignalR initialized for EventId={EventId}", eventId);
             }
             catch (SignalRException ex)
             {
                 Log.Error("[DJSCREEN SIGNALR] Failed to initialize SignalR for EventId={EventId}: {Message}. Starting fallback polling.", eventId, ex.Message);
-                _isSignalRConnected = false;
-                StartPolling(eventId);
+                StartPolling(eventId ?? "");
             }
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN SIGNALR] Unexpected error initializing SignalR for EventId={EventId}: {Message}, StackTrace={StackTrace}", eventId, ex.Message, ex.StackTrace);
-                _isSignalRConnected = false;
-                StartPolling(eventId);
+                StartPolling(eventId ?? "");
             }
         }
 
@@ -83,31 +93,36 @@ namespace BNKaraoke.DJ.ViewModels
             }
         }
 
-        private async Task LoadSungCountAsync()
+        private async Task<int> LoadSungCountAsync()
         {
-            if (string.IsNullOrEmpty(_currentEventId)) return;
+            if (string.IsNullOrEmpty(_currentEventId))
+            {
+                return 0;
+            }
             try
             {
                 Log.Information("[DJSCREEN] Loading sung count for EventId={EventId}", _currentEventId);
                 SungCount = await _apiService.GetSungCountAsync(_currentEventId);
                 Log.Information("[DJSCREEN] Loaded sung count {Count} for EventId={EventId}", SungCount, _currentEventId);
-                OnPropertyChanged(nameof(SungCount));
+                Application.Current.Dispatcher.Invoke(() => OnPropertyChanged(nameof(SungCount)));
+                return SungCount;
             }
             catch (Exception ex)
             {
                 Log.Error("[DJSCREEN] Failed to load sung count for EventId={EventId}: {Message}", _currentEventId, ex.Message);
-                SetWarningMessage($"Failed to load sung count: {ex.Message}");
+                Application.Current.Dispatcher.Invoke(() => SetWarningMessage($"Failed to load sung count: {ex.Message}"));
+                return 0;
             }
         }
 
         [RelayCommand]
-        private async Task ToggleShow()
+        private void ToggleShow() // Removed async, changed to void
         {
             try
             {
                 Log.Information("[DJSCREEN] ToggleShow command invoked");
                 if (_isDisposing) return;
-                if (_currentEventId == null)
+                if (string.IsNullOrEmpty(_currentEventId))
                 {
                     Log.Information("[DJSCREEN] ToggleShow failed: No event joined");
                     SetWarningMessage("Please join an event before starting the show.");
@@ -190,11 +205,14 @@ namespace BNKaraoke.DJ.ViewModels
                     if (result == MessageBoxResult.Yes)
                     {
                         Log.Information("[DJSCREEN] Logging out");
+                        if (!string.IsNullOrEmpty(_currentEventId) && int.TryParse(_currentEventId, out int eventId) && _signalRService != null)
+                        {
+                            await _signalRService.StopAsync(eventId);
+                            Log.Information("[DJSCREEN SIGNALR] Stopped SignalR connection for EventId={EventId}", _currentEventId);
+                        }
+                        StopPolling();
                         if (!string.IsNullOrEmpty(_currentEventId))
                         {
-                            await _signalRService.StopAsync(int.Parse(_currentEventId));
-                            Log.Information("[DJSCREEN SIGNALR] Stopped SignalR connection for EventId={EventId}", _currentEventId);
-                            StopPolling();
                             try
                             {
                                 await _apiService.LeaveEventAsync(_currentEventId, _userSessionService.UserName ?? string.Empty);
@@ -313,8 +331,11 @@ namespace BNKaraoke.DJ.ViewModels
                         SetWarningMessage("Cannot leave event: User username is not set.");
                         return;
                     }
-                    await _signalRService.StopAsync(int.Parse(_currentEventId));
-                    Log.Information("[DJSCREEN SIGNALR] Stopped SignalR connection for EventId={EventId}", _currentEventId);
+                    if (!string.IsNullOrEmpty(_currentEventId) && int.TryParse(_currentEventId, out int eventId) && _signalRService != null)
+                    {
+                        await _signalRService.StopAsync(eventId);
+                        Log.Information("[DJSCREEN SIGNALR] Stopped SignalR connection for EventId={EventId}", _currentEventId);
+                    }
                     StopPolling();
                     await _apiService.LeaveEventAsync(_currentEventId, _userSessionService.UserName);
                     Log.Information("[DJSCREEN] Left event: {EventId}", _currentEventId);

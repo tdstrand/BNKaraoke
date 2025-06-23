@@ -125,7 +125,7 @@ namespace BNKaraoke.DJ.ViewModels
         [ObservableProperty]
         private string _stopRestartButtonColor = "#22d3ee"; // Default cyan
 
-        public ICommand? ViewSungSongsCommand { get; } // Made nullable
+        public ICommand? ViewSungSongsCommand { get; }
 
         public DJScreenViewModel(VideoCacheService? videoCacheService = null)
         {
@@ -316,7 +316,6 @@ namespace BNKaraoke.DJ.ViewModels
                         queueEntry.IsSingerOnBreak = isSingerOnBreak;
                         OnPropertyChanged(nameof(QueueEntries));
                     }
-                    // Only refresh queue if action significantly changes state
                     if (action == "Added" || action == "Removed" || action == "Moved")
                     {
                         await LoadQueueData();
@@ -467,7 +466,9 @@ namespace BNKaraoke.DJ.ViewModels
 
             public void Execute(object? parameter) => _execute(parameter);
 
+#pragma warning disable CS0067 // Suppress unused event warning
             public event EventHandler? CanExecuteChanged;
+#pragma warning restore CS0067
         }
     }
 }

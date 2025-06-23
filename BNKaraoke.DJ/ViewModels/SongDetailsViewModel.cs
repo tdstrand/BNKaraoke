@@ -45,13 +45,13 @@ namespace BNKaraoke.DJ.ViewModels
         }
 
         public ICommand CloseCommand { get; }
-        public ICommand CopyYouTubeUrlCommand { get; } // Added
+        public ICommand CopyYouTubeUrlCommand { get; }
 
         public SongDetailsViewModel(IUserSessionService userSessionService)
         {
             _userSessionService = userSessionService;
             CloseCommand = new RelayCommand(ExecuteCloseCommand);
-            CopyYouTubeUrlCommand = new RelayCommand(ExecuteCopyYouTubeUrlCommand); // Added
+            CopyYouTubeUrlCommand = new RelayCommand(ExecuteCopyYouTubeUrlCommand);
         }
 
         public async Task LoadSongDetailsAsync(int songId)
@@ -120,7 +120,7 @@ namespace BNKaraoke.DJ.ViewModels
             }
         }
 
-        private void ExecuteCopyYouTubeUrlCommand(object? parameter) // Added
+        private void ExecuteCopyYouTubeUrlCommand(object? parameter)
         {
             try
             {
@@ -153,7 +153,9 @@ namespace BNKaraoke.DJ.ViewModels
 
             public void Execute(object? parameter) => _execute(parameter);
 
+#pragma warning disable CS0067 // Suppress unused event warning
             public event EventHandler? CanExecuteChanged;
+#pragma warning restore CS0067
         }
     }
 
